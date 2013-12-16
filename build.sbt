@@ -14,7 +14,9 @@ libraryDependencies ++= Seq(
 
 publishArtifact in Test := false
 
-publishTo := Some("JetBrains Maven Repository" at "http://repository.jetbrains.com/all")
+publishTo := Some("JetBrains TeamCity Repository" at "http://repository.jetbrains.com/teamcity")
+
+publishMavenStyle := false
 
 credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 
