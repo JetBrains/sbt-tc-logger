@@ -1,4 +1,4 @@
-package com.jetbrains.sbt4tc
+package jetbrains.buildServer
 
 import sbt._
 import jetbrains.buildServer._
