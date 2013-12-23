@@ -27,12 +27,10 @@ object SbtTeamCityLogger extends Plugin {
           }
         },
         startCompilationLogger := {
-             tcLogAppender.compilationBlockStart(Thread.currentThread().getId())
+             tcLogAppender.compilationBlockStart(Thread.currentThread().getId)
         },
-        compile <<= ((compile in Compile) dependsOn startCompilationLogger) map { result =>
-             tcLogAppender.compilationBlockEnd(Thread.currentThread().getId())
-             result
-        }
+        compile <<= ((compile in Compile) dependsOn startCompilationLogger)
+          andFinally {tcLogAppender.compilationBlockEnd(Thread.currentThread().getId)}
   )
 
   lazy val loggerOffSettings = Seq(
