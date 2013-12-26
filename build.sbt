@@ -6,11 +6,7 @@ organization := "org.jetbrains.teamcity.plugins"
 
 version := "0.1.0-SNAPSHOT"
 
-resolvers += "JetBrains Maven Repository" at "http://repository.jetbrains.com/all"
-
-libraryDependencies ++= Seq(
-  "org.jetbrains.teamcity" % "common-api" % "8.0"
-)
+unmanagedBase := baseDirectory.value / "lib"
 
 publishArtifact in Test := false
 
