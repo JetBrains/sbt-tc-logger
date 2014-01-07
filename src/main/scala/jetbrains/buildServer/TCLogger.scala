@@ -2,7 +2,6 @@ package jetbrains.buildServer
 
 import sbt._
 
-
 class TCLogger(ap: LogAppender) extends BasicLogger {
 
   val appender: LogAppender = ap
@@ -10,7 +9,7 @@ class TCLogger(ap: LogAppender) extends BasicLogger {
   def logAll(events: Seq[LogEvent]) =  { events.foreach(log) }
 
   def log(level: sbt.Level.Value, message: => String) {
-      appender.log(level,message,Thread.currentThread().getId())
+      appender.log(level,message, "" + Thread.currentThread().getId)
   }
 
   def control(event: ControlEvent.Value, message: => String) {

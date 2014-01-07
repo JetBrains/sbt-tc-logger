@@ -1,8 +1,7 @@
 package jetbrains.buildServer
 
 import sbt._
-import sbt.Keys._
-
+import Keys._
 
 object SbtTeamCityLogger extends Plugin {
 
@@ -27,10 +26,11 @@ object SbtTeamCityLogger extends Plugin {
           }
         },
         startCompilationLogger := {
-             tcLogAppender.compilationBlockStart(Thread.currentThread().getId)
+             val extracted: Extracted = Project.extract(state.value)
+             tcLogAppender.compilationBlockStart()
         },
         compile <<= ((compile in Compile) dependsOn startCompilationLogger)
-          andFinally {tcLogAppender.compilationBlockEnd(Thread.currentThread().getId)}
+          andFinally {tcLogAppender.compilationBlockEnd()}
   )
 
   lazy val loggerOffSettings = Seq(
