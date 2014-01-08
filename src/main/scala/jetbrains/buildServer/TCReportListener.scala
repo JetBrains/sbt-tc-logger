@@ -12,7 +12,7 @@ class TCReportListener(ap: LogAppender)  extends TestReportListener{
 
   /** called for each test method or equivalent */
   def testEvent(event: TestEvent){
-    println("testEvent. event:= " + event)
+    appender.testEventOccurred(event,"" + Thread.currentThread().getId)
   }
 
   /** called if there was an error during test */
@@ -23,7 +23,7 @@ class TCReportListener(ap: LogAppender)  extends TestReportListener{
   /** called if test completed */
   def endGroup(name: String, result: TestResult.Value){
     println("endGroup. name:= " + name + "result:=" + result)
-    appender.testSuitStart(name,"" + Thread.currentThread().getId)
+    appender.testSuitSuccessfulResult(name,"" + Thread.currentThread().getId)
   }
 
 

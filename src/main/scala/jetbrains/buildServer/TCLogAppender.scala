@@ -1,6 +1,5 @@
 package jetbrains.buildServer
 
-import sbt._
 
 class TCLogAppender extends LogAppender {
 
@@ -33,13 +32,17 @@ class TCLogAppender extends LogAppender {
     println(s"##teamcity[testSuiteStarted name='$name' flowId='$flowId']")
   }
 
-  def testSuitSuccessfulResult(name: String, flowId: String){
-    println(s"##teamcity[testFinished name='$name' flowId='$flowId']")
+  def testEventOccurred(event: TestEvent, flowId: String) {
+    println(s"##teamcity[test event='$event.result' flowId='$flowId']")
+  }
+
+  def testSuitSuccessfulResult(name: String, flowId: String) {
+    println(s"##teamcity[testSuiteFinished name='$name' flowId='$flowId']")
   }
 
   def testSuitFailResult(name: String, t: Throwable, flowId: String) {
     val message = t.getMessage
     val details = t.getStackTrace
-    println(s"##teamcity[testFailed name='$name' message='$message' details='$details' fowId='$flowId']")
+    println(s"##teamcity[testSuiteFinished name='$name' message='$message' details='$details' flowId='$flowId']")
   }
 }

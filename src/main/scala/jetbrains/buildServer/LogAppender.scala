@@ -16,4 +16,6 @@ trait LogAppender {
   def testSuitSuccessfulResult(name: String, flowId: String)
   
   def testSuitFailResult(name: String, t: Throwable, flowId: String)
+
+  def testEventOccurred(event: TestEvent, flowId: String)
 }
