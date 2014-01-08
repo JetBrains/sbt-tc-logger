@@ -7,7 +7,7 @@ class TCReportListener(ap: LogAppender)  extends TestReportListener{
   val appender: LogAppender = ap
 
   def startGroup(name: String) {
-    appender.testSuitStart(name,"" + Thread.currentThread().getId())
+    appender.testSuitStart(name,"" + Thread.currentThread().getId)
   }
 
   /** called for each test method or equivalent */
@@ -17,13 +17,13 @@ class TCReportListener(ap: LogAppender)  extends TestReportListener{
 
   /** called if there was an error during test */
   def endGroup(name: String, t: Throwable){
-    appender.testSuitFailResult(name,t,"" + Thread.currentThread().getId())
+    appender.testSuitFailResult(name,t,"" + Thread.currentThread().getId)
   }
 
   /** called if test completed */
   def endGroup(name: String, result: TestResult.Value){
     println("endGroup. name:= " + name + "result:=" + result)
-    appender.testSuitStart(name,"" + Thread.currentThread().getId())
+    appender.testSuitStart(name,"" + Thread.currentThread().getId)
   }
 
 
