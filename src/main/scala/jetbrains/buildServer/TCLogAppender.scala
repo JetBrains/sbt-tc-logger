@@ -1,5 +1,6 @@
 package jetbrains.buildServer
 
+import sbt._
 
 class TCLogAppender extends LogAppender {
 
@@ -20,11 +21,11 @@ class TCLogAppender extends LogAppender {
   }
 
   def compilationBlockStart() {
-    println(s"##teamcity[compilationStarted compiler='Scala']")
+    println(s"##teamcity[compilationStarted compiler='scalac']")
   }
 
   def compilationBlockEnd() {
-    println(s"##teamcity[compilationFinished compiler='Scala']")
+    println(s"##teamcity[compilationFinished compiler='scalac']")
   }
 
 
