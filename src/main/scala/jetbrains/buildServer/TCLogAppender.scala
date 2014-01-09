@@ -33,8 +33,9 @@ class TCLogAppender extends LogAppender {
     println(s"##teamcity[testSuiteStarted name='$name' flowId='$flowId']")
   }
 
-  def testEventOccurred(event: TestEvent, flowId: String) {
-    println(s"##teamcity[test event='$event.result' flowId='$flowId']")
+  def testOccurred(name: String, status:String, flowId: String) {
+    println(s"##teamcity[testStarted name='$name' captureStandardOutput='true' flowId='$flowId']")
+    println(s"##teamcity[testFinished name='$name' flowId='$flowId']")
   }
 
   def testSuitSuccessfulResult(name: String, flowId: String) {
