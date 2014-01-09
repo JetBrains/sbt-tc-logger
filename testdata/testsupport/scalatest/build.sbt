@@ -1,0 +1,10 @@
+resolvers += "SonaType" at "https://oss.sonatype.org/content/groups/public"
+
+libraryDependencies += "org.scalatest" % "scalatest_2.10" % "2.0" % "test"
+
+libraryDependencies ++= Seq(
+  "org.scala-lang" % "scala-reflect" % "2.10.3"
+)
+
+logBuffered in Test := false
+
