@@ -9,7 +9,7 @@ object SbtTeamCityLogger extends Plugin {
   lazy val tcLogger = new TCLogger(tcLogAppender)
   lazy val tcTestListener = new TCReportListener(tcLogAppender)
   lazy val startCompilationLogger = TaskKey[Unit]("start-compilation-logger", "runs before compile")
-  lazy val endCompilationLogger = TaskKey[Unit]("end-compilation-logger", "runs after compile")
+  lazy val startTestCompilationLogger = TaskKey[Unit]("start-test-compilation-logger", "runs before compile in test")
 
   val tcVersion = sys.env.get("TEAMCITY_VERSION")
   val tcFound = !tcVersion.isEmpty
@@ -26,11 +26,16 @@ object SbtTeamCityLogger extends Plugin {
           }
         },
         startCompilationLogger := {
-             val extracted: Extracted = Project.extract(state.value)
              tcLogAppender.compilationBlockStart()
         },
+        startTestCompilationLogger := {
+             tcLogAppender.compilationTestBlockStart()
+        },
         compile <<= ((compile in Compile) dependsOn startCompilationLogger)
-          andFinally {tcLogAppender.compilationBlockEnd()}
+          andFinally {tcLogAppender.compilationBlockEnd()},
+
+        compile <<= ((compile in Test) dependsOn startTestCompilationLogger)
+               andFinally {tcLogAppender.compilationTestBlockEnd()}
   )
 
   lazy val loggerOffSettings = Seq(

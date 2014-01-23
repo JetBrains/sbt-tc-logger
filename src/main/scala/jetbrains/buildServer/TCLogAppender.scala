@@ -1,12 +1,13 @@
 package jetbrains.buildServer
 
 import sbt._
+import jetbrains.buildServer.messages.serviceMessages.MapSerializerUtil
 
 class TCLogAppender extends LogAppender {
 
   def log(level: sbt.Level.Value, message: => String, flowId: String) = {
     val status = discoverStatus(level)
-    val escaped = jetbrains.buildServer.messages.serviceMessages.MapSerializerUtil.escapeStr(message, jetbrains.buildServer.messages.serviceMessages.MapSerializerUtil.STD_ESCAPER2)
+    val escaped = MapSerializerUtil.escapeStr(message, MapSerializerUtil.STD_ESCAPER2)
     println(s"##teamcity[message status='$status' flowId='$flowId' text='$escaped']")
 
   }
@@ -21,11 +22,19 @@ class TCLogAppender extends LogAppender {
   }
 
   def compilationBlockStart() {
-    println(s"##teamcity[compilationStarted compiler='scalac']")
+    println(s"##teamcity[compilationStarted compiler='Scala compiler']")
+  }
+
+  def compilationTestBlockStart() {
+      println(s"##teamcity[compilationStarted compiler='Scala compiler (in tests)']")
   }
 
   def compilationBlockEnd() {
-    println(s"##teamcity[compilationFinished compiler='scalac']")
+      println(s"##teamcity[compilationFinished compiler='Scala compiler']")
+  }
+
+  def compilationTestBlockEnd() {
+      println(s"##teamcity[compilationFinished compiler='Scala compiler (in tests)']")
   }
 
 
@@ -43,8 +52,8 @@ class TCLogAppender extends LogAppender {
   }
 
   def testSuitFailResult(name: String, t: Throwable, flowId: String) {
-    val message = t.getMessage
-    val details = t.getStackTrace
+    val message = MapSerializerUtil.escapeStr(t.getMessage,MapSerializerUtil.STD_ESCAPER2)
+    val details = MapSerializerUtil.escapeStr(t.getStackTrace, MapSerializerUtil.STD_ESCAPER2)
     println(s"##teamcity[testSuiteFinished name='$name' message='$message' details='$details' flowId='$flowId']")
   }
 }

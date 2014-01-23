@@ -11,6 +11,10 @@ trait LogAppender {
 
   def compilationBlockEnd()
 
+  def compilationTestBlockStart()
+
+  def compilationTestBlockEnd()
+
   def testSuitStart(name: String, flowId: String)
 
   def testSuitSuccessfulResult(name: String, flowId: String)
