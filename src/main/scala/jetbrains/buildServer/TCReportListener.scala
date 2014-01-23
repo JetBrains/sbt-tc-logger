@@ -24,7 +24,8 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
       val name = event.fullyQualifiedName
       val selector = event.selector
       val status = event.status.toString
-      appender.testOccurred(s"$name.$selector", status, "" + Thread.currentThread().getId)
+      val duration = event.duration
+      appender.testOccurred(s"$name.$selector", status, duration, "" + Thread.currentThread().getId)
   	}
 
   /** called if there was an error during test */
