@@ -53,7 +53,7 @@ class TCLogAppender extends LogAppender {
 
   def testSuitFailResult(name: String, t: Throwable, flowId: String) {
     val message = MapSerializerUtil.escapeStr(t.getMessage,MapSerializerUtil.STD_ESCAPER2)
-    val details = MapSerializerUtil.escapeStr(t.getStackTrace, MapSerializerUtil.STD_ESCAPER2)
+    val details = t.getStackTrace
     println(s"##teamcity[testSuiteFinished name='$name' message='$message' details='$details' flowId='$flowId']")
   }
 }
