@@ -31,10 +31,10 @@ object SbtTeamCityLogger extends Plugin {
         startTestCompilationLogger := {
              tcLogAppender.compilationTestBlockStart()
         },
-        compile <<= ((compile in Compile) dependsOn startCompilationLogger)
+        compile in Compile <<= ((compile in Compile) dependsOn startCompilationLogger)
           andFinally {tcLogAppender.compilationBlockEnd()},
 
-        compile <<= ((compile in Test) dependsOn startTestCompilationLogger)
+        compile in Test <<= ((compile in Test) dependsOn startTestCompilationLogger)
                andFinally {tcLogAppender.compilationTestBlockEnd()}
   )
 
