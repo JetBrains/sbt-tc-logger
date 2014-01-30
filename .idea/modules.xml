@@ -3,6 +3,8 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/SbtTcLogger.iml" filepath="$PROJECT_DIR$/SbtTcLogger.iml" />
+      <module fileurl="file://$PROJECT_DIR$/testdata/testsupport/scalatest/.idea/modules/scalatest.iml" filepath="$PROJECT_DIR$/testdata/testsupport/scalatest/.idea/modules/scalatest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/testdata/testsupport/scalatest/.idea/modules/scalatest-build.iml" filepath="$PROJECT_DIR$/testdata/testsupport/scalatest/.idea/modules/scalatest-build.iml" />
     </modules>
   </component>
 </project>
