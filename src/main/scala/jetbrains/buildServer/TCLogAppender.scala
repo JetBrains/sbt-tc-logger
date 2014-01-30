@@ -10,7 +10,7 @@ class TCLogAppender extends LogAppender {
   def log(level: sbt.Level.Value, message: => String, flowId: String) = {
     val status = discoverStatus(level)
     val escaped = MapSerializerUtil.escapeStr(message, MapSerializerUtil.STD_ESCAPER2)
-    printServerMessage("message", Map("status" -> s"$status", "text" -> s"$escaped", "flowId" -> s"$flowId"))
+    println(s"##teamcity[message status='$status' flowId='$flowId' text='$escaped']")
 
   }
 
@@ -32,7 +32,7 @@ class TCLogAppender extends LogAppender {
   }
 
   def compilationTestBlockStart() {
-      printServerMessage("compilationStarted", Map("compiler" -> s"$CompilerName in Test"))
+    printServerMessage("compilationStarted", Map("compiler" -> s"$CompilerName in Test"))
   }
 
   def compilationTestBlockEnd() {
