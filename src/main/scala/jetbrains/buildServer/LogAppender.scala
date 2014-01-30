@@ -1,6 +1,8 @@
 package jetbrains.buildServer
 
 import sbt._
+import sbt.testing.OptionalThrowable
+
 
 
 trait LogAppender {
@@ -21,6 +23,14 @@ trait LogAppender {
   
   def testSuitFailResult(name: String, t: Throwable, flowId: String)
 
-  def testOccurred(name: String, status: String, duration: Long, flowId: String)
+  def testStart(name: String, flowId: String)
+
+  def testFinished(name: String, status: String, duration: Long, flowId: String)
+
+  def testFailed(name: String, details: String, flowId: String)
+
+  def testSkipped(name: String, flowId: String)
+
+  def testCancelled(name: String, flowId: String)
 
 }

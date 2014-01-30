@@ -9,9 +9,7 @@ class TCLogAppender extends LogAppender {
 
   def log(level: sbt.Level.Value, message: => String, flowId: String) = {
     val status = discoverStatus(level)
-    val escaped = MapSerializerUtil.escapeStr(message, MapSerializerUtil.STD_ESCAPER2)
-    println(s"##teamcity[message status='$status' flowId='$flowId' text='$escaped']")
-
+    printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
   }
 
   def discoverStatus(level: sbt.Level.Value): String = {
@@ -24,45 +22,61 @@ class TCLogAppender extends LogAppender {
   }
 
   def compilationBlockStart() {
-    printServerMessage("compilationStarted", Map("compiler" -> CompilerName))
+    printServerMessage("compilationStarted", "compiler" -> CompilerName)
   }
 
   def compilationBlockEnd() {
-    printServerMessage("compilationFinished", Map("compiler" -> CompilerName))
+    printServerMessage("compilationFinished", "compiler" -> CompilerName)
   }
 
   def compilationTestBlockStart() {
-    printServerMessage("compilationStarted", Map("compiler" -> s"$CompilerName in Test"))
+    printServerMessage("compilationStarted", "compiler" -> s"$CompilerName in Test")
   }
 
   def compilationTestBlockEnd() {
-    printServerMessage("compilationFinished", Map("compiler" -> s"$CompilerName in Test"))
+    printServerMessage("compilationFinished", "compiler" -> s"$CompilerName in Test")
   }
 
 
   def testSuitStart(name: String, flowId: String) {
-    printServerMessage("testSuiteStarted", Map("name" -> s"$name", "flowId" -> s"$flowId"))
+    printServerMessage("testSuiteStarted","name" -> name, "flowId" -> flowId)
   }
 
-  def testOccurred(name: String, status: String, duration: Long, flowId: String) {
-    printServerMessage("testStarted", Map("name" -> s"$name", "captureStandardOutput" -> "true", "flowId" -> s"$flowId"))
-    printServerMessage("testFinished", Map("name" -> s"$name", "duration" -> "$duration", "flowId" -> s"$flowId"))
+
+  def testStart(name: String, flowId: String){
+    printServerMessage("testStarted", "name" -> name, "captureStandardOutput" -> "true", "flowId" -> flowId)
+  }
+
+  def testFinished(name: String, status: String, duration: Long, flowId: String){
+    printServerMessage("testFinished", "name" -> name, "duration" -> s"$duration", "flowId" -> flowId)
+  }
+
+  def testFailed(name: String, details: String, flowId: String){
+    printServerMessage("testFailed", "name" -> name, "details" -> details, "flowId" -> flowId)
+  }
+
+  def testSkipped(name: String, flowId: String){
+    printServerMessage("testIgnored","name" -> name, "flowId" -> flowId)
+  }
+
+  def testCancelled(name: String, flowId: String){
+    printServerMessage("message", "text" -> s"Test $name was cancelled", "flowId" -> flowId)
   }
 
   def testSuitSuccessfulResult(name: String, flowId: String) {
-    printServerMessage("testSuiteFinished", Map("name" -> s"$name", "flowId" -> s"$flowId"))
+    printServerMessage("testSuiteFinished", "name" -> name, "flowId" -> flowId)
   }
 
   def testSuitFailResult(name: String, t: Throwable, flowId: String) {
-    val message = MapSerializerUtil.escapeStr(t.getMessage, MapSerializerUtil.STD_ESCAPER2)
     val details = t.getStackTrace
-    printServerMessage("testSuiteFinished", Map("name" -> s"$name", "message" -> s"$message", "details" -> s"$details","flowId" -> s"$flowId"))
-
+    printServerMessage("testSuiteFinished","name" -> name, "message" -> t.getMessage, "details" -> s"$details", "flowId" -> flowId)
   }
 
-  private def printServerMessage(name: String, params: Map[String, String]) {
-    printf(s"##teamcity[$name")
-    for ((k, v) <- params) printf(s" $k='$v'")
-    println("]")
+  private def printServerMessage(messageName: String, attributes: (String, String)*) {
+    val attributeString = attributes.map {
+      case (k, v) => s"$k='${MapSerializerUtil.escapeStr(v,MapSerializerUtil.STD_ESCAPER2)}'"
+    }.mkString(" ")
+    println(s"##teamcity[$messageName $attributeString]")
   }
+  
 }
