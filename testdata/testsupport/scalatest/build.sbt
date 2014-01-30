@@ -8,3 +8,4 @@ libraryDependencies ++= Seq(
 
 logBuffered in Test := false
 
+scalaVersion := "2.10.3"
