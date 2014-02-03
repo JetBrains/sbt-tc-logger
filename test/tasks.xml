@@ -22,6 +22,7 @@
     </target>
 
     <target name="copyLogger">
+        <mkdir dir="sbt/plugins/lib"/>
         <copy file="../logger/target/scala-2.10/sbt-0.13/sbt-teamcity-logger.jar"
                 todir="sbt/plugins/lib">
 
