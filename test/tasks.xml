@@ -4,8 +4,9 @@
     </description>
 
     <target name="download">
+        <mkdir dir="sbt/bin"/>
         <get src="http://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.1/sbt-launch.jar"
-             dest="sbt/bin/sbt-launch.jar"/>
+             dest="sbt/bin/sbt-launch.jar" />
     </target>
 
     <property name="sbt.dir" value="sbt" />
