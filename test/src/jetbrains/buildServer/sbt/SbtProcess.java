@@ -24,9 +24,10 @@ public final class SbtProcess {
         String sbtLauncherPath = new File(sbtPath,"bin" + File.separator + "sbt-launch.jar").getAbsolutePath();
 
         String sbtPathParam = "-Dsbt.global.base=" + sbtPath;
+        String sbtParam = "-Dsbt.log.format=false";
 
         ProcessBuilder builder = new ProcessBuilder(
-                javaBin, "-cp", classpath, "-jar", sbtLauncherPath, sbtPathParam, sbtCommands);
+                javaBin, "-cp", classpath, "-jar", sbtLauncherPath, sbtPathParam, sbtParam, sbtCommands);
         Map<String, String> env = builder.environment();
         env.put("TEAMCITY_VERSION", "8.0.TEST");
         builder.directory(new File(workingDir));
