@@ -9,7 +9,6 @@
       <root url="jar://C:/Program Files (x86)/scala/lib/scala-swing.jar!/" />
     </CLASSES>
     <JAVADOC>
-      <root url="file://$USER_HOME$/scala-2.11.0-M4/doc/scala-devel-docs/api" />
       <root url="jar://C:/Program Files (x86)/scala/src/scala-swing-src.jar!/" />
     </JAVADOC>
     <SOURCES>
