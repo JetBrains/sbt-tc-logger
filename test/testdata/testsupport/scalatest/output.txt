@@ -1,0 +1,7 @@
+##teamcity\[compilationStarted compiler='Scala compiler'\]
+##teamcity\[compilationFinished compiler='Scala compiler'\]
+##teamcity\[message status='NORMAL' flowId='\d+' text='Passed tests:'\]
+##teamcity\[message status='NORMAL' flowId='\d+' text='	ExampleSpec'\]
+##teamcity\[message status='ERROR' flowId='\d+' text='Failed tests:'\]
+##teamcity\[message status='ERROR' flowId='\d+' text='	ListFlatSpec'\]
+##teamcity\[message status='ERROR' flowId='\d+' text='\(test:test\) sbt.TestsFailedException: Tests unsuccessful'\]
