@@ -20,7 +20,7 @@
         </java>
     </target>
 
-    <target name="copyLogger" depends="buildLogger">
+    <target name="copyLogger">
         <copy file="../logger/target/scala-2.10/sbt-0.13/sbt-teamcity-logger.jar"
                 todir="sbt/plugins/lib">
 
