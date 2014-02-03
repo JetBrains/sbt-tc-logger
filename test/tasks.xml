@@ -5,14 +5,14 @@
 
     <target name="download">
         <get src="http://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.1/sbt-launch.jar"
-             dest="/sbt/bin/sbt-launch.jar"/>
+             dest="sbt/bin/sbt-launch.jar"/>
     </target>
 
     <property name="sbt.dir" value="sbt" />
     <property name="sbt.params" value="-Dsbt.global.base=${sbt.dir} -Dsbt.log.format=false"/>
 
     <target name="buildLogger" >
-        <java jar="/sbt/bin/sbt-launch.jar" dir="../logger/"
+        <java jar="sbt/bin/sbt-launch.jar" dir="../logger/"
               fork="true"
               failonerror="true"
                 >
