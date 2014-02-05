@@ -4,17 +4,13 @@ name := "sbt-teamcity-logger"
 
 organization := "org.jetbrains.teamcity.plugins"
 
-version := "0.1.0-SNAPSHOT"
+version := "0.1." + sys.env.get("BUILD_NUMBER") + "-SNAPSHOT"
 
 unmanagedBase := baseDirectory.value / "lib"
 
 publishArtifact in Test := false
 
-publishTo := Some("JetBrains TeamCity Repository" at "http://repository.jetbrains.com/teamcity")
-
 publishMavenStyle := false
-
-credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 
 pomExtra :=
   <licenses>
@@ -24,3 +20,4 @@ pomExtra :=
       <distribution>repo</distribution>
     </license>
   </licenses>
+
