@@ -1,6 +1,6 @@
 sbtPlugin := true
 
-name := "sbt-teamcity-logger"
+name := "sbt-teamcity-logger-${build.number}"
 
 organization := "org.jetbrains.teamcity.plugins"
 
