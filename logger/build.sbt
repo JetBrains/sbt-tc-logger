@@ -4,7 +4,7 @@ name := "sbt-teamcity-logger"
 
 organization := "org.jetbrains.teamcity.plugins"
 
-version := "0.1." + System.getProperty("teamcity.test") + "-SNAPSHOT"
+version := "0.1.0-SNAPSHOT"
 
 unmanagedBase := baseDirectory.value / "lib"
 
