@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 
 public final class SbtProcess {
 
-    public static int exec(String sbtCommands, String workingDir) throws IOException,
+    public static int runAndTest(String sbtCommands, String workingDir) throws IOException,
             InterruptedException {
         String javaHome = System.getProperty("java.home");
         String javaBin = javaHome +
@@ -69,6 +69,10 @@ public final class SbtProcess {
         }
 
         process.waitFor();
+        if (found!=required.size()){
+            System.out.println("First failed line:");
+            System.out.println(currentRequired);
+        }
         Assert.assertEquals(required.size(),found);
         return process.exitValue();
     }
