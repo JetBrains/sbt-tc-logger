@@ -10,7 +10,15 @@ unmanagedBase := baseDirectory.value / "lib"
 
 publishArtifact in Test := false
 
+publishArtifact in (Compile, packageBin) := false
+
 publishMavenStyle := false
+
+credentials += Credentials("Artifactory Realm", "repository.jetbrains.com", System.getProperty("tc.repo.username"), System.getProperty("tc.repo.password"))
+
+resolvers += Resolver.url("Artifactory Realm", url("http://repository.jetbrains.com/teamcity/"))
+
+publishTo := Some("Artifactory Realm"  at "http://repository.jetbrains.com/teamcity/")
 
 pomExtra :=
   <licenses>
