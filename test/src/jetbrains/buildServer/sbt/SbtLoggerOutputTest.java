@@ -19,7 +19,9 @@ package jetbrains.buildServer.sbt;
 
 import org.junit.Test;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 
 public class SbtLoggerOutputTest {
@@ -27,7 +29,7 @@ public class SbtLoggerOutputTest {
     @Test
     public void testCompileErrorOutput() throws IOException, InterruptedException {
         SbtProcess.runAndTest("compile", new File("test/testdata/compileerror").getAbsolutePath());
-  
+
     }
 
     @Test
@@ -39,4 +41,17 @@ public class SbtLoggerOutputTest {
     public void testScalaTest() throws IOException, InterruptedException {
         SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest").getAbsolutePath());
     }
+
+    /**
+     * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
+     * Agent output should be placed in test data directory and could be checked against required output
+     * @throws IOException
+     */
+    public void testServerLogs() throws IOException {
+        String workingDir = new File("test/testdata/multiproject").getAbsolutePath();
+        File requiredFile = new File(workingDir + File.separator + "output.txt");
+        File serverLogs = new File(workingDir + File.separator + "server_logs.log");
+        SbtProcess.checkOutputTest(new BufferedReader(new FileReader(serverLogs)), new BufferedReader(new FileReader(requiredFile)));
+    }
+
 }

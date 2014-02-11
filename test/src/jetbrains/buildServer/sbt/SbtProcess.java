@@ -38,7 +38,7 @@ public final class SbtProcess {
         String classpath = System.getProperty("java.class.path");
 
         String sbtPath = new File("test" + File.separator + "sbt").getAbsolutePath();
-        String sbtLauncherPath = new File(sbtPath,"bin" + File.separator + "sbt-launch.jar").getAbsolutePath();
+        String sbtLauncherPath = new File(sbtPath, "bin" + File.separator + "sbt-launch.jar").getAbsolutePath();
 
         String sbtPathParam = "-Dsbt.global.base=" + sbtPath;
         String sbtParam = "-Dsbt.log.format=false";
@@ -55,9 +55,25 @@ public final class SbtProcess {
         BufferedReader stdError = new BufferedReader(new
                 InputStreamReader(process.getErrorStream()));
 
-        BufferedReader requiredOutput = new BufferedReader(new FileReader(workingDir + File.separator + "output.txt"));
+        checkOutputTest(new BufferedReader(new FileReader(workingDir + File.separator + "output.txt")), stdInput);
+
+        process.waitFor();
+
+        String s;
+        // read any errors from the attempted command
+        System.out.println("Here is the standard error of the command (if any):\n");
+        while ((s = stdError.readLine()) != null) {
+            System.out.println(s);
+        }
+
+        return process.exitValue();
+    }
+
+
+    public static void checkOutputTest(BufferedReader requiredOutput, BufferedReader stdInput) throws IOException {
+
         List<Pattern> required = new ArrayList<Pattern>();
-        String s = null;
+        String s;
         while ((s = requiredOutput.readLine()) != null) {
             required.add(Pattern.compile(s));
         }
@@ -65,33 +81,27 @@ public final class SbtProcess {
         int i = 0;
         int found = 0;
 
-        assert required.size()>0;
+        assert required.size() > 0;
 
         Pattern currentRequired = required.get(i++);
         while ((s = stdInput.readLine()) != null) {
             Matcher matcher = currentRequired.matcher(s);
-            if (matcher.find()){
+            if (matcher.find()) {
                 found++;
-                if (i<required.size()){
-                  currentRequired = required.get(i++);
+                if (i < required.size()) {
+                    currentRequired = required.get(i++);
                 }
             }
             System.out.println(s);
         }
 
-        // read any errors from the attempted command
-        System.out.println("Here is the standard error of the command (if any):\n");
-        while ((s = stdError.readLine()) != null) {
-            System.out.println(s);
-        }
 
-        process.waitFor();
-        if (found!=required.size()){
+        if (found != required.size()) {
             System.out.println("First failed line:");
             System.out.println(currentRequired);
         }
-        Assert.assertEquals(required.size(),found);
-        return process.exitValue();
+        Assert.assertEquals(required.size(), found);
+
     }
 
 
