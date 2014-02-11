@@ -20,7 +20,7 @@ package jetbrains.buildServer
 import java.util.concurrent.atomic.AtomicInteger
 
 import sbt._
-import testing.{Logger => TLogger, Event => TEvent, Status, OptionalThrowable}
+import testing.{Logger => TLogger, Event => TEvent, Status, OptionalThrowable, TestSelector}
 import java.io.{PrintWriter, StringWriter}
 
 
@@ -53,11 +53,16 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
   protected def logSingleTest(event: sbt.testing.Event): Unit =
   	{
       val name = event.fullyQualifiedName
-      val selector = event.selector
       val status = event.status.toString
       val duration = event.duration
       val throwable = event.throwable
-      val testName = s"$name.$selector"
+
+      val testName = event.selector match {
+          case s: TestSelector => {
+            name + "." + s.testName
+          }
+          case _ => name
+      }
 
       appender.testStart(s"$testName", flowId)
 
