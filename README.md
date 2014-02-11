@@ -1,7 +1,7 @@
 SBT TeamCity logger
 =============
 
-This plugin extends SBT standard output and add messages that TeamCity build server can use to improve build result presentation.
+This plugin extends SBT standard output with service messages that TeamCity build server uses to present build results.
 
 You don't need this plugin if you use [TeamCity SBT runner](https://github.com/JetBrains/tc-sbt-runner) with 'Auto' installation mode.
 
