@@ -9,3 +9,15 @@ libraryDependencies ++= Seq(
 logBuffered in Test := false
 
 scalaVersion := "2.10.3"
+
+parallelExecution in test := false
+
+testGrouping <<= definedTests in Test map { tests =>
+  tests.map { test =>
+    import Tests._
+    new Group(
+      name = test.name,
+      tests = Seq(test),
+      runPolicy = InProcess)
+  }.sortWith(_.name < _.name)
+}
