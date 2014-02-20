@@ -9,7 +9,7 @@ You don't need this plugin if you use [TeamCity SBT runner](http://confluence.je
 
 Add the following to your project/plugins.sbt file:
 
-`resolvers += Resolver.url("Artifactory Realm", url("http://repository.jetbrains.com/teamcity/"))`
+`resolvers += "JetBrains Repository" at "http://repository.jetbrains.com/"`
 
 `addSbtPlugin("org.jetbrains.teamcity.plugins" % "sbt-teamcity-logger" % "0.1.0-SNAPSHOT")`
 
