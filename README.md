@@ -7,9 +7,11 @@ You don't need this plugin if you use [TeamCity SBT runner](http://confluence.je
 
 ### Installation
 
-Register SBT TeamCity logger as a plugin for your project or as a global plugin for your SBT installation according to [SBT documentation](http://www.scala-sbt.org/0.13.0/docs/Getting-Started/Using-Plugins)
+Register SBT TeamCity logger as a plugin for your project or as a global plugin for your SBT installation according to [SBT documentation](http://www.scala-sbt.org/0.13.0/docs/Getting-Started/Using-Plugins).
 
-`addSbtPlugin("org.jetbrains.teamcity.plugins" % "sbt-teamcity-logger" % '0.1.0-SNAPSHOT')`
+    resolvers += "Artifactory Realm" at "http://repository.jetbrains.com/teamcity/"
+
+    addSbtPlugin("org.jetbrains.teamcity.plugins" % "sbt-teamcity-logger" % "0.1.0-SNAPSHOT")
 
 We support SBT version 0.13.x.
 
