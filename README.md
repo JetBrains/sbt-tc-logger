@@ -9,9 +9,9 @@ You don't need this plugin if you use [TeamCity SBT runner](http://confluence.je
 
 Add the following to your project/plugins.sbt file:
 
-`resolvers += "JetBrains Repository" at "http://repository.jetbrains.com/"`
+`resolvers += Resolver.url("sbt-plugin-snapshots", new URL("http://repo.scala-sbt.org/scalasbt/sbt-plugin-snapshots/"))(Resolver.ivyStylePatterns)`
 
-`addSbtPlugin("org.jetbrains.teamcity.plugins" % "sbt-teamcity-logger" % "0.1.0-SNAPSHOT")`
+`addSbtPlugin("org.jetbrains" % "sbt-teamcity-logger" % "0.1.0-SNAPSHOT")`
 
 or register plugin as a global plugin for your SBT according to [SBT documentation](http://www.scala-sbt.org/0.13.0/docs/Getting-Started/Using-Plugins)
 
