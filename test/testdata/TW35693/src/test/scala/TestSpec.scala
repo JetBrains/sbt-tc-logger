@@ -7,6 +7,12 @@ class TestSpec extends FunSpec {
 
   def logger = LoggerFactory.getLogger(this.getClass)
 
+  class Example {
+
+    "Hello"  //warning will be risen here
+
+  }
+
   describe("Some Test") {
 
 
