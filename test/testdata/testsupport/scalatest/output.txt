@@ -9,8 +9,6 @@
 ##teamcity\[testStarted name='ListFlatSpec.A List should contains.*\]
 ##teamcity\[testFailed name='ListFlatSpec'.*\]
 ##teamcity\[testFinished name='ListFlatSpec.A List should contains.*\]
-##teamcity\[message status='NORMAL' flowId='\d+' text='Passed tests:'\]
-##teamcity\[message status='NORMAL' flowId='\d+' text='	ExampleSpec'\]
 ##teamcity\[message status='ERROR' flowId='\d+' text='Failed tests:'\]
 ##teamcity\[message status='ERROR' flowId='\d+' text='	ListFlatSpec'\]
 ##teamcity\[message status='ERROR' flowId='\d+' text='\(test:test\) sbt.TestsFailedException: Tests unsuccessful'\]
