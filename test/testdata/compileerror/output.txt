@@ -1,5 +1,4 @@
 ##teamcity\[compilationStarted compiler='Scala compiler'\]
 ##teamcity\[message status='ERROR' flowId='\d+' text='one error found'\]
-##teamcity\[message status='NORMAL' flowId='\d+' text='Compilation failed(.*)'\]
 ##teamcity\[compilationFinished compiler='Scala compiler'\]
 ##teamcity\[message status='ERROR' flowId='\d+' text='(.*)Compilation failed'\]
