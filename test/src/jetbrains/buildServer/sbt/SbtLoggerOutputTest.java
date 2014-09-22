@@ -52,6 +52,21 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTest("test", new File("test/testdata/TW35693").getAbsolutePath());
     }
 
+    @Test
+    public void testTW35404_error() throws IOException, InterruptedException {
+        SbtProcess.runAndTest("compile", new File("test/testdata/TW35404_error").getAbsolutePath());
+    }
+
+    @Test
+    public void testTW35404_debug() throws IOException, InterruptedException {
+        SbtProcess.runAndTest("compile", new File("test/testdata/TW35404_debug").getAbsolutePath());
+    }
+
+    @Test
+    public void testSubProject_compile() throws IOException, InterruptedException {
+        SbtProcess.runAndTest("backend/compile", new File("test/testdata/subproject").getAbsolutePath());
+    }
+
     /**
      * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
      * Agent output should be placed in test data directory and could be checked against required output
@@ -61,7 +76,7 @@ public class SbtLoggerOutputTest {
         String workingDir = new File("test/testdata/multiproject").getAbsolutePath();
         File requiredFile = new File(workingDir + File.separator + "output.txt");
         File serverLogs = new File(workingDir + File.separator + "server_logs.log");
-        SbtProcess.checkOutputTest(new BufferedReader(new FileReader(serverLogs)), new BufferedReader(new FileReader(requiredFile)));
+        SbtProcess.checkOutputTest(new BufferedReader(new FileReader(serverLogs)), new BufferedReader(new FileReader(requiredFile)),null);
     }
 
 }
