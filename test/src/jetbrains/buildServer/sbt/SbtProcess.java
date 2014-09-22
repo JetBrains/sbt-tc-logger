@@ -22,6 +22,7 @@ import junit.framework.Assert;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -55,7 +56,14 @@ public final class SbtProcess {
         BufferedReader stdError = new BufferedReader(new
                 InputStreamReader(process.getErrorStream()));
 
-        checkOutputTest(new BufferedReader(new FileReader(workingDir + File.separator + "output.txt")), stdInput);
+        File excludes = new File(workingDir + File.separator + "excludes.txt");
+        BufferedReader brExcludes = null;
+        if (excludes.exists()) {
+            brExcludes = new BufferedReader(new FileReader(excludes));
+        }
+
+        checkOutputTest(new BufferedReader(new FileReader(workingDir + File.separator + "output.txt")), stdInput, brExcludes);
+
 
         process.waitFor();
 
@@ -70,16 +78,17 @@ public final class SbtProcess {
     }
 
 
-    public static void checkOutputTest(BufferedReader requiredOutput, BufferedReader stdInput) throws IOException {
+    public static void checkOutputTest(BufferedReader requiredOutput, BufferedReader stdInput, BufferedReader brExcludes) throws IOException {
 
-        List<Pattern> required = new ArrayList<Pattern>();
+        List<Pattern> required = getPatterns(requiredOutput);
+
         String s;
-        while ((s = requiredOutput.readLine()) != null) {
-            required.add(Pattern.compile(s));
-        }
-        s = null;
         int i = 0;
         int found = 0;
+
+        List<Pattern> excludes = getPatterns(brExcludes);
+
+        List<String> excludesFound = new ArrayList<String>();
 
         assert required.size() > 0;
 
@@ -93,6 +102,15 @@ public final class SbtProcess {
                 }
             }
             System.out.println(s);
+
+            //check for excludes
+            for (Pattern exclude : excludes) {
+                Matcher excludeMatcher = exclude.matcher(s);
+                if (excludeMatcher.find()) {
+                    excludesFound.add(s);
+                }
+            }
+
         }
 
 
@@ -102,6 +120,27 @@ public final class SbtProcess {
         }
         Assert.assertEquals(required.size(), found);
 
+        if (brExcludes != null && excludes.size() > 0 && excludesFound.size() > 0) {
+            System.out.println("===================== ERROR ==========================");
+            System.out.println("The following lines were found but should not be there:");
+            for (String ef : excludesFound) {
+                System.out.println(ef);
+            }
+            Assert.assertEquals(excludesFound.size(), 0);
+        }
+
+    }
+
+    private static List<Pattern> getPatterns(BufferedReader requiredOutput) throws IOException {
+        if (requiredOutput == null) {
+            return Collections.emptyList();
+        }
+        List<Pattern> required = new ArrayList<Pattern>();
+        String s;
+        while ((s = requiredOutput.readLine()) != null) {
+            required.add(Pattern.compile(s));
+        }
+        return required;
     }
 
 
