@@ -57,7 +57,7 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTest("compile", new File("test/testdata/TW35404_error").getAbsolutePath());
     }
 
-    @Test
+    /*@Test*/
     public void testTW35404_debug() throws IOException, InterruptedException {
         SbtProcess.runAndTest("compile", new File("test/testdata/TW35404_debug").getAbsolutePath());
     }
