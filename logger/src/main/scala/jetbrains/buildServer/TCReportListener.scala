@@ -86,7 +86,6 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
 
   /** called if test completed */
   def endGroup(name: String, result: TestResult.Value) {
-    println("endGroup. name:= " + name + "result:=" + result)
     appender.testSuitSuccessfulResult(name, flowId)
   }
 
