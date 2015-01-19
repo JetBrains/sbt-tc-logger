@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
 
 public final class SbtProcess {
 
-    public static int runAndTest(String sbtCommands, String workingDir) throws IOException,
+    public static int runAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException,
             InterruptedException {
         String javaHome = System.getProperty("java.home");
         String javaBin = javaHome +
@@ -42,12 +42,14 @@ public final class SbtProcess {
         String sbtLauncherPath = new File(sbtPath, "bin" + File.separator + "sbt-launch.jar").getAbsolutePath();
 
         String sbtPathParam = "-Dsbt.global.base=" + sbtPath;
-        String sbtParam = "-Dsbt.log.format=false";
+        String sbtParam = "-Dsbt.log.noformat=true";
 
         ProcessBuilder builder = new ProcessBuilder(
-                javaBin, "-cp", classpath, "-jar", sbtLauncherPath, sbtPathParam, sbtParam, sbtCommands);
+                javaBin, "-cp", classpath, "-jar", sbtLauncherPath, sbtPathParam,
+                sbtParam, sbtCommands);
+
         Map<String, String> env = builder.environment();
-        env.put("TEAMCITY_VERSION", "8.0.TEST");
+        env.put("TEAMCITY_VERSION", "9.0.TEST");
         builder.directory(new File(workingDir));
         Process process = builder.start();
         BufferedReader stdInput = new BufferedReader(new
@@ -62,7 +64,15 @@ public final class SbtProcess {
             brExcludes = new BufferedReader(new FileReader(excludes));
         }
 
-        checkOutputTest(new BufferedReader(new FileReader(workingDir + File.separator + "output.txt")), stdInput, brExcludes);
+        if (outputFiles == null) {
+            outputFiles = new String[]{"output.txt"};
+        }
+
+        BufferedReader[] readers = new BufferedReader[outputFiles.length];
+        for (int i = 0; i < outputFiles.length; i++) {
+            readers[i] = new BufferedReader(new FileReader(workingDir + File.separator + outputFiles[i]));
+        }
+        checkOutputTest(stdInput, brExcludes, readers);
 
 
         process.waitFor();
@@ -78,31 +88,20 @@ public final class SbtProcess {
     }
 
 
-    public static void checkOutputTest(BufferedReader requiredOutput, BufferedReader stdInput, BufferedReader brExcludes) throws IOException {
+    public static void checkOutputTest(BufferedReader stdInput, BufferedReader brExcludes, BufferedReader... requiredOutput) throws IOException {
 
-        List<Pattern> required = getPatterns(requiredOutput);
 
         String s;
-        int i = 0;
-        int found = 0;
+
+        List<String> allLines = new ArrayList<String>();
 
         List<Pattern> excludes = getPatterns(brExcludes);
 
         List<String> excludesFound = new ArrayList<String>();
-
-        assert required.size() > 0;
-
-        Pattern currentRequired = required.get(i++);
+        //read output
         while ((s = stdInput.readLine()) != null) {
-            Matcher matcher = currentRequired.matcher(s);
-            if (matcher.find()) {
-                found++;
-                if (i < required.size()) {
-                    currentRequired = required.get(i++);
-                }
-            }
             System.out.println(s);
-
+            allLines.add(s);
             //check for excludes
             for (Pattern exclude : excludes) {
                 Matcher excludeMatcher = exclude.matcher(s);
@@ -110,15 +109,7 @@ public final class SbtProcess {
                     excludesFound.add(s);
                 }
             }
-
         }
-
-
-        if (found != required.size()) {
-            System.out.println("First failed line:");
-            System.out.println(currentRequired);
-        }
-        Assert.assertEquals(required.size(), found);
 
         if (brExcludes != null && excludes.size() > 0 && excludesFound.size() > 0) {
             System.out.println("===================== ERROR ==========================");
@@ -127,6 +118,33 @@ public final class SbtProcess {
                 System.out.println(ef);
             }
             Assert.assertEquals(excludesFound.size(), 0);
+        }
+
+
+        for (BufferedReader reader : requiredOutput) {
+            int i = 0;
+            int found = 0;
+
+            System.out.println("=== Check file ===");
+            List<Pattern> required = getPatterns(reader);
+            assert required.size() > 0;
+            Pattern currentRequired = required.get(i++);
+
+            for (String line : allLines) {
+                Matcher matcher = currentRequired.matcher(line);
+                if (matcher.find()) {
+                    found++;
+                    if (i < required.size()) {
+                        currentRequired = required.get(i++);
+                    }
+                }
+            }
+
+            if (found != required.size()) {
+                System.out.println("First failed line:");
+                System.out.println(currentRequired);
+            }
+            Assert.assertEquals(required.size(), found);
         }
 
     }

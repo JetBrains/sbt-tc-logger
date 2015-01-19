@@ -39,7 +39,7 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testScalaTest() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest").getAbsolutePath());
+        SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest").getAbsolutePath(), "output.txt", "output1.txt");
     }
 
     @Test
@@ -69,19 +69,20 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testRunTestWithSbt_13_6() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest_13_6").getAbsolutePath());
+        SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest_13_6").getAbsolutePath(), "output.txt", "output1.txt");
     }
 
     /**
      * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
      * Agent output should be placed in test data directory and could be checked against required output
+     *
      * @throws IOException
      */
     public void testServerLogs() throws IOException {
         String workingDir = new File("test/testdata/multiproject").getAbsolutePath();
         File requiredFile = new File(workingDir + File.separator + "output.txt");
         File serverLogs = new File(workingDir + File.separator + "server_logs.log");
-        SbtProcess.checkOutputTest(new BufferedReader(new FileReader(serverLogs)), new BufferedReader(new FileReader(requiredFile)),null);
+        SbtProcess.checkOutputTest(new BufferedReader(new FileReader(serverLogs)), new BufferedReader(new FileReader(requiredFile)), null);
     }
 
 }
