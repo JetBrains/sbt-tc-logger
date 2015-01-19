@@ -5,23 +5,22 @@
 
     <target name="download">
         <mkdir dir="sbt/bin"/>
-        <get src="http://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.1/sbt-launch.jar"
+        <get src="http://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.7/sbt-launch.jar"
              dest="sbt/bin/sbt-launch.jar" />
     </target>
 
     <property name="sbt.dir" value="sbt" />
-    <property name="sbt.params" value="-Dsbt.global.base=${sbt.dir} -Dsbt.log.format=false"/>
+    <property name="sbt.params" value="-Dsbt.global.base=${sbt.dir} -Dsbt.log.noformat=true"/>
 
-    <target name="buildLogger" >
+    <target name="buildLogger">
         <java jar="sbt/bin/sbt-launch.jar" dir="../logger/"
               fork="true"
-              failonerror="true"
-                >
+              failonerror="true">
             <arg line="${sbt.params} assembly" />
         </java>
     </target>
 
-    <target name="copyLogger">
+    <target name="copyLogger" depends="buildLogger">
         <mkdir dir="sbt/plugins/lib"/>
         <copy file="../logger/target/scala-2.10/sbt-0.13/sbt-teamcity-logger.jar"
                 todir="sbt/plugins/lib">
