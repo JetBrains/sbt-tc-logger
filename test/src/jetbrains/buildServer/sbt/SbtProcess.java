@@ -64,7 +64,7 @@ public final class SbtProcess {
             brExcludes = new BufferedReader(new FileReader(excludes));
         }
 
-        if (outputFiles == null) {
+        if (outputFiles == null || outputFiles.length==0) {
             outputFiles = new String[]{"output.txt"};
         }
 
