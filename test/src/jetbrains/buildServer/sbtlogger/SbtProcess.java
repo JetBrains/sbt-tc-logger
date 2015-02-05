@@ -45,7 +45,7 @@ public final class SbtProcess {
 
         String sbtParam = "-Dsbt.log.noformat=true";
 
-        String applyCommand = "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.SbtTeamCityLogger";
+        String applyCommand = "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger";
         String version = "-Dsbt.version=0.13.7";
         ProcessBuilder builder = new ProcessBuilder(
                 javaBin, "-cp", classpath, "-jar", sbtLauncherPath,
