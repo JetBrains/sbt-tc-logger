@@ -1,6 +1,6 @@
 ##teamcity\[compilationStarted compiler='Scala compiler'\]
 ##teamcity\[compilationStarted compiler='Scala compiler'\]
-##teamcity\[message status='ERROR' flowId='\d+' text='.*Invalid literal number.*'\]
-##teamcity\[message status='ERROR' flowId='\d+' text='.*one error found'\]
+##teamcity\[message status='ERROR' flowId='\d+' text='one error found'\]
+##teamcity\[message status='ERROR' flowId='\d+' text='one error found'\]
 ##teamcity\[compilationFinished compiler='Scala compiler'\]
 ##teamcity\[compilationFinished compiler='Scala compiler'\]
