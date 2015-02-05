@@ -15,7 +15,7 @@
  * and limitations under the License.
  */
 
-package jetbrains.buildServer.sbt;
+package jetbrains.buildServer;
 
 
 import junit.framework.Assert;
@@ -38,15 +38,18 @@ public final class SbtProcess {
                 File.separator + "java";
         String classpath = System.getProperty("java.class.path");
 
-        String sbtPath = new File("test" + File.separator + "sbt").getAbsolutePath();
+        String ourResourceFolder = "test";
+        String sbtPath = new File(ourResourceFolder + File.separator + "sbt").getAbsolutePath();
         String sbtLauncherPath = new File(sbtPath, "bin" + File.separator + "sbt-launch.jar").getAbsolutePath();
+        String sbtTcLoggerPluginPath = new File(ourResourceFolder + File.separator + "tc_plugin" + File.separator + "sbt-teamcity-logger.jar").getAbsolutePath();
 
-        String sbtPathParam = "-Dsbt.global.base=" + sbtPath;
         String sbtParam = "-Dsbt.log.noformat=true";
 
+        String applyCommand = "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.SbtTeamCityLogger";
+        String version = "-Dsbt.version=0.13.7";
         ProcessBuilder builder = new ProcessBuilder(
-                javaBin, "-cp", classpath, "-jar", sbtLauncherPath, sbtPathParam,
-                sbtParam, sbtCommands);
+                javaBin, "-cp", classpath, "-jar", sbtLauncherPath,
+                sbtParam, version, applyCommand, "--error", sbtCommands);
 
         Map<String, String> env = builder.environment();
         env.put("TEAMCITY_VERSION", "9.0.TEST");
@@ -64,7 +67,7 @@ public final class SbtProcess {
             brExcludes = new BufferedReader(new FileReader(excludes));
         }
 
-        if (outputFiles == null || outputFiles.length==0) {
+        if (outputFiles == null || outputFiles.length == 0) {
             outputFiles = new String[]{"output.txt"};
         }
 

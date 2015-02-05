@@ -20,7 +20,18 @@ package jetbrains.buildServer
 import sbt._
 import Keys._
 
-object SbtTeamCityLogger extends Plugin {
+object SbtTeamCityLogger extends Plugin with (State => State) {
+
+  def apply(state: State) = {
+    val extracted = Project.extract(state)
+    extracted.structure.allProjectRefs.foldLeft(state)(append(SbtTeamCityLogger.projectSettings, extracted))
+  }
+
+  private def append(settings: Seq[Setting[_]], extracted: Extracted)(state: State, projectRef: ProjectRef): State = {
+    val scope = Load.projectScope(projectRef)
+    val appendSettings = Load.transformSettings(scope, projectRef.build, extracted.rootProject, settings)
+    SessionSettings.reapply(Project.session(state).appendRaw(appendSettings), state)
+  }
 
   lazy val tcLogAppender = new TCLogAppender()
   lazy val tcLogger = new TCLogger(tcLogAppender)
@@ -31,9 +42,9 @@ object SbtTeamCityLogger extends Plugin {
   val tcVersion = sys.env.get("TEAMCITY_VERSION")
   val tcFound = !tcVersion.isEmpty
 
-  override lazy val settings = if (tcFound) loggerOnSettings else loggerOffSettings
+  override lazy val projectSettings = if (tcFound) loggerOnSettings else loggerOffSettings
 
-   lazy val loggerOnSettings =  Seq(
+   lazy val loggerOnSettings = Seq(
         commands += tcLoggerStatusCommand,
         testListeners += tcTestListener,
         extraLoggers := {
@@ -43,13 +54,13 @@ object SbtTeamCityLogger extends Plugin {
           }
         },
         startCompilationLogger := {
-             tcLogAppender.compilationBlockStart()
+              tcLogAppender.compilationBlockStart()
         },
         startTestCompilationLogger := {
-             tcLogAppender.compilationTestBlockStart()
+              tcLogAppender.compilationTestBlockStart()
         },
         compile in Compile <<= ((compile in Compile) dependsOn startCompilationLogger)
-          andFinally {tcLogAppender.compilationBlockEnd()},
+              andFinally {tcLogAppender.compilationBlockEnd()},
 
         compile in Test <<= ((compile in Test) dependsOn startTestCompilationLogger)
                andFinally {tcLogAppender.compilationTestBlockEnd()}
@@ -74,5 +85,5 @@ object SbtTeamCityLogger extends Plugin {
     state
   }
 
-
 }
+

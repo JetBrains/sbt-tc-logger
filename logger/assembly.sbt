@@ -1,7 +1,3 @@
-import AssemblyKeys._
-
-assemblySettings
-
 jarName in assembly := "sbt-teamcity-logger.jar"
 
 artifact in (Compile, assembly) ~= { art =>

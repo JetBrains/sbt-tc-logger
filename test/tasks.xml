@@ -1,4 +1,4 @@
-<project name="helper" default="copyLogger">
+<project name="helper" default="buildLogger">
     <description>
         copy sbt-tc-logger to test folder
     </description>
@@ -20,10 +20,10 @@
         </java>
     </target>
 
-    <target name="copyLogger" depends="buildLogger">
-        <mkdir dir="sbt/plugins/lib"/>
+    <target name="copyLogger">
+        <mkdir dir="tc_plugin"/>
         <copy file="../logger/target/scala-2.10/sbt-0.13/sbt-teamcity-logger.jar"
-                todir="sbt/plugins/lib">
+                todir="tc_plugin">
 
         </copy>
     </target>

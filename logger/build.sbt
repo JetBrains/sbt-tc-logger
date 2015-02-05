@@ -1,10 +1,12 @@
+import bintray.Keys._
+
 sbtPlugin := true
 
 name := "sbt-teamcity-logger"
 
 organization := "org.jetbrains.teamcity.plugins"
 
-version := "0.1.0-SNAPSHOT"
+version := "0.1.0"
 
 unmanagedBase := baseDirectory.value / "lib"
 
@@ -16,9 +18,9 @@ publishMavenStyle := false
 
 credentials += Credentials("Artifactory Realm", "repository.jetbrains.com", System.getProperty("tc.repo.username"), System.getProperty("tc.repo.password"))
 
-resolvers += Resolver.url("Artifactory Realm", url("http://repository.jetbrains.com/teamcity/"))
+bintrayPublishSettings
 
-publishTo := Some("Artifactory Realm"  at "http://repository.jetbrains.com/teamcity/")
+repository in bintray := "sbt-teamcity-logger"
 
 pomExtra :=
   <licenses>

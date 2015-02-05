@@ -1,7 +1,7 @@
 import de.johoop.jacoco4sbt._
 import JacocoPlugin._
 
-scalaVersion := "2.10.3"
+scalaVersion := "2.11.4"
 
 libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "1.9.1" % "test",

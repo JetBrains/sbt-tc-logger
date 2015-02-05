@@ -15,7 +15,7 @@
  * and limitations under the License.
  */
 
-package jetbrains.buildServer.sbt;
+package jetbrains.buildServer;
 
 import org.junit.Test;
 
@@ -27,8 +27,20 @@ import java.io.IOException;
 public class SbtLoggerOutputTest {
 
     @Test
+    public void testPluginStatus() throws IOException, InterruptedException {
+        SbtProcess.runAndTest("sbt-teamcity-logger", new File("test/testdata/compileerror").getAbsolutePath(),"plugin_status_output.txt");
+
+    }
+
+    @Test
     public void testCompileErrorOutput() throws IOException, InterruptedException {
         SbtProcess.runAndTest("compile", new File("test/testdata/compileerror").getAbsolutePath());
+
+    }
+
+    @Test
+    public void testCompileSuccessfulOutput() throws IOException, InterruptedException {
+        SbtProcess.runAndTest("compile", new File("test/testdata/compilesuccessful").getAbsolutePath());
 
     }
 
@@ -57,7 +69,7 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTest("compile", new File("test/testdata/TW35404_error").getAbsolutePath());
     }
 
-    /*@Test*/
+    @Test
     public void testTW35404_debug() throws IOException, InterruptedException {
         SbtProcess.runAndTest("compile", new File("test/testdata/TW35404_debug").getAbsolutePath());
     }

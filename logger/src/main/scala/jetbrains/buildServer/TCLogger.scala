@@ -28,10 +28,8 @@ class TCLogger(ap: LogAppender) extends BasicLogger {
   def logAll(events: Seq[LogEvent]) =  { events.foreach(log) }
 
   def log(level: sbt.Level.Value, message: => String) {
-      if (level==Level.Debug) {
-        //we don't need debug messages in TeamCity as far as
-        //we don't suppress normal outcome
-        //return
+      if (level==Level.Debug || level==Level.Info) {
+        //we don't need to wrap debug and info messages, we will show them as is
         return
       }
 
