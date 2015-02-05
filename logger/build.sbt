@@ -1,5 +1,3 @@
-import bintray.Keys._
-
 sbtPlugin := true
 
 name := "sbt-teamcity-logger"
@@ -17,10 +15,6 @@ publishArtifact in (Compile, packageBin) := false
 publishMavenStyle := false
 
 credentials += Credentials("Artifactory Realm", "repository.jetbrains.com", System.getProperty("tc.repo.username"), System.getProperty("tc.repo.password"))
-
-bintrayPublishSettings
-
-repository in bintray := "sbt-teamcity-logger"
 
 pomExtra :=
   <licenses>
