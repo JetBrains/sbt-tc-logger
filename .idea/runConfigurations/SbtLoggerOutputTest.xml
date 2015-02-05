@@ -9,8 +9,8 @@
     <module name="test" />
     <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
     <option name="ALTERNATIVE_JRE_PATH" value="" />
-    <option name="PACKAGE_NAME" value="jetbrains.buildServer" />
-    <option name="MAIN_CLASS_NAME" value="jetbrains.buildServer.SbtLoggerOutputTest" />
+    <option name="PACKAGE_NAME" value="jetbrains.buildServer.sbtlogger" />
+    <option name="MAIN_CLASS_NAME" value="jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest" />
     <option name="METHOD_NAME" value="" />
     <option name="TEST_OBJECT" value="class" />
     <option name="VM_PARAMETERS" value="-ea" />

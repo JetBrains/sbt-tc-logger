@@ -15,7 +15,7 @@
  * and limitations under the License.
  */
 
-package jetbrains.buildServer
+package jetbrains.buildServer.sbtlogger
 
 import sbt._
 import jetbrains.buildServer.messages.serviceMessages.MapSerializerUtil

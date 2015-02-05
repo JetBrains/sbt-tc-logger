@@ -15,7 +15,7 @@
  * and limitations under the License.
  */
 
-package jetbrains.buildServer;
+package jetbrains.buildServer.sbtlogger;
 
 
 import junit.framework.Assert;
