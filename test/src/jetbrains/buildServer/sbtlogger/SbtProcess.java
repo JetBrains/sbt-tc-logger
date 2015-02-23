@@ -30,7 +30,15 @@ import java.util.regex.Pattern;
 
 public final class SbtProcess {
 
-    public static int runAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException,
+    public static int runAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
+        return runSbtAndTest(true,sbtCommands,workingDir,outputFiles);
+    }
+
+    public static int runWithoutApplyAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
+        return runSbtAndTest(false,sbtCommands,workingDir,outputFiles);
+    }
+
+    private static int runSbtAndTest(boolean applyPlugin, String sbtCommands, String workingDir, String... outputFiles) throws IOException,
             InterruptedException {
         String javaHome = System.getProperty("java.home");
         String javaBin = javaHome +
@@ -45,7 +53,7 @@ public final class SbtProcess {
 
         String sbtParam = "-Dsbt.log.noformat=true";
 
-        String applyCommand = "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger";
+        String applyCommand = applyPlugin ? "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger" : "";
         String version = "-Dsbt.version=0.13.7";
         ProcessBuilder builder = new ProcessBuilder(
                 javaBin, "-cp", classpath, "-jar", sbtLauncherPath,

@@ -84,6 +84,11 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest_13_6").getAbsolutePath(), "output.txt", "output1.txt");
     }
 
+    @Test
+    public void testRunWithPluginFromBintray() throws IOException, InterruptedException {
+        SbtProcess.runWithoutApplyAndTest("test", new File("test/testdata/bintray").getAbsolutePath());
+    }
+
     /**
      * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
      * Agent output should be placed in test data directory and could be checked against required output
