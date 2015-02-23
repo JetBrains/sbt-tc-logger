@@ -84,7 +84,6 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest_13_6").getAbsolutePath(), "output.txt", "output1.txt");
     }
 
-    @Test
     public void testRunWithPluginFromBintray() throws IOException, InterruptedException {
         SbtProcess.runWithoutApplyAndTest("test", new File("test/testdata/bintray").getAbsolutePath());
     }
