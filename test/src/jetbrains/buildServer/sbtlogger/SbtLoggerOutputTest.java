@@ -91,7 +91,7 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testOtherSbtVersions() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithoutApplyWithAllLogs("sbtVersion", new File("test/testdata/otherVersions").getAbsolutePath());
+        SbtProcess.runAndTestWithLogLevel("sbtVersion", "--info", new File("test/testdata/otherVersions").getAbsolutePath());
     }
 
     /**

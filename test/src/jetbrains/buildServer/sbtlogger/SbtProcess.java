@@ -31,21 +31,21 @@ import java.util.regex.Pattern;
 public final class SbtProcess {
 
     public static int runAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
-        return runSbtAndTest(true,true, sbtCommands,workingDir,outputFiles);
+        return runSbtAndTest(true,"--error", sbtCommands,workingDir,outputFiles);
     }
-    public static int runAndTestWithoutApplyWithAllLogs(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
-        return runSbtAndTest(false,false, sbtCommands,workingDir,outputFiles);
+    public static int runAndTestWithoutApplyWithLogLevel(String sbtCommands, String logLevel, String workingDir, String... outputFiles) throws IOException, InterruptedException {
+        return runSbtAndTest(false,logLevel, sbtCommands,workingDir,outputFiles);
     }
 
-    public static int runAndTestWithAllLogs(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
-        return runSbtAndTest(true,false, sbtCommands,workingDir,outputFiles);
+    public static int runAndTestWithLogLevel(String sbtCommands, String logLevel, String workingDir, String... outputFiles) throws IOException, InterruptedException {
+        return runSbtAndTest(true,logLevel, sbtCommands,workingDir,outputFiles);
     }
 
     public static int runWithoutApplyAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
-        return runSbtAndTest(false,true, sbtCommands,workingDir,outputFiles);
+        return runSbtAndTest(false,"--error", sbtCommands,workingDir,outputFiles);
     }
 
-    private static int runSbtAndTest(boolean applyPlugin, boolean logErrorsOnly, String sbtCommands, String workingDir, String... outputFiles) throws IOException,
+    private static int runSbtAndTest(boolean applyPlugin, String logLevel, String sbtCommands, String workingDir, String... outputFiles) throws IOException,
             InterruptedException {
         String javaHome = System.getProperty("java.home");
         String javaBin = javaHome +
@@ -63,7 +63,7 @@ public final class SbtProcess {
         String applyCommand = applyPlugin ? "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger" : "";
         ProcessBuilder builder = new ProcessBuilder(
                 javaBin, "-cp", classpath, "-jar", sbtLauncherPath,
-                sbtParam, applyCommand, logErrorsOnly? "--error" :"--debug", sbtCommands);
+                sbtParam, applyCommand, logLevel, sbtCommands);
 
         Map<String, String> env = builder.environment();
         env.put("TEAMCITY_VERSION", "9.0.TEST");
