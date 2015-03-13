@@ -89,6 +89,11 @@ public class SbtLoggerOutputTest {
         SbtProcess.runWithoutApplyAndTest("test", new File("test/testdata/bintray").getAbsolutePath());
     }
 
+    @Test
+    public void testOtherSbtVersions() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithoutApplyWithAllLogs("sbtVersion", new File("test/testdata/otherVersions").getAbsolutePath());
+    }
+
     /**
      * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
      * Agent output should be placed in test data directory and could be checked against required output

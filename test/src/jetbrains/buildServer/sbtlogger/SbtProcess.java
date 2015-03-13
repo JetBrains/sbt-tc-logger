@@ -31,14 +31,21 @@ import java.util.regex.Pattern;
 public final class SbtProcess {
 
     public static int runAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
-        return runSbtAndTest(true,sbtCommands,workingDir,outputFiles);
+        return runSbtAndTest(true,true, sbtCommands,workingDir,outputFiles);
+    }
+    public static int runAndTestWithoutApplyWithAllLogs(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
+        return runSbtAndTest(false,false, sbtCommands,workingDir,outputFiles);
+    }
+
+    public static int runAndTestWithAllLogs(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
+        return runSbtAndTest(true,false, sbtCommands,workingDir,outputFiles);
     }
 
     public static int runWithoutApplyAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
-        return runSbtAndTest(false,sbtCommands,workingDir,outputFiles);
+        return runSbtAndTest(false,true, sbtCommands,workingDir,outputFiles);
     }
 
-    private static int runSbtAndTest(boolean applyPlugin, String sbtCommands, String workingDir, String... outputFiles) throws IOException,
+    private static int runSbtAndTest(boolean applyPlugin, boolean logErrorsOnly, String sbtCommands, String workingDir, String... outputFiles) throws IOException,
             InterruptedException {
         String javaHome = System.getProperty("java.home");
         String javaBin = javaHome +
@@ -54,10 +61,9 @@ public final class SbtProcess {
         String sbtParam = "-Dsbt.log.noformat=true";
 
         String applyCommand = applyPlugin ? "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger" : "";
-        String version = "-Dsbt.version=0.13.7";
         ProcessBuilder builder = new ProcessBuilder(
                 javaBin, "-cp", classpath, "-jar", sbtLauncherPath,
-                sbtParam, version, applyCommand, "--error", sbtCommands);
+                sbtParam, applyCommand, logErrorsOnly? "--error" :"--debug", sbtCommands);
 
         Map<String, String> env = builder.environment();
         env.put("TEAMCITY_VERSION", "9.0.TEST");
