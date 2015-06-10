@@ -46,13 +46,21 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
 
    lazy val loggerOnSettings = Seq(
         commands += tcLoggerStatusCommand,
-        testListeners += tcTestListener,
         extraLoggers := {
           val currentFunction = extraLoggers.value
           (key: ScopedKey[_]) => {
             tcLogger +: currentFunction(key)
           }
         },
+        testResultLogger in (Test, test) := new TestResultLogger {
+            import sbt.Tests._
+            def run(log: Logger, results: Output, taskName: String): Unit = {
+                //default behaviour there is
+                //TestResultLogger.SilentWhenNoTests.run(log, results, taskName)
+                //we will just ignore to prevet exit code 1 appears in case when test failed
+            }
+        },
+        testListeners += tcTestListener,
         startCompilationLogger := {
               tcLogAppender.compilationBlockStart()
         },

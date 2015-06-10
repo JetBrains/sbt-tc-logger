@@ -17,6 +17,7 @@
 
 package jetbrains.buildServer.sbtlogger;
 
+import junit.framework.Assert;
 import org.junit.Test;
 
 import java.io.BufferedReader;
@@ -51,7 +52,9 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testScalaTest() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest").getAbsolutePath(), "output.txt", "output1.txt");
+        int exitCode = SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest").getAbsolutePath(), "output.txt", "output1.txt");
+        //if need exit code equals 0, otherwise in TeamCity additional non-informative build problem message will appear
+        Assert.assertEquals(0,exitCode);
     }
 
     @Test
@@ -81,7 +84,9 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testRunTestWithSbt_13_6() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest_13_6").getAbsolutePath(), "output.txt", "output1.txt");
+        int exitCode = SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest_13_6").getAbsolutePath(), "output.txt", "output1.txt");
+        //if need exit code equals 0, otherwise in TeamCity additional non-informative build problem message will appear
+        Assert.assertEquals(0,exitCode);
     }
 
     @Test

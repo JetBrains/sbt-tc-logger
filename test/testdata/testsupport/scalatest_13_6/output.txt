@@ -4,6 +4,3 @@
 ##teamcity\[testFinished name='ExampleSpec.A Stack should pop values.*\]
 ##teamcity\[testStarted name='ExampleSpec.A Stack should throw.*\]
 ##teamcity\[testFinished name='ExampleSpec.A Stack should throw.*\]
-##teamcity\[message status='ERROR' flowId='\d+' text='Failed tests:'\]
-##teamcity\[message status='ERROR' flowId='\d+' text='	ListFlatSpec'\]
-##teamcity\[message status='ERROR' flowId='\d+' text='\(test:test\) sbt.TestsFailedException: Tests unsuccessful'\]
