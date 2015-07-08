@@ -23,8 +23,13 @@ import Keys._
 object SbtTeamCityLogger extends Plugin with (State => State) {
 
   def apply(state: State) = {
-    val extracted = Project.extract(state)
-    extracted.structure.allProjectRefs.foldLeft(state)(append(SbtTeamCityLogger.projectSettings, extracted))
+      val extracted = Project.extract(state)
+      val sbtLoggerVersion = System.getProperty(TC_LOGGER_PROPERTY_NAME)
+      if (sbtLoggerVersion=="reloaded"){
+        state
+      } else {
+        extracted.structure.allProjectRefs.foldLeft(state)(append(SbtTeamCityLogger.projectSettings, extracted))
+      }
   }
 
   private def append(settings: Seq[Setting[_]], extracted: Extracted)(state: State, projectRef: ProjectRef): State = {
@@ -41,6 +46,15 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
 
   val tcVersion = sys.env.get("TEAMCITY_VERSION")
   val tcFound = !tcVersion.isEmpty
+
+  val TC_LOGGER_PROPERTY_NAME = "TEAMCITY_SBT_LOGGER_VERSION"
+
+  val tcLoggerVersion = System.getProperty(TC_LOGGER_PROPERTY_NAME)
+  if (tcLoggerVersion==null){
+      System.setProperty(TC_LOGGER_PROPERTY_NAME,"loaded")
+  } else if (tcLoggerVersion=="loaded"){
+      System.setProperty(TC_LOGGER_PROPERTY_NAME,"reloaded")
+  }
 
   override lazy val projectSettings = if (tcFound) loggerOnSettings else loggerOffSettings
 
@@ -73,6 +87,7 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
         compile in Test <<= ((compile in Test) dependsOn startTestCompilationLogger)
                andFinally {tcLogAppender.compilationTestBlockEnd()}
   )
+
 
   lazy val loggerOffSettings = Seq(
         commands += tcLoggerStatusCommand

@@ -50,6 +50,12 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTest("compile", new File("test/testdata/multiproject").getAbsolutePath());
     }
 
+
+    @Test
+    public void testTmp() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithLogLevel("--debug","compile", new File("test/testdata/multiproject").getAbsolutePath());
+    }
+
     @Test
     public void testScalaTest() throws IOException, InterruptedException {
         int exitCode = SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest").getAbsolutePath(), "output.txt", "output1.txt");
@@ -92,6 +98,12 @@ public class SbtLoggerOutputTest {
     @Test
     public void testRunWithPluginFromBintray() throws IOException, InterruptedException {
         SbtProcess.runWithoutApplyAndTest("test", new File("test/testdata/bintray").getAbsolutePath());
+    }
+
+
+    @Test
+    public void testRunWithPluginFromBintrayWithReApply() throws IOException, InterruptedException {
+        SbtProcess.runAndTest("test", new File("test/testdata/bintray").getAbsolutePath());
     }
 
     @Test
