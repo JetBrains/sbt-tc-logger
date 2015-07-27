@@ -56,7 +56,31 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
       System.setProperty(TC_LOGGER_PROPERTY_NAME,"reloaded")
   }
 
-  override lazy val projectSettings = if (tcFound) loggerOnSettings else loggerOffSettings
+  var testResultLoggerFound = true
+
+  try{
+    val trl: Def.Initialize[sbt.TestResultLogger] = Def.setting {
+        (testResultLogger in Test).value
+        }
+  } catch{
+    case nsm: java.lang.NoSuchMethodError => { testResultLoggerFound = false}
+  }
+
+   override lazy val projectSettings = if (tcFound && testResultLoggerFound)
+            (loggerOnSettings ++ Seq(
+                                    testResultLogger in (Test, test) := new TestResultLogger {
+                                       import sbt.Tests._
+                                       def run(log: Logger, results: Output, taskName: String): Unit = {
+                                           //default behaviour there is
+                                           //TestResultLogger.SilentWhenNoTests.run(log, results, taskName)
+                                           //we will just ignore to prevent appearing of 'exit code 1' when test failed
+                                       }
+                                    }
+                                    )
+            )
+            else if (tcFound) loggerOnSettings
+            else loggerOffSettings
+
 
    lazy val loggerOnSettings = Seq(
         commands += tcLoggerStatusCommand,
@@ -65,14 +89,6 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
           (key: ScopedKey[_]) => {
             tcLogger +: currentFunction(key)
           }
-        },
-        testResultLogger in (Test, test) := new TestResultLogger {
-            import sbt.Tests._
-            def run(log: Logger, results: Output, taskName: String): Unit = {
-                //default behaviour there is
-                //TestResultLogger.SilentWhenNoTests.run(log, results, taskName)
-                //we will just ignore to prevet exit code 1 appears in case when test failed
-            }
         },
         testListeners += tcTestListener,
         startCompilationLogger := {
