@@ -111,6 +111,27 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTestWithLogLevel("sbtVersion", "--info", new File("test/testdata/otherVersions").getAbsolutePath());
     }
 
+
+    @Test
+    public void testSbtVersions0_13_2_sbtVersion() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithLogLevel("sbtVersion", "--info", new File("test/testdata/version0_13_2").getAbsolutePath(),"outputVersion.txt");
+    }
+
+    @Test
+    public void testSbtVersions0_13_2_compile() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithLogLevel("compile", "--info", new File("test/testdata/version0_13_2").getAbsolutePath(),"outputCompile.txt");
+    }
+
+    @Test
+    public void testSbtVersions0_13_8_sbtVersion() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithLogLevel("sbtVersion", "--info", new File("test/testdata/version0_13_8").getAbsolutePath(),"outputVersion.txt");
+    }
+
+    @Test
+    public void testSbtVersions0_13_8_compile() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithLogLevel("compile", "--info", new File("test/testdata/version0_13_8").getAbsolutePath(),"outputCompile.txt");
+    }
+
     /**
      * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
      * Agent output should be placed in test data directory and could be checked against required output
