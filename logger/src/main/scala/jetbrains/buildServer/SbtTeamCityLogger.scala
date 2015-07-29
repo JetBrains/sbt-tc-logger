@@ -116,8 +116,9 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
 
   private def doCommand(state: State): State = {
     println("Plugin sbt-teamcity-logger was loaded.")
+    val tcv = tcVersion.getOrElse("undefined")
     if (tcFound) {
-      println(s"TeamCity version='$tcVersion'")
+      println(s"TeamCity version='$tcv'")
     } else {
       println(s"TeamCity was not discovered. Logger was switched off.")
     }
