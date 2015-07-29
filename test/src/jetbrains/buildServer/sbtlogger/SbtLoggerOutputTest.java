@@ -132,6 +132,11 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTestWithLogLevel("compile", "--info", new File("test/testdata/version0_13_8").getAbsolutePath(),"outputCompile.txt");
     }
 
+    @Test
+    public void testProjectWithJavaSources() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithLogLevel("run", "--info", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
+    }
+
     /**
      * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
      * Agent output should be placed in test data directory and could be checked against required output
