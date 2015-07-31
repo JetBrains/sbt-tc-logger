@@ -62,7 +62,7 @@ public final class SbtProcess {
 
         String applyCommand = applyPlugin ? "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger" : "";
         ProcessBuilder builder = new ProcessBuilder(
-                javaBin, "-cp", classpath, "-jar", sbtLauncherPath,
+                javaBin, "-Xmx512m", "-XX:MaxPermSize=256m", "-cp", classpath, "-jar", sbtLauncherPath,
                 sbtParam, applyCommand, logLevel, sbtCommands);
 
         Map<String, String> env = builder.environment();
