@@ -69,11 +69,11 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
       event.status match {
         case Status.Success => // nothing extra to report
         case Status.Error | Status.Failure =>
-          appender.testFailed(name,formattedException(throwable),flowId)
+          appender.testFailed(testName,formattedException(throwable),flowId)
         case Status.Skipped | Status.Ignored | Status.Pending=>
-          appender.testSkipped(name,flowId)
+          appender.testSkipped(testName,flowId)
         case Status.Canceled =>
-          appender.testSkipped(name,flowId)
+          appender.testSkipped(testName,flowId)
       }
 
       appender.testFinished(s"$testName", status, duration, flowId)
