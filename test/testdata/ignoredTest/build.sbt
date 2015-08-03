@@ -2,6 +2,8 @@ name := "preowned-kittens"
 
 version in ThisBuild := "1.0"
 
+scalaVersion := "2.11.4"
+
 organization in ThisBuild := "com.preownedkittens"
 
 // Custom keys for this build.
