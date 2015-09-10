@@ -6,7 +6,7 @@ name := "sbt-teamcity-logger"
 
 organization := "org.jetbrains.teamcity.plugins"
 
-version := "0.2.0"
+version := "0.3.0"
 
 unmanagedBase := baseDirectory.value / "lib"
 
