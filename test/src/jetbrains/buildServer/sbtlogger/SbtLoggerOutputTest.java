@@ -134,17 +134,17 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testProjectWithJavaSources_0_13_8() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("sbtVersion clean compile run", "set sbtVersion:=\"0.13.6\"", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion javaHome clean compile run", "set sbtVersion:=\"0.13.8\"", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
     }
 
     @Test
     public void testProjectWithJavaSources_0_13_6() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("sbtVersion clean compile run", "set sbtVersion:=\"0.13.6\"", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion javaHome clean compile run", "set sbtVersion:=\"0.13.6\"", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
     }
 
     @Test
     public void testProjectWithJavaSources_0_13_7() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("sbtVersion clean compile run", "set sbtVersion:=\"0.13.7\"", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion javaHome clean compile run", "set sbtVersion:=\"0.13.7\"", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
     }
 
 
