@@ -53,7 +53,7 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testTmp() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithLogLevel("--debug","compile", new File("test/testdata/multiproject").getAbsolutePath());
+        SbtProcess.runAndTestWithAdditionalParams("--debug","compile", new File("test/testdata/multiproject").getAbsolutePath());
     }
 
     @Test
@@ -108,43 +108,54 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testOtherSbtVersions() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithLogLevel("sbtVersion", "--info", new File("test/testdata/otherVersions").getAbsolutePath());
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", new File("test/testdata/otherVersions").getAbsolutePath());
     }
 
 
     @Test
     public void testSbtVersions0_13_2_sbtVersion() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithLogLevel("sbtVersion", "--info", new File("test/testdata/version0_13_2").getAbsolutePath(),"outputVersion.txt");
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", new File("test/testdata/version0_13_2").getAbsolutePath(),"outputVersion.txt");
     }
 
     @Test
     public void testSbtVersions0_13_2_compile() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithLogLevel("compile", "--info", new File("test/testdata/version0_13_2").getAbsolutePath(),"outputCompile.txt");
+        SbtProcess.runAndTestWithAdditionalParams("compile", "--info", new File("test/testdata/version0_13_2").getAbsolutePath(),"outputCompile.txt");
     }
 
     @Test
     public void testSbtVersions0_13_8_sbtVersion() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithLogLevel("sbtVersion", "--info", new File("test/testdata/version0_13_8").getAbsolutePath(),"outputVersion.txt");
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", new File("test/testdata/version0_13_8").getAbsolutePath(),"outputVersion.txt");
     }
 
     @Test
     public void testSbtVersions0_13_8_compile() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithLogLevel("compile", "--info", new File("test/testdata/version0_13_8").getAbsolutePath(),"outputCompile.txt");
+        SbtProcess.runAndTestWithAdditionalParams("compile", "--info", new File("test/testdata/version0_13_8").getAbsolutePath(),"outputCompile.txt");
     }
 
     @Test
-    public void testProjectWithJavaSources() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithLogLevel("clean compile run", "--info", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
+    public void testProjectWithJavaSources_0_13_8() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion clean compile run", "set sbtVersion:=\"0.13.6\"", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
     }
+
+    @Test
+    public void testProjectWithJavaSources_0_13_6() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion clean compile run", "set sbtVersion:=\"0.13.6\"", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
+    }
+
+    @Test
+    public void testProjectWithJavaSources_0_13_7() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion clean compile run", "set sbtVersion:=\"0.13.7\"", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
+    }
+
 
     @Test
     public void testIgnoredTest() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithLogLevel("--info", "test", new File("test/testdata/ignoredTest").getAbsolutePath());
+        SbtProcess.runAndTestWithAdditionalParams("--info", "test", new File("test/testdata/ignoredTest").getAbsolutePath());
     }
 
     @Test
     public void testNestedSuites() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithLogLevel("--info", "test", new File("test/testdata/testsupport/nested").getAbsolutePath());
+        SbtProcess.runAndTestWithAdditionalParams("--info", "test", new File("test/testdata/testsupport/nested").getAbsolutePath());
     }
     /**
      * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.

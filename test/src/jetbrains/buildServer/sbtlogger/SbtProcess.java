@@ -30,19 +30,16 @@ public final class SbtProcess {
     public static int runAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
         return runSbtAndTest(true,"--error", sbtCommands,workingDir,outputFiles);
     }
-    public static int runAndTestWithoutApplyWithLogLevel(String sbtCommands, String logLevel, String workingDir, String... outputFiles) throws IOException, InterruptedException {
-        return runSbtAndTest(false,logLevel, sbtCommands,workingDir,outputFiles);
-    }
 
-    public static int runAndTestWithLogLevel(String sbtCommands, String logLevel, String workingDir, String... outputFiles) throws IOException, InterruptedException {
-        return runSbtAndTest(true,logLevel, sbtCommands,workingDir,outputFiles);
+    public static int runAndTestWithAdditionalParams(String sbtCommands, String params, String workingDir, String... outputFiles) throws IOException, InterruptedException {
+        return runSbtAndTest(true,params, sbtCommands,workingDir,outputFiles);
     }
 
     public static int runWithoutApplyAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
         return runSbtAndTest(false,"--error", sbtCommands,workingDir,outputFiles);
     }
 
-    private static int runSbtAndTest(boolean applyPlugin, String logLevel, String sbtCommands, String workingDir, String... outputFiles) throws IOException,
+    private static int runSbtAndTest(boolean applyPlugin, String params, String sbtCommands, String workingDir, String... outputFiles) throws IOException,
             InterruptedException {
         String javaHome = System.getProperty("java.home");
         String javaBin = javaHome +
@@ -60,7 +57,7 @@ public final class SbtProcess {
         String applyCommand = applyPlugin ? "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger" : "";
         String[] commands = sbtCommands.split(" ");
         String[] utilityCommands = new String[]{javaBin, "-Xmx512m", "-XX:MaxPermSize=256m", "-cp", classpath, "-jar", sbtLauncherPath,
-                sbtParam, applyCommand, logLevel};
+                sbtParam, applyCommand, params};
         String[] fullListOfCommands = new String[utilityCommands.length + commands.length];
         System.arraycopy(utilityCommands, 0, fullListOfCommands, 0, utilityCommands.length);
         System.arraycopy(commands, 0, fullListOfCommands, utilityCommands.length, commands.length);
