@@ -66,6 +66,7 @@ public final class SbtProcess {
         Map<String, String> env = builder.environment();
         env.put("TEAMCITY_VERSION", "9.0.TEST");
         env.put("JAVA_HOME", javaHome);
+        env.put("PATH", javaHome + File.pathSeparator + env.get("PATH"));
         builder.directory(new File(workingDir));
         Process process = builder.start();
         BufferedReader stdInput = new BufferedReader(new
