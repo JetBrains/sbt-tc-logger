@@ -20,7 +20,7 @@ package jetbrains.buildServer.sbtlogger
 import java.util.concurrent.atomic.AtomicInteger
 
 import sbt._
-import testing.{Logger => TLogger, Event => TEvent, Status, OptionalThrowable, TestSelector}
+import testing.{Logger => TLogger, Event => TEvent, Status, OptionalThrowable, TestSelector, NestedTestSelector}
 import java.io.{PrintWriter, StringWriter}
 
 
@@ -60,6 +60,9 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
       val testName = event.selector match {
           case s: TestSelector => {
             name + "." + s.testName
+          }
+          case ns: NestedTestSelector => {
+            name + "." + ns.suiteId + "." + ns.testName
           }
           case _ => name
       }

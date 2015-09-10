@@ -1,0 +1,8 @@
+##teamcity\[testSuiteStarted name='ASCIISuite-0.*\]*\]
+##teamcity\[testStarted name='ASCIISuite.ASuite.A should have ASCII value 41 hex.*\]
+##teamcity\[testFinished name='ASCIISuite.ASuite.A should have ASCII value 41 hex.*\]
+##teamcity\[testStarted name='ASCIISuite.ASuite.a should have ASCII value 61 hex.*\]
+##teamcity\[testFinished name='ASCIISuite.ASuite.a should have ASCII value 61 hex.*\]
+##teamcity\[testSuiteFinished name='ASCIISuite-0.*\]
+##teamcity\[testSuiteStarted name='ASCIISuite-1.*\]
+##teamcity\[testSuiteFinished name='ASCIISuite-1.*\]
