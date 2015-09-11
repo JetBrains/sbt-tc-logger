@@ -21,7 +21,10 @@ package jetbrains.buildServer.sbtlogger;
 import junit.framework.Assert;
 
 import java.io.*;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,7 +60,7 @@ public final class SbtProcess {
         String applyCommand = applyPlugin ? "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger" : "";
         String[] commands = sbtCommands.split(" ");
         String[] utilityCommands = new String[]{javaBin, "-Xmx512m", "-XX:MaxPermSize=256m", "-cp", classpath, "-jar", sbtLauncherPath,
-                sbtParam, applyCommand, params};
+                sbtParam, applyCommand, "set javaHome in ThisBuild := Some(file(\"" + javaHome + "\"))", params};
         String[] fullListOfCommands = new String[utilityCommands.length + commands.length];
         System.arraycopy(utilityCommands, 0, fullListOfCommands, 0, utilityCommands.length);
         System.arraycopy(commands, 0, fullListOfCommands, utilityCommands.length, commands.length);
@@ -66,6 +69,12 @@ public final class SbtProcess {
         Map<String, String> env = builder.environment();
         env.put("TEAMCITY_VERSION", "9.0.TEST");
         env.put("JAVA_HOME", javaHome);
+        env.put("SBT_HOME", sbtPath);
+
+        String path = env.get("PATH");
+        env.put("PATH", javaHome + (path != null && path.length() > 0 ? File.pathSeparator + path : ""));
+
+
         builder.directory(new File(workingDir));
         Process process = builder.start();
         BufferedReader stdInput = new BufferedReader(new
