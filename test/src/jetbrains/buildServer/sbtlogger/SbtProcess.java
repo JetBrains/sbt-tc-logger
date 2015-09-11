@@ -60,7 +60,7 @@ public final class SbtProcess {
         String applyCommand = applyPlugin ? "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger" : "";
         String[] commands = sbtCommands.split(" ");
         String[] utilityCommands = new String[]{javaBin, "-Xmx512m", "-XX:MaxPermSize=256m", "-cp", classpath, "-jar", sbtLauncherPath,
-                sbtParam, applyCommand, "set javaHome in ThisBuild := Some(file(\"" + javaHome + "\"))", params};
+                sbtParam, applyCommand, params};
         String[] fullListOfCommands = new String[utilityCommands.length + commands.length];
         System.arraycopy(utilityCommands, 0, fullListOfCommands, 0, utilityCommands.length);
         System.arraycopy(commands, 0, fullListOfCommands, utilityCommands.length, commands.length);
