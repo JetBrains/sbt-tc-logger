@@ -146,6 +146,14 @@ public class SbtLoggerOutputTest {
     public void testNestedSuites() throws IOException, InterruptedException {
         SbtProcess.runAndTestWithAdditionalParams("--info", "test", new File("test/testdata/testsupport/nested").getAbsolutePath());
     }
+
+    @Test
+    public void testParallelTestExecutionTW43578() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithAdditionalParams("--info", "test",
+                new File("test/testdata/testsupport/parallelTestExecutionTW43578/src/").getAbsolutePath(),
+                "output.txt","output1.txt", "output2.txt","output3.txt","output4.txt","output5.txt", "output7.txt",
+                "output6.txt", "output8.txt", "output9.txt", "output10.txt", "output11.txt");
+    }
     /**
      * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
      * Agent output should be placed in test data directory and could be checked against required output
