@@ -154,6 +154,12 @@ public class SbtLoggerOutputTest {
 
 
     @Test
+    public void testSpec2() throws IOException, InterruptedException {
+        SbtProcess.runAndTest("testOnly", new File("test/testdata/testsupport/spec2").getAbsolutePath(),"output.txt");
+    }
+
+
+    @Test
     public void testParallelTestExecutionTW43578() throws IOException, InterruptedException {
         SbtProcess.runAndTestWithAdditionalParams("--info", "test",
                 new File("test/testdata/testsupport/parallelTestExecutionTW43578/src/").getAbsolutePath(),

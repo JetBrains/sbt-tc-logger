@@ -1,0 +1,8 @@
+##teamcity\[testSuiteStarted name='org.jetbrains.teamcity.ExampleSpec.*\]
+##teamcity\[testStarted name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::contain 11 characters.*\]
+##teamcity\[testFinished name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::contain 11 characters.*\]
+##teamcity\[testStarted name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::start with.*\]
+##teamcity\[testFinished name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::start with.*\]
+##teamcity\[testStarted name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::end with.*\]
+##teamcity\[testFinished name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::end with.*\]
+##teamcity\[testSuiteFinished name='org.jetbrains.teamcity.ExampleSpec.*\]
