@@ -124,10 +124,10 @@ public final class SbtProcess {
 
         List<String> excludesFound = new ArrayList<String>();
 
-        System.out.println("##teamcity[disableServiceMessages]");
+        //System.out.println("##teamcity[disableServiceMessages]");
         //read output
         while ((s = stdInput.readLine()) != null) {
-            System.out.println(s);
+            System.out.println(s.replaceAll("##teamcity","##t-e-a-m-c-i-t-y"));
             allLines.add(s);
             //check for excludes
             for (Pattern exclude : excludes) {
@@ -147,7 +147,7 @@ public final class SbtProcess {
             Assert.assertEquals(excludesFound.size(), 0);
         }
 
-        System.out.println("##teamcity[enableServiceMessages]");
+        //System.out.println("##teamcity[enableServiceMessages]");
 
 
         for (BufferedReader reader : requiredOutput) {
