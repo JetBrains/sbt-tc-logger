@@ -18,22 +18,23 @@
 package jetbrains.buildServer.sbtlogger
 
 import sbt._
-import Keys._
 
 
-class TCLogger(ap: LogAppender) extends BasicLogger {
+class TCLogger(ap: LogAppender, cd: String) extends BasicLogger {
 
   val appender: LogAppender = ap
+  val scope: String = cd
 
-  def logAll(events: Seq[LogEvent]) =  { events.foreach(log) }
+  def logAll(events: Seq[LogEvent]) = {
+    events.foreach(log)
+  }
 
   def log(level: sbt.Level.Value, message: => String) {
       if (level==Level.Debug || level==Level.Info) {
         //we don't need to wrap debug and info messages, we will show them as is
         return
       }
-
-      appender.log(level, message, "" + Thread.currentThread().getId)
+      appender.log(level, message, scope)
   }
 
   def control(event: ControlEvent.Value, message: => String) {

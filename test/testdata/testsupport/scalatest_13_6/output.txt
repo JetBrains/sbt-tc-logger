@@ -1,5 +1,5 @@
-##teamcity\[compilationStarted compiler='Scala compiler'\]
-##teamcity\[compilationFinished compiler='Scala compiler'\]
+##teamcity\[compilationStarted compiler='Scala compiler' flowId='.*'\]
+##teamcity\[compilationFinished compiler='Scala compiler' flowId='.*'\]
 ##teamcity\[testStarted name='ExampleSpec.A Stack should pop values.*\]
 ##teamcity\[testFinished name='ExampleSpec.A Stack should pop values.*\]
 ##teamcity\[testStarted name='ExampleSpec.A Stack should throw.*\]

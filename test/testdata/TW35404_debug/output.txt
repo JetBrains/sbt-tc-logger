@@ -1,4 +1,4 @@
-##teamcity\[compilationStarted compiler='Scala compiler'\]
+##teamcity\[compilationStarted compiler='Scala compiler' flowId='.*'\]
 \[debug\] Initial source changes(.*)
 \[debug\] All initially invalidated sources: Set()(.*)
-##teamcity\[compilationFinished compiler='Scala compiler'\]
+##teamcity\[compilationFinished compiler='Scala compiler' flowId='.*'\]

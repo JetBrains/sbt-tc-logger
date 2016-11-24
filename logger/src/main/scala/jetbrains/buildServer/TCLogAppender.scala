@@ -38,20 +38,20 @@ class TCLogAppender extends LogAppender {
     status
   }
 
-  def compilationBlockStart() {
-    printServerMessage("compilationStarted", "compiler" -> CompilerName)
+  def compilationBlockStart(flowId: String) {
+    printServerMessage("compilationStarted", "compiler" -> CompilerName, "flowId" -> flowId)
   }
 
-  def compilationBlockEnd() {
-    printServerMessage("compilationFinished", "compiler" -> CompilerName)
+  def compilationBlockEnd(flowId: String) {
+    printServerMessage("compilationFinished", "compiler" -> CompilerName, "flowId" ->  flowId)
   }
 
-  def compilationTestBlockStart() {
-    printServerMessage("compilationStarted", "compiler" -> s"$CompilerName in Test")
+  def compilationTestBlockStart(flowId: String) {
+    printServerMessage("compilationStarted", "compiler" -> s"$CompilerName in Test", "flowId" -> flowId)
   }
 
-  def compilationTestBlockEnd() {
-    printServerMessage("compilationFinished", "compiler" -> s"$CompilerName in Test")
+  def compilationTestBlockEnd(flowId: String) {
+    printServerMessage("compilationFinished", "compiler" -> s"$CompilerName in Test", "flowId" -> flowId)
   }
 
 

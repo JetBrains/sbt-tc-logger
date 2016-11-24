@@ -17,22 +17,17 @@
 
 package jetbrains.buildServer.sbtlogger
 
-import sbt._
-import sbt.testing.OptionalThrowable
-
-
-
 trait LogAppender {
 
   def log(level: sbt.Level.Value, message: => String, flowId: String)
 
-  def compilationBlockStart()
+  def compilationBlockStart(flowId: String)
 
-  def compilationBlockEnd()
+  def compilationBlockEnd(flowId: String)
 
-  def compilationTestBlockStart()
+  def compilationTestBlockStart(flowId: String)
 
-  def compilationTestBlockEnd()
+  def compilationTestBlockEnd(flowId: String)
 
   def testSuitStart(name: String, flowId: String)
 
