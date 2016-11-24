@@ -74,6 +74,12 @@ public final class SbtProcess {
         String path = env.get("PATH");
         env.put("PATH", javaHome + (path != null && path.length() > 0 ? File.pathSeparator + path : ""));
 
+        if (params.contains("--debug")) {
+            System.out.println("builder.environment()");
+            for (Map.Entry<String, String> entry : env.entrySet()) {
+                System.out.println(entry.getKey() + " -> " + entry.getValue());
+            }
+        }
 
         builder.directory(new File(workingDir));
         Process process = builder.start();

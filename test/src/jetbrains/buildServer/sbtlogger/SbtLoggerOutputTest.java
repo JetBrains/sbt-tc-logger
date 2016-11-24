@@ -134,7 +134,7 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testProjectWithJavaSources() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("javaHome clean compile run", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
+        SbtProcess.runAndTestWithAdditionalParams("clean compile run",  "--debug", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
     }
 
     @Test
