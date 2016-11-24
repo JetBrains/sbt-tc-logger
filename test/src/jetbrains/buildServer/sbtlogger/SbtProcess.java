@@ -72,7 +72,11 @@ public final class SbtProcess {
         env.put("SBT_HOME", sbtPath);
 
         String path = env.get("PATH");
-        env.put("PATH", javaHome + (path != null && path.length() > 0 ? File.pathSeparator + path : ""));
+        String jHome = System.getenv("JDK_HOME");
+        if (jHome == null) {
+            jHome = javaHome;
+        }
+        env.put("PATH", (jHome + File.separator + "bin") + (path != null && path.length() > 0 ? File.pathSeparator + path : ""));
 
         if (params.contains("--debug")) {
             System.out.println("builder.environment()");
