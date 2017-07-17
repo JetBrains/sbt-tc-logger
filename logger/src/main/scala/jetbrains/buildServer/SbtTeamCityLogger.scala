@@ -73,33 +73,7 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
     System.setProperty(TC_LOGGER_PROPERTY_NAME, "reloaded")
   }
 
-  var testResultLoggerFound = true
-
-  try {
-    val trl: Def.Initialize[sbt.TestResultLogger] = Def.setting {
-      (testResultLogger in Test).value
-    }
-  } catch {
-    case nsm: java.lang.NoSuchMethodError => {
-      testResultLoggerFound = false
-    }
-  }
-
-  override lazy val projectSettings = if (tcFound && testResultLoggerFound)
-    (loggerOnSettings ++ Seq(
-      testResultLogger in(Test, test) := new TestResultLogger {
-
-        import sbt.Tests._
-
-        def run(log: Logger, results: Output, taskName: String): Unit = {
-          //default behaviour there is
-          //TestResultLogger.SilentWhenNoTests.run(log, results, taskName)
-          //we will just ignore to prevent appearing of 'exit code 1' when test failed
-        }
-      }
-    )
-      )
-  else if (tcFound) loggerOnSettings
+  override lazy val projectSettings = if (tcFound) loggerOnSettings
   else loggerOffSettings
 
 
