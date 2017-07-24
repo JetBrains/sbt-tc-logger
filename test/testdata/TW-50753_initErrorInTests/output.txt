@@ -1,0 +1,3 @@
+##teamcity\[testSuiteStarted name='example.HelloSpec'.*\]
+##teamcity\[testFailed flowId='.*\' text='Could not run test example.HelloSpec: java.lang.ExceptionInInitializerError'\]
+##teamcity\[testSuiteFinished name='example.HelloSpec' message='null' details='|[Ljava.lang.StackTraceElement;@171d4615' flowId='521']

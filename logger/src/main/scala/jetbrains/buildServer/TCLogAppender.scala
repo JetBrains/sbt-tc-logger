@@ -26,7 +26,12 @@ class TCLogAppender extends LogAppender {
 
   def log(level: sbt.Level.Value, message: => String, flowId: String) = {
     val status = discoverStatus(level)
-    printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
+
+    if (Level.Error.equals(level)){
+      processSpecialErrorsMessage(message, flowId)
+    } else {
+      printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
+    }
   }
 
   def discoverStatus(level: sbt.Level.Value): String = {
@@ -36,6 +41,15 @@ class TCLogAppender extends LogAppender {
       case other => "NORMAL"
     }
     status
+  }
+
+  def processSpecialErrorsMessage(message: String, flowId: String) {
+    val suffix = "java.lang.ExceptionInInitializerError"
+    val prefix = "Could not run test"
+    if (message.indexOf(suffix) > -1 && message.indexOf(prefix) > -1){
+      def testName = message.substring(message.indexOf(prefix) + prefix.length, message.indexOf(suffix)).trim();
+      testFailed(testName, message, flowId)
+    }
   }
 
   def compilationBlockStart(flowId: String) {

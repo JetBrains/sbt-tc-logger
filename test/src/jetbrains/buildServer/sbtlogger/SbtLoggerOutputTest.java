@@ -158,6 +158,11 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTest("testOnly", new File("test/testdata/testsupport/spec2").getAbsolutePath(),"output.txt");
     }
 
+    @Test
+    public void testTW50753_initErrorInTests() throws IOException, InterruptedException {
+        SbtProcess.runAndTest("clean compile test", new File("test/testdata/TW-50753_initErrorInTests").getAbsolutePath(),"output.txt");
+    }
+
 
     @Test
     public void testParallelTestExecutionTW43578() throws IOException, InterruptedException {
