@@ -29,9 +29,9 @@ class TCLogAppender extends LogAppender {
 
     if (Level.Error.equals(level)){
       processSpecialErrorsMessage(message, flowId)
-    } else {
-      printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
     }
+
+    printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
   }
 
   def discoverStatus(level: sbt.Level.Value): String = {
