@@ -1,4 +1,4 @@
 ##teamcity\[testSuiteStarted name='example.HelloSpec'.*\]
 ##teamcity\[testFailed name='example.HelloSpec:' details='Could not run test example.HelloSpec.*\]
-##teamcity[message status='ERROR' .*\]
+##teamcity\[message status='ERROR'.*\]
 ##teamcity\[testSuiteFinished name='example.HelloSpec' message='null'.*\]
