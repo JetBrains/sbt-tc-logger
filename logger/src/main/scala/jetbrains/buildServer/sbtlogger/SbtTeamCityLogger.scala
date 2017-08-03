@@ -19,7 +19,8 @@ package jetbrains.buildServer.sbtlogger
 
 import sbt.Keys._
 import sbt.plugins.JvmPlugin
-import sbt._
+import sbt.{Def, _}
+import sbt.jetbrains.apiAdapter._
 
 import scala.collection.mutable
 
@@ -39,10 +40,18 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   }
 
   private def append(settings: Seq[Setting[_]], extracted: Extracted)(state: State, projectRef: ProjectRef): State = {
-    val scope = Load.projectScope(projectRef)
-    val appendSettings = Load.transformSettings(scope, projectRef.build, extracted.rootProject, settings)
-    SessionSettings.reapply(Project.session(state).appendRaw(appendSettings), state)
+    val scope = projectScope(projectRef)
+    val appendSettings = transformSettings(scope, projectRef.build, extracted.rootProject, settings)
+    reapply(Project.session(state).appendRaw(appendSettings), state)
   }
+
+  // copied from sbt.internal.Load
+  private def transformSettings(thisScope: Scope, uri: URI, rootProject: URI => String, settings: Seq[Setting[_]]): Seq[Setting[_]] =
+    Project.transform(Scope.resolveScope(thisScope, uri, rootProject), settings)
+
+  // copied from sbt.internal.SessionSettings
+  private def reapply(session: SessionSettings, s: State): State =
+    BuiltinCommands.reapply(session, Project.structure(s), s)
 
   lazy val tcLogAppender = new TCLogAppender()
   lazy val tcLoggers: mutable.Map[String, TCLogger] = collection.mutable.Map[String, TCLogger]()
@@ -111,10 +120,10 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   lazy val loggerOnSettings = Seq(
     commands += tcLoggerStatusCommand,
     extraLoggers := {
-      val currentFunction = extraLoggers.value
+      val currentFunction: (Def.ScopedKey[_]) => Seq[AbstractLogger] = extraLoggers.value
       (key: ScopedKey[_]) => {
-        val scope = getScopeId(key.scope.project)
-        var logger = new TCLogger(tcLogAppender, scope)
+        val scope: String = getScopeId(key.scope.project)
+        var logger: TCLogger = new TCLogger(tcLogAppender, scope)
         tcLoggers.get(scope) match {
           case Some(l) => logger = l
           case _ =>
@@ -131,13 +140,13 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     endCompilationLogger := tcLogAppender.compilationBlockEnd(getScopeId(streams.value.key.scope.project)),
     endTestCompilationLogger := tcLogAppender.compilationTestBlockEnd(getScopeId(streams.value.key.scope.project)),
 
-    compile in Compile <<= (compile in Compile) dependsOn startCompilationLogger,
+    compile in Compile := ((compile in Compile) dependsOn startCompilationLogger).value,
 
-    compile in Test <<= (compile in Test) dependsOn startTestCompilationLogger,
+    compile in Test := ((compile in Test) dependsOn startTestCompilationLogger).value,
 
-    tcEndCompilation <<= endCompilationLogger triggeredBy (compile in Compile),
+    tcEndCompilation := (endCompilationLogger triggeredBy (compile in Compile)).value,
 
-    tcEndTestCompilation <<= endTestCompilationLogger triggeredBy (compile in Test)
+    tcEndTestCompilation := (endTestCompilationLogger triggeredBy (compile in Test)).value
 
   )
 

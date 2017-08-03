@@ -21,6 +21,7 @@ import java.io.{PrintWriter, StringWriter}
 
 import sbt._
 import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
+import sbt.jetbrains.apiAdapter._
 
 
 class TCReportListener(ap: LogAppender) extends TestReportListener {
@@ -85,7 +86,7 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
   }
 
   /** called if test completed */
-  def endGroup(name: String, result: TestResult.Value) {
+  def endGroup(name: String, result: TestResult) {
     appender.testSuitSuccessfulResult(name, flowId)
   }
 
