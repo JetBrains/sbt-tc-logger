@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2014 JetBrains s.r.o.
+ * Copyright 2013-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,17 @@
 package jetbrains.buildServer.sbtlogger
 
 import sbt.Keys._
+import sbt.plugins.JvmPlugin
 import sbt._
 
-object SbtTeamCityLogger extends Plugin with (State => State) {
+import scala.collection.mutable
 
-  def apply(state: State) = {
+object SbtTeamCityLogger extends AutoPlugin with (State => State) {
+
+  override def requires: Plugins = JvmPlugin
+  override def trigger: PluginTrigger = allRequirements
+
+  def apply(state: State): State = {
     val extracted = Project.extract(state)
     val sbtLoggerVersion = System.getProperty(TC_LOGGER_PROPERTY_NAME)
     if (sbtLoggerVersion == "reloaded") {
@@ -39,14 +45,14 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
   }
 
   lazy val tcLogAppender = new TCLogAppender()
-  lazy val tcLoggers = collection.mutable.Map[String, TCLogger]()
+  lazy val tcLoggers: mutable.Map[String, TCLogger] = collection.mutable.Map[String, TCLogger]()
   lazy val tcTestListener = new TCReportListener(tcLogAppender)
-  lazy val startCompilationLogger = TaskKey[Unit]("start-compilation-logger", "runs before compile")
-  lazy val startTestCompilationLogger = TaskKey[Unit]("start-test-compilation-logger", "runs before compile in test")
-  lazy val endCompilationLogger = TaskKey[Unit]("end-compilation-logger", "runs after compile")
-  lazy val endTestCompilationLogger = TaskKey[Unit]("end-test-compilation-logger", "runs after compile in test")
-  lazy val tcEndCompilation = TaskKey[Unit]("tc-end-compilation", "")
-  lazy val tcEndTestCompilation = TaskKey[Unit]("tc-end-test-compilation", "")
+  lazy val startCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("start-compilation-logger", "runs before compile")
+  lazy val startTestCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("start-test-compilation-logger", "runs before compile in test")
+  lazy val endCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("end-compilation-logger", "runs after compile")
+  lazy val endTestCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("end-test-compilation-logger", "runs after compile in test")
+  lazy val tcEndCompilation: TaskKey[Unit] = TaskKey[Unit]("tc-end-compilation", "")
+  lazy val tcEndTestCompilation: TaskKey[Unit] = TaskKey[Unit]("tc-end-test-compilation", "")
 
   object MyTasks {
     var x = Option.empty[String]
@@ -61,12 +67,12 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
     }
   }
 
-  val tcVersion = sys.env.get("TEAMCITY_VERSION")
-  val tcFound = !tcVersion.isEmpty
+  val tcVersion: Option[String] = sys.env.get("TEAMCITY_VERSION")
+  val tcFound: Boolean = tcVersion.isDefined
 
   val TC_LOGGER_PROPERTY_NAME = "TEAMCITY_SBT_LOGGER_VERSION"
 
-  val tcLoggerVersion = System.getProperty(TC_LOGGER_PROPERTY_NAME)
+  val tcLoggerVersion: String = System.getProperty(TC_LOGGER_PROPERTY_NAME)
   if (tcLoggerVersion == null) {
     System.setProperty(TC_LOGGER_PROPERTY_NAME, "loaded")
   } else if (tcLoggerVersion == "loaded") {
@@ -76,17 +82,17 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
   var testResultLoggerFound = true
 
   try {
-    val trl: Def.Initialize[sbt.TestResultLogger] = Def.setting {
+    val _: Def.Initialize[sbt.TestResultLogger] = Def.setting {
       (testResultLogger in Test).value
     }
   } catch {
-    case nsm: java.lang.NoSuchMethodError => {
+    case _: java.lang.NoSuchMethodError =>
       testResultLoggerFound = false
-    }
   }
 
+  //noinspection TypeAnnotation
   override lazy val projectSettings = if (tcFound && testResultLoggerFound)
-    (loggerOnSettings ++ Seq(
+    loggerOnSettings ++ Seq(
       testResultLogger in(Test, test) := new TestResultLogger {
 
         import sbt.Tests._
@@ -98,7 +104,6 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
         }
       }
     )
-      )
   else if (tcFound) loggerOnSettings
   else loggerOffSettings
 
@@ -161,4 +166,3 @@ object SbtTeamCityLogger extends Plugin with (State => State) {
   }
 
 }
-

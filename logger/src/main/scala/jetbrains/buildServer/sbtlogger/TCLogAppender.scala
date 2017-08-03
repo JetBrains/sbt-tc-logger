@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2014 JetBrains s.r.o.
+ * Copyright 2013-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,14 @@
 
 package jetbrains.buildServer.sbtlogger
 
-import sbt._
 import jetbrains.buildServer.messages.serviceMessages.MapSerializerUtil
+import sbt._
 
 class TCLogAppender extends LogAppender {
 
   val CompilerName = "Scala compiler"
 
-  def log(level: sbt.Level.Value, message: => String, flowId: String) = {
+  def log(level: sbt.Level.Value, message: => String, flowId: String): Unit = {
     val status = discoverStatus(level)
 
     if (Level.Error.equals(level)){
@@ -38,7 +38,7 @@ class TCLogAppender extends LogAppender {
     val status = level match {
       case Level.Error => "ERROR"
       case Level.Warn => "WARNING"
-      case other => "NORMAL"
+      case _ => "NORMAL"
     }
     status
   }
@@ -47,7 +47,7 @@ class TCLogAppender extends LogAppender {
     val suffix = "java.lang.ExceptionInInitializerError"
     val prefix = "Could not run test"
     if (message.indexOf(suffix) > -1 && message.indexOf(prefix) > -1){
-      def testName = message.substring(message.indexOf(prefix) + prefix.length, message.indexOf(suffix)).trim();
+      def testName = message.substring(message.indexOf(prefix) + prefix.length, message.indexOf(suffix)).trim()
       testFailed(testName, message, flowId)
     }
   }

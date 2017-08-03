@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2014 JetBrains s.r.o.
+ * Copyright 2013-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ class TCLogger(ap: LogAppender, cd: String) extends BasicLogger {
   val appender: LogAppender = ap
   val scope: String = cd
 
-  def logAll(events: Seq[LogEvent]) = {
+  def logAll(events: Seq[LogEvent]): Unit = {
     events.foreach(log)
   }
 

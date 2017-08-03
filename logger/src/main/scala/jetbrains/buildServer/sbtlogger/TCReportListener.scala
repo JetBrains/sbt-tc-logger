@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2014 JetBrains s.r.o.
+ * Copyright 2013-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,10 @@
 
 package jetbrains.buildServer.sbtlogger
 
-import java.util.concurrent.atomic.AtomicInteger
+import java.io.{PrintWriter, StringWriter}
 
 import sbt._
-import testing.{Logger => TLogger, Event => TEvent, Status, OptionalThrowable, TestSelector, NestedTestSelector}
-import java.io.{PrintWriter, StringWriter}
+import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
 
 
 class TCReportListener(ap: LogAppender) extends TestReportListener {
@@ -58,12 +57,10 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
       val throwable = event.throwable
 
       val testName = event.selector match {
-          case s: TestSelector => {
+          case s: TestSelector =>
             name + "." + s.testName
-          }
-          case ns: NestedTestSelector => {
+          case ns: NestedTestSelector =>
             name + "." + ns.suiteId + "." + ns.testName
-          }
           case _ => name
       }
 
