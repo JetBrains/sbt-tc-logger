@@ -17,11 +17,24 @@
 
 package sbt.jetbrains
 
+import jetbrains.buildServer.sbtlogger.SbtTeamCityLogger.{tcLogAppender, tcLoggers}
+import jetbrains.buildServer.sbtlogger.{TCLogAppender, TCLogger}
 import sbt.{Reference, Scope, Select, Zero}
+
+import scala.collection.mutable
 
 object apiAdapter {
 
   type SessionSettings = sbt.internal.SessionSettings
+  type ExtraLogger = org.apache.logging.log4j.core.Appender
 
   def projectScope(project: Reference): Scope = Scope(Select(project), Zero, Zero, Zero)
+
+  def extraLogger(tcLoggers: mutable.Map[String, TCLogger],
+                  tcLogAppender: TCLogAppender,
+                  scope: String): ExtraLogger = {
+
+    ??? // TODO make an appropriate log appender
+  }
+
 }

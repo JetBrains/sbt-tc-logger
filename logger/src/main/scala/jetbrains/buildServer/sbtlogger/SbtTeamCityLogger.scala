@@ -120,16 +120,11 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   lazy val loggerOnSettings = Seq(
     commands += tcLoggerStatusCommand,
     extraLoggers := {
-      val currentFunction: (Def.ScopedKey[_]) => Seq[AbstractLogger] = extraLoggers.value
+      val currentFunction: (Def.ScopedKey[_]) => Seq[ExtraLogger] = extraLoggers.value
       (key: ScopedKey[_]) => {
         val scope: String = getScopeId(key.scope.project)
-        var logger: TCLogger = new TCLogger(tcLogAppender, scope)
-        tcLoggers.get(scope) match {
-          case Some(l) => logger = l
-          case _ =>
-            logger = new TCLogger(tcLogAppender, scope)
-            tcLoggers.put(scope, logger)
-        }
+        val logger: ExtraLogger = extraLogger(tcLoggers, tcLogAppender, scope)
+
         logger +: currentFunction(key)
       }
     },
