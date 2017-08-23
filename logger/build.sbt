@@ -1,27 +1,17 @@
-import bintray.Keys._
-
 sbtPlugin := true
 
 name := "sbt-teamcity-logger"
 
 organization := "org.jetbrains.teamcity.plugins"
 
-version := "0.4.0"
-
-unmanagedBase := baseDirectory.value / "lib"
+crossSbtVersions := Seq("0.13.16","1.0.0-RC3")
 
 publishArtifact in Test := false
-
-publishArtifact in (Compile, packageBin) := false
-
 publishMavenStyle := false
 
 licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html"))
 
-bintrayPublishSettings
-
-repository in bintray := "sbt-plugins"
-
+bintrayRepository := "sbt-plugins"
 bintrayOrganization := Some("jetbrains")
 
 pomExtra :=
@@ -32,4 +22,3 @@ pomExtra :=
       <distribution>repo</distribution>
     </license>
   </licenses>
-
