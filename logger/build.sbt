@@ -22,3 +22,5 @@ pomExtra :=
       <distribution>repo</distribution>
     </license>
   </licenses>
+
+assemblyJarName in assembly := "sbt-teamcity-logger.jar"
