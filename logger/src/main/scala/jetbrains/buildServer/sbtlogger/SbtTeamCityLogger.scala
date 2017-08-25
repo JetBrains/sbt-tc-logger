@@ -63,19 +63,6 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   lazy val tcEndCompilation: TaskKey[Unit] = TaskKey[Unit]("tc-end-compilation", "")
   lazy val tcEndTestCompilation: TaskKey[Unit] = TaskKey[Unit]("tc-end-test-compilation", "")
 
-  object MyTasks {
-    var x = Option.empty[String]
-
-    def prepare(): String = {
-      println("---")
-      "a"
-    }
-
-    def cleanup(x: String): Unit = {
-
-    }
-  }
-
   val tcVersion: Option[String] = sys.env.get("TEAMCITY_VERSION")
   val tcFound: Boolean = tcVersion.isDefined
 
