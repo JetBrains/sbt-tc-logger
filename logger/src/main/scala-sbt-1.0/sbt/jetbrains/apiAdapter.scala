@@ -17,8 +17,7 @@
 
 package sbt.jetbrains
 
-import jetbrains.buildServer.sbtlogger.SbtTeamCityLogger.{tcLogAppender, tcLoggers}
-import jetbrains.buildServer.sbtlogger.{TCLogAppender, TCLogger}
+import jetbrains.buildServer.sbtlogger.{TCLogAppender, TCLogger, TCLoggerAppender}
 import sbt.{Reference, Scope, Select, Zero}
 
 import scala.collection.mutable
@@ -33,8 +32,9 @@ object apiAdapter {
   def extraLogger(tcLoggers: mutable.Map[String, TCLogger],
                   tcLogAppender: TCLogAppender,
                   scope: String): ExtraLogger = {
-
-    ??? // TODO make an appropriate log appender
+    val appender = new TCLoggerAppender(tcLogAppender, scope)
+    appender.start()
+    appender
   }
 
 }
