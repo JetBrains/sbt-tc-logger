@@ -5,7 +5,7 @@
 
     <target name="download">
         <mkdir dir="sbt/bin"/>
-        <get src="http://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.7/sbt-launch.jar"
+        <get src="http://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.9/sbt-launch.jar"
              dest="sbt/bin/sbt-launch.jar" />
     </target>
 
@@ -22,7 +22,7 @@
 
     <target name="copyLogger">
         <mkdir dir="tc_plugin"/>
-        <copy file="../logger/target/scala-2.10/sbt-0.13/sbt-teamcity-logger.jar"
+        <copy file="../logger/target/scala-2.12/sbt-1.0/sbt-teamcity-logger.jar"
                 todir="tc_plugin">
 
         </copy>
