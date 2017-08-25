@@ -18,7 +18,6 @@
 package jetbrains.buildServer.sbtlogger
 
 import jetbrains.buildServer.messages.serviceMessages.MapSerializerUtil
-import org.apache.logging.log4j.Level
 
 class TCLogAppender extends LogAppender {
 
@@ -34,29 +33,10 @@ class TCLogAppender extends LogAppender {
     printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
   }
 
-  def log(level: Level, message: String, flowId: String): Unit = {
-    val status = discoverStatus(level)
-
-    if (Level.ERROR.equals(level)){
-      processSpecialErrorsMessage(message, flowId)
-    }
-
-    printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
-  }
-
   def discoverStatus(level: sbt.Level.Value): String = {
     val status = level match {
       case sbt.Level.Error => "ERROR"
       case sbt.Level.Warn => "WARNING"
-      case _ => "NORMAL"
-    }
-    status
-  }
-
-  def discoverStatus(level: Level): String = {
-    val status = level match {
-      case Level.ERROR => "ERROR"
-      case Level.WARN => "WARNING"
       case _ => "NORMAL"
     }
     status

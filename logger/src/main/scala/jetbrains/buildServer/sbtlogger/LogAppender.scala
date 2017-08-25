@@ -17,13 +17,9 @@
 
 package jetbrains.buildServer.sbtlogger
 
-import org.apache.logging.log4j.Level
-
 trait LogAppender {
 
   def log(level: sbt.Level.Value, message: => String, flowId: String)
-
-  def log(level: Level, message: String, flowId: String)
 
   def compilationBlockStart(flowId: String)
 

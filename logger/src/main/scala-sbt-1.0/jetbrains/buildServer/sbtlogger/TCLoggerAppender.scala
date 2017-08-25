@@ -26,6 +26,6 @@ class TCLoggerAppender(appender: LogAppender, scope: String) extends
   AbstractAppender("tc-logger-"+scope, null, PatternLayout.createDefaultLayout(), true) {
 
   override def append(event: core.LogEvent): Unit = {
-    appender.log(event.getLevel, event.getMessage.getFormattedMessage, event.getThreadId.toString)
+    //appender.log(event.getLevel, event.getMessage.getFormattedMessage, event.getThreadId.toString)
   }
 }
