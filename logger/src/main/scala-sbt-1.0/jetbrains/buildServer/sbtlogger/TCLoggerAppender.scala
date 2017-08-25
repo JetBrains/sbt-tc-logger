@@ -21,10 +21,11 @@ import org.apache.logging.log4j.core
 import org.apache.logging.log4j.core.appender.AbstractAppender
 import org.apache.logging.log4j.core.layout.PatternLayout
 
+
 class TCLoggerAppender(appender: LogAppender, scope: String) extends
   AbstractAppender("tc-logger-"+scope, null, PatternLayout.createDefaultLayout(), true) {
 
   override def append(event: core.LogEvent): Unit = {
-    // TODO this is a dummy, needs appropriate implementation for log4j log appenders
+    appender.log(event.getLevel, event.getMessage.getFormattedMessage, event.getThreadId.toString)
   }
 }
