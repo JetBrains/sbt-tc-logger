@@ -1,0 +1,1 @@
+mainClass in (Compile, run) := Some("com.jetbrains.sbt.test.HelloWorld")
