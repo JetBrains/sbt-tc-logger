@@ -27,6 +27,7 @@ import java.io.IOException;
 
 public class SbtLoggerOutputTest {
 
+
     @Test
     public void testPluginStatus() throws IOException, InterruptedException {
         SbtProcess.runAndTest("sbt-teamcity-logger", new File("test/testdata/compileerror").getAbsolutePath(),"plugin_status_output.txt");
@@ -110,7 +111,6 @@ public class SbtLoggerOutputTest {
     public void testOtherSbtVersions() throws IOException, InterruptedException {
         SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", new File("test/testdata/otherVersions").getAbsolutePath());
     }
-
 
     @Test
     public void testProjectWithJavaSources() throws IOException, InterruptedException {

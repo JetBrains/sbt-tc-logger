@@ -16,14 +16,14 @@
         <java jar="sbt/bin/sbt-launch.jar" dir="../logger/"
               fork="true"
               failonerror="true">
-            <arg line="${sbt.params} assembly" />
+            <arg line="${sbt.params} '^ assembly'" />
         </java>
     </target>
 
     <target name="copyLogger_1.0">
         <mkdir dir="tc_plugin"/>
         <copy file="../logger/target/scala-2.12/sbt-1.0/sbt-teamcity-logger.jar"
-                todir="tc_plugin">
+                todir="tc_plugin/1.0/">
 
         </copy>
     </target>
@@ -31,7 +31,7 @@
     <target name="copyLogger_0.13">
         <mkdir dir="tc_plugin"/>
         <copy file="../logger/target/scala-2.10/sbt-0.13/sbt-teamcity-logger.jar"
-              todir="tc_plugin">
+              todir="tc_plugin/">
 
         </copy>
     </target>

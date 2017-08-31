@@ -33,10 +33,30 @@ class TCLogAppender extends LogAppender {
     printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
   }
 
+  def log(level: String, message: => String, flowId: String): Unit = {
+    val status = discoverStatus(level)
+
+    if ("ERROR".equals(status)){
+      processSpecialErrorsMessage(message, flowId)
+    }
+
+    printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
+  }
+
+
   def discoverStatus(level: sbt.Level.Value): String = {
     val status = level match {
       case sbt.Level.Error => "ERROR"
       case sbt.Level.Warn => "WARNING"
+      case _ => "NORMAL"
+    }
+    status
+  }
+
+  def discoverStatus(level: String): String = {
+    val status = level match {
+      case "ERROR" => "ERROR"
+      case "WARN" => "WARNING"
       case _ => "NORMAL"
     }
     status

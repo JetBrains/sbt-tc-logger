@@ -53,7 +53,7 @@ public final class SbtProcess {
         String ourResourceFolder = "test";
         String sbtPath = new File(ourResourceFolder + File.separator + "sbt").getAbsolutePath();
         String sbtLauncherPath = new File(sbtPath, "bin" + File.separator + "sbt-launch.jar").getAbsolutePath();
-        String sbtTcLoggerPluginPath = new File(ourResourceFolder + File.separator + "tc_plugin" + File.separator + "sbt-teamcity-logger.jar").getAbsolutePath();
+        String sbtTcLoggerPluginPath = new File(ourResourceFolder + File.separator + "tc_plugin" + File.separator + (workingDir.contains("1.0") ? "1.0" + File.separator : "") + "sbt-teamcity-logger.jar").getAbsolutePath();
 
         String sbtParam = "-Dsbt.log.noformat=true";
 

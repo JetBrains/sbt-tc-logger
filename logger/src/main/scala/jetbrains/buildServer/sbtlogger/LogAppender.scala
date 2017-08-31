@@ -21,6 +21,8 @@ trait LogAppender {
 
   def log(level: sbt.Level.Value, message: => String, flowId: String)
 
+  def log(level: String, message: => String, flowId: String)
+
   def compilationBlockStart(flowId: String)
 
   def compilationBlockEnd(flowId: String)
