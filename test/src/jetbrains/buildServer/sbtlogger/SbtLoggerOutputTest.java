@@ -89,8 +89,8 @@ public class SbtLoggerOutputTest {
     }
 
     @Test
-    public void testRunTestWithSbt_13_6() throws IOException, InterruptedException {
-        int exitCode = SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest_13_6").getAbsolutePath(), "output.txt", "output1.txt");
+    public void testRunTestWithSbt() throws IOException, InterruptedException {
+        int exitCode = SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest").getAbsolutePath(), "output.txt", "output1.txt");
         //if need exit code equals 0, otherwise in TeamCity additional non-informative build problem message will appear
         Assert.assertEquals(0,exitCode);
     }
@@ -111,26 +111,6 @@ public class SbtLoggerOutputTest {
         SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", new File("test/testdata/otherVersions").getAbsolutePath());
     }
 
-
-    @Test
-    public void testSbtVersions0_13_2_sbtVersion() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", new File("test/testdata/version0_13_2").getAbsolutePath(),"outputVersion.txt");
-    }
-
-    @Test
-    public void testSbtVersions0_13_2_compile() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("compile", "--info", new File("test/testdata/version0_13_2").getAbsolutePath(),"outputCompile.txt");
-    }
-
-    @Test
-    public void testSbtVersions0_13_8_sbtVersion() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", new File("test/testdata/version0_13_8").getAbsolutePath(),"outputVersion.txt");
-    }
-
-    @Test
-    public void testSbtVersions0_13_8_compile() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("compile", "--info", new File("test/testdata/version0_13_8").getAbsolutePath(),"outputCompile.txt");
-    }
 
     @Test
     public void testProjectWithJavaSources() throws IOException, InterruptedException {
