@@ -4,7 +4,7 @@ name := "sbt-teamcity-logger"
 
 organization := "org.jetbrains.teamcity.plugins"
 
-crossSbtVersions := Seq("0.13.16","1.0.0-RC3")
+crossSbtVersions := Seq("0.13.16","1.0.0")
 
 publishArtifact in Test := false
 publishMavenStyle := false
