@@ -6,13 +6,13 @@ organization := "org.jetbrains.teamcity.plugins"
 
 crossSbtVersions := Seq("0.13.16","1.0.0")
 
-publishArtifact in Test := false
-publishMavenStyle := false
-
 licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html"))
 
-bintrayRepository := "sbt-plugins"
+publishArtifact in Test := false
+publishMavenStyle := false
 bintrayOrganization := Some("jetbrains")
+bintrayRepository := "sbt-plugins"
+bintrayVcsUrl := Option("https://github.com/JetBrains/sbt-teamcity-logger")
 
 pomExtra :=
   <licenses>
