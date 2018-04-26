@@ -1,5 +1,6 @@
 target/
 .idea/libraries
+.idea/workspace.xml
 out/
 test/sbt/
 test/tc_plugin/
