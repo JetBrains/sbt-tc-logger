@@ -1,0 +1,5 @@
+target/
+.idea
+out/
+test/sbt/
+test/tc_plugin/
