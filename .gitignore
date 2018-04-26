@@ -1,5 +1,5 @@
 target/
-.idea
+.idea/libraries
 out/
 test/sbt/
 test/tc_plugin/
