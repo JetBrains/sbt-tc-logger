@@ -21,7 +21,7 @@ import java.io.{PrintWriter, StringWriter}
 
 import sbt._
 import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
-import sbt.jetbrains.apiAdapter._
+import sbt.jetbrains.tclogger.apiAdapter._
 
 
 class TCReportListener(ap: LogAppender) extends TestReportListener {

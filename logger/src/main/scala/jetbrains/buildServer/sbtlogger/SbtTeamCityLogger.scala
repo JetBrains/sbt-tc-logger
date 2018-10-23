@@ -18,9 +18,9 @@
 package jetbrains.buildServer.sbtlogger
 
 import sbt.Keys._
+import sbt.jetbrains.tclogger.apiAdapter._
 import sbt.plugins.JvmPlugin
 import sbt.{Def, _}
-import sbt.jetbrains.apiAdapter._
 
 import scala.collection.mutable
 
@@ -86,7 +86,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
       testResultLoggerFound = false
   }
 
-  //noinspection TypeAnnotation
+  //noinspection TypeAnnotation,ConvertExpressionToSAM
   override lazy val projectSettings = if (tcFound && testResultLoggerFound)
     loggerOnSettings ++ Seq(
       testResultLogger in(Test, test) := new TestResultLogger {
@@ -104,11 +104,11 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   else loggerOffSettings
 
 
-  lazy val loggerOnSettings = Seq(
+  lazy val loggerOnSettings: Seq[Def.Setting[_]] = Seq(
     commands += tcLoggerStatusCommand,
     extraLoggers := {
-      val currentFunction: (Def.ScopedKey[_]) => Seq[ExtraLogger] = extraLoggers.value
-      (key: ScopedKey[_]) => {
+      val currentFunction: Def.ScopedKey[_] => Seq[ExtraLogger] = extraLoggers.value
+      key: ScopedKey[_] => {
         val scope: String = getScopeId(key.scope.project)
         val logger: ExtraLogger = extraLogger(tcLoggers, tcLogAppender, scope)
 
@@ -133,7 +133,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   )
 
 
-  lazy val loggerOffSettings = Seq(
+  lazy val loggerOffSettings: Seq[Def.Setting[_]] = Seq(
     commands += tcLoggerStatusCommand
   )
 

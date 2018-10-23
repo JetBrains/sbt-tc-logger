@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2017 JetBrains s.r.o.
+ * Copyright 2013-2018 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  * and limitations under the License.
  */
 
-package sbt.jetbrains
+package sbt.jetbrains.tclogger
 
 import jetbrains.buildServer.sbtlogger.{TCLogAppender, TCLogger, TCLoggerAppender}
 import sbt.{Reference, Scope, Select, Zero}

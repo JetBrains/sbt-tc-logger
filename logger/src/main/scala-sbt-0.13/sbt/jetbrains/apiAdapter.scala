@@ -15,7 +15,7 @@
  * and limitations under the License.
  */
 
-package sbt.jetbrains
+package sbt.jetbrains.tclogger
 
 import jetbrains.buildServer.sbtlogger.SbtTeamCityLogger.{tcLogAppender, tcLoggers}
 import jetbrains.buildServer.sbtlogger.{TCLogAppender, TCLogger}
