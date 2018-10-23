@@ -23,6 +23,8 @@ import xsbti.{Position, Problem}
 
 class TCCompilerReporter(delegate: xsbti.Reporter) extends ReporterAdapter(delegate) {
 
+  println(SbtCompileProblemInspectionTypeMessage.toMessageString)
+
   override def reset(): Unit = delegate.reset()
   override def hasErrors: Boolean = delegate.hasErrors
   override def hasWarnings: Boolean = delegate.hasWarnings
@@ -61,7 +63,7 @@ object TCCompilerReporter {
 
     maybeFilePosition.map { filePosition =>
       val inspectionAttributes = Map(
-        "typeId" -> "SbtCompileProblem",
+        "typeId" -> SbtCompileProblemInspectionType,
         "message" -> problem.message(),
         "file" -> filePosition.sourcePath,
         "line" -> filePosition.line.toString,
@@ -74,7 +76,7 @@ object TCCompilerReporter {
 
   val SbtCompileProblemInspectionType = "SbtCompileProblem"
 
-  val sbtCompileProblemInspectionTypeMessage: ServerMessage = {
+  val SbtCompileProblemInspectionTypeMessage: ServerMessage = {
     val attributes = Map(
       "id" -> SbtCompileProblemInspectionType,
       "name" -> "sbt compile problem",
@@ -91,12 +93,5 @@ object TCCompilerReporter {
       case Warn => "WARNING"
       case Error => "ERROR"
     }
-  }
-
-  private def printServerMessage(messageName: String, attributes: (String, String)*) {
-    val attributeString = attributes.map {
-      case (k, v) => s"$k='${MapSerializerUtil.escapeStr(v,MapSerializerUtil.STD_ESCAPER2)}'"
-    }.mkString(" ")
-    println(s"##teamcity[$messageName $attributeString]")
   }
 }

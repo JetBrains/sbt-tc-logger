@@ -1,4 +1,7 @@
 ##teamcity\[compilationStarted compiler='Scala compiler' flowId='.*'\]
+##teamcity\[inspectionType id='SbtCompileProblem' name='sbt compile problem' description='Compile problems' category='Compile problems']
 ##teamcity\[inspection SEVERITY='WARNING' line='7' typeId='SbtCompileProblem' message='match may not be exhaustive.|nIt would fail on the following input: C' file='.*/AWarning.scala']
-[inspection SEVERITY='WARNING' line='17' typeId='SbtCompileProblem' message='patterns after a variable pattern cannot match (SLS 8.1.1)' file='.*/AWarning.scala']
+##teamcity\[inspection SEVERITY='WARNING' line='17' typeId='SbtCompileProblem' message='patterns after a variable pattern cannot match \(SLS 8.1.1\)' file='.*/AWarning.scala']
+##teamcity\[inspection SEVERITY='WARNING' line='18' typeId='SbtCompileProblem' message='unreachable code due to variable pattern |'anything|' on line 17' file='.*/AWarning.scala']
+##teamcity\[inspection SEVERITY='WARNING' line='18' typeId='SbtCompileProblem' message='unreachable code' file='.*/AWarning.scala']
 ##teamcity\[compilationFinished compiler='Scala compiler' flowId='.*'\]

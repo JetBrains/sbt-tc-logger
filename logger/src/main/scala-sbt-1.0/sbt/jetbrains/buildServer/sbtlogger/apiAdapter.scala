@@ -19,8 +19,8 @@ package sbt.jetbrains.buildServer.sbtlogger
 
 import jetbrains.buildServer.sbtlogger.TCCompilerReporter.FilePosition
 import jetbrains.buildServer.sbtlogger.{TCCompilerReporter, TCLogAppender, TCLogger, TCLoggerAppender}
-import sbt.{Def, Reference, Scope, Select, Task, Zero}
-import xsbti.{Problem, Reporter}
+import sbt.{Def, Reference, Scope, Select, Zero}
+import xsbti.Problem
 
 import scala.collection.mutable
 

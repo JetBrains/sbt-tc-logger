@@ -128,5 +128,4 @@ class TCLogAppender extends LogAppender {
     }.mkString(" ")
     println(s"##teamcity[$messageName $attributeString]")
   }
-  
 }
