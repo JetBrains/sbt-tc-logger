@@ -18,7 +18,7 @@
 package jetbrains.buildServer.sbtlogger
 
 import sbt.Keys._
-import sbt.jetbrains.tclogger.apiAdapter._
+import sbt.jetbrains.buildServer.sbtlogger.apiAdapter._
 import sbt.plugins.JvmPlugin
 import sbt.{Def, _}
 

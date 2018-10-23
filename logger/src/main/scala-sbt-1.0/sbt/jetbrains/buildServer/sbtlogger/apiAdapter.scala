@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2017 JetBrains s.r.o.
+ * Copyright 2013-2018 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,33 +15,26 @@
  * and limitations under the License.
  */
 
-package sbt.jetbrains.tclogger
+package sbt.jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.SbtTeamCityLogger.{tcLogAppender, tcLoggers}
-import jetbrains.buildServer.sbtlogger.{TCLogAppender, TCLogger}
-import sbt.{Global, Reference, Scope, Select, Zero}
+import jetbrains.buildServer.sbtlogger.{TCLogAppender, TCLogger, TCLoggerAppender}
+import sbt.{Reference, Scope, Select, Zero}
 
 import scala.collection.mutable
 
 object apiAdapter {
 
-  type TestResult = sbt.TestResult.Value
-  type ExtraLogger = sbt.AbstractLogger
+  type SessionSettings = sbt.internal.SessionSettings
+  type ExtraLogger = org.apache.logging.log4j.core.Appender
+
+  def projectScope(project: Reference): Scope = Scope(Select(project), Zero, Zero, Zero)
 
   def extraLogger(tcLoggers: mutable.Map[String, TCLogger],
                   tcLogAppender: TCLogAppender,
                   scope: String): ExtraLogger = {
-
-    tcLoggers.get(scope) match {
-      case Some(l) => l
-      case _ =>
-        val logger = new TCLogger(tcLogAppender, scope)
-        tcLoggers.put(scope, logger)
-        logger
-    }
+    val appender = new TCLoggerAppender(tcLogAppender, scope)
+    appender.start()
+    appender
   }
-
-  // copied from sbt.internal.Load
-  def projectScope(project: Reference): Scope = Scope(Select(project), Global, Global, Global)
 
 }
