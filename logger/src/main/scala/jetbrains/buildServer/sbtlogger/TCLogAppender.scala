@@ -88,7 +88,7 @@ class TCLogAppender extends LogAppender {
   }
 
 
-  def testSuitStart(name: String, flowId: String) {
+  def testSuiteStart(name: String, flowId: String) {
     printServerMessage("testSuiteStarted","name" -> name, "flowId" -> flowId)
   }
 
@@ -113,11 +113,11 @@ class TCLogAppender extends LogAppender {
     printServerMessage("message", "text" -> s"Test $name was cancelled", "flowId" -> flowId)
   }
 
-  def testSuitSuccessfulResult(name: String, flowId: String) {
+  def testSuiteSuccessfulResult(name: String, flowId: String) {
     printServerMessage("testSuiteFinished", "name" -> name, "flowId" -> flowId)
   }
 
-  def testSuitFailResult(name: String, t: Throwable, flowId: String) {
+  def testSuiteFailResult(name: String, t: Throwable, flowId: String) {
     val details = t.getStackTrace
     printServerMessage("testSuiteFinished","name" -> name, "message" -> t.getMessage, "details" -> s"$details", "flowId" -> flowId)
   }

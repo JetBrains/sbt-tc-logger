@@ -25,11 +25,11 @@ class TCLogger(ap: LogAppender, cd: String) extends BasicLogger {
   val appender: LogAppender = ap
   val scope: String = cd
 
-  def logAll(events: Seq[LogEvent]) = {
+  def logAll(events: Seq[LogEvent]): Unit = {
     events.foreach(log)
   }
 
-  def log(level: sbt.Level.Value, message: => String) {
+  def log(level: sbt.Level.Value, message: => String): Unit = {
       if (level==Level.Debug || level==Level.Info) {
         //we don't need to wrap debug and info messages, we will show them as is
         return
@@ -37,11 +37,11 @@ class TCLogger(ap: LogAppender, cd: String) extends BasicLogger {
       appender.log(level, message, scope)
   }
 
-  def control(event: ControlEvent.Value, message: => String) {
+  def control(event: ControlEvent.Value, message: => String): Unit = {
       log(sbt.Level.Info, message)
   }
 
-  def success(message: => String) {
+  def success(message: => String): Unit = {
     if(successEnabled) {
       log(sbt.Level.Info, message)
     }
@@ -50,7 +50,7 @@ class TCLogger(ap: LogAppender, cd: String) extends BasicLogger {
   def trace(t: => Throwable): Unit = {
     val traceLevel = getTrace
     if(traceLevel >= 0)
-    		println(StackTrace.trimmed(t, traceLevel))
+      println(StackTrace.trimmed(t, traceLevel))
   }
 
 }
