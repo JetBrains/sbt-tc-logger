@@ -17,8 +17,10 @@
 
 package sbt.jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.{TCLogAppender, TCLogger, TCLoggerAppender}
-import sbt.{Reference, Scope, Select, Zero}
+import jetbrains.buildServer.sbtlogger.TCCompilerReporter.FilePosition
+import jetbrains.buildServer.sbtlogger.{TCCompilerReporter, TCLogAppender, TCLogger, TCLoggerAppender}
+import sbt.{Def, Reference, Scope, Select, Task, Zero}
+import xsbti.{Problem, Reporter}
 
 import scala.collection.mutable
 
@@ -37,4 +39,25 @@ object apiAdapter {
     appender
   }
 
+  def reporterSettings(tcLogAppender: TCLogAppender): Def.Setting[_] = {
+    import sbt.Keys.compile
+    Unhide.compilerReporter in compile := {
+      val defaultReporter = (Unhide.compilerReporter in compile).value
+      new TCCompilerReporter(defaultReporter)
+    }
+  }
+
+  def toFilePosition(position: xsbti.Position): Option[FilePosition] = {
+    val path = position.sourcePath()
+    val maybeLine = position.line()
+    val line = if (maybeLine.isPresent) maybeLine.get().intValue() else 0
+    if (path.isPresent) Some(FilePosition(path.get(), line))
+    else None
+  }
+
+  abstract class ReporterAdapter(delegate: xsbti.Reporter) extends xsbti.Reporter {
+    def delegateLog(problem: Problem): Unit = {
+      delegate.log(problem)
+    }
+  }
 }

@@ -61,6 +61,11 @@ public class SbtLoggerOutputTest_1_0 {
         Assert.assertEquals(0, exitCode);
     }*/
 
+    @Test
+    public void testWarningInspectionsInCompile() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithAdditionalParams("clean compile", "", testPath("compileInspections"));
+    }
+
     //todo[shkate]
     public void testWarningInTestOutput() throws IOException, InterruptedException {
         SbtProcess.runAndTest("test", testPath("TW35693"));

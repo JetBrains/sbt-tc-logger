@@ -129,8 +129,9 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     tcEndCompilation := (endCompilationLogger triggeredBy (compile in Compile)).value,
 
     tcEndTestCompilation := (endTestCompilationLogger triggeredBy (compile in Test)).value
-
-  )
+  ) ++
+    inConfig(Compile)(Seq(reporterSettings(tcLogAppender))) ++
+    inConfig(Test)(Seq(reporterSettings(tcLogAppender)))
 
 
   lazy val loggerOffSettings: Seq[Def.Setting[_]] = Seq(

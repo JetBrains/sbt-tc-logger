@@ -1,0 +1,4 @@
+##teamcity\[compilationStarted compiler='Scala compiler' flowId='.*'\]
+##teamcity\[inspection SEVERITY='WARNING' line='7' typeId='SbtCompileProblem' message='match may not be exhaustive.|nIt would fail on the following input: C' file='.*/AWarning.scala']
+[inspection SEVERITY='WARNING' line='17' typeId='SbtCompileProblem' message='patterns after a variable pattern cannot match (SLS 8.1.1)' file='.*/AWarning.scala']
+##teamcity\[compilationFinished compiler='Scala compiler' flowId='.*'\]

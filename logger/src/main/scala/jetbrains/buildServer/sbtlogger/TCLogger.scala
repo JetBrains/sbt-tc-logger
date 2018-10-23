@@ -20,10 +20,7 @@ package jetbrains.buildServer.sbtlogger
 import sbt._
 
 
-class TCLogger(ap: LogAppender, cd: String) extends BasicLogger {
-
-  val appender: LogAppender = ap
-  val scope: String = cd
+class TCLogger(appender: LogAppender, scope: String) extends BasicLogger {
 
   def logAll(events: Seq[LogEvent]): Unit = {
     events.foreach(log)

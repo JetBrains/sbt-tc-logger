@@ -70,6 +70,11 @@ public class SbtLoggerOutputTest {
     }
 
     @Test
+    public void testWarningInspectionsInCompile() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithAdditionalParams("clean compile", "", testPath("compileInspections"));
+    }
+
+    @Test
     public void testWarningInTestOutput() throws IOException, InterruptedException {
         SbtProcess.runAndTest("test", testPath("TW35693"));
     }
