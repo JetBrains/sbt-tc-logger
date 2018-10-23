@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/logger/.idea/modules/logger.iml" filepath="$PROJECT_DIR$/logger/.idea/modules/logger.iml" />
-      <module fileurl="file://$PROJECT_DIR$/logger/.idea/modules/logger-build.iml" filepath="$PROJECT_DIR$/logger/.idea/modules/logger-build.iml" />
+      <module fileurl="file://$PROJECT_DIR$/logger/.idea/modules/sbt-teamcity-logger.iml" filepath="$PROJECT_DIR$/logger/.idea/modules/sbt-teamcity-logger.iml" />
+      <module fileurl="file://$PROJECT_DIR$/logger/.idea/modules/sbt-teamcity-logger-build.iml" filepath="$PROJECT_DIR$/logger/.idea/modules/sbt-teamcity-logger-build.iml" />
       <module fileurl="file://$PROJECT_DIR$/test/test.iml" filepath="$PROJECT_DIR$/test/test.iml" />
     </modules>
   </component>

@@ -4,7 +4,6 @@
     <option name="linkedExternalProjectsSettings">
       <SbtProjectSettings>
         <option name="externalProjectPath" value="$PROJECT_DIR$/logger" />
-        <option name="jdk" value="1.4" />
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$/logger" />
@@ -12,9 +11,8 @@
           </set>
         </option>
         <option name="resolveSbtClassifiers" value="true" />
-        <option name="sbtVersion" value="0.13.16" />
+        <option name="sbtVersion" value="1.1.4" />
         <option name="useAutoImport" value="true" />
-        <option name="useOurOwnAutoImport" value="true" />
       </SbtProjectSettings>
     </option>
   </component>
