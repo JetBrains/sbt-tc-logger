@@ -11,7 +11,7 @@
           </set>
         </option>
         <option name="resolveSbtClassifiers" value="true" />
-        <option name="sbtVersion" value="1.1.4" />
+        <option name="sbtVersion" value="1.2.6" />
         <option name="useAutoImport" value="true" />
       </SbtProjectSettings>
     </option>
