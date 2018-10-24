@@ -74,7 +74,7 @@ object TCCompilerReporter {
     }
   }
 
-  val SbtCompileProblemInspectionType = "SbtCompileProblem"
+  val SbtCompileProblemInspectionType: String = "SbtCompileProblem"
 
   val SbtCompileProblemInspectionTypeMessage: ServerMessage = {
     val attributes = Map(
