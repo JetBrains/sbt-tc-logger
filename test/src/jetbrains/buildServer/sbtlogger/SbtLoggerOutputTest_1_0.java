@@ -54,6 +54,13 @@ public class SbtLoggerOutputTest_1_0 {
         SbtProcess.runAndTestWithAdditionalParams("--debug", "compile", testPath("multiproject"));
     }
 
+    @Test
+    public void testJUnit() throws IOException, InterruptedException {
+        int exitCode = SbtProcess.runAndTest("test", testPath("testsupport/junit"), "output.txt");
+        //if need exit code equals 0, otherwise in TeamCity additional non-informative build problem message will appear
+        Assert.assertEquals(0,exitCode);
+    }
+
     /*@Test
     public void testScalaTest() throws IOException, InterruptedException {
         int exitCode = SbtProcess.runAndTest("test", testPath("testsupport/scalatest"), "output.txt", "output1.txt");
