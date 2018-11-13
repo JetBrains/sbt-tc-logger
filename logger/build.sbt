@@ -4,7 +4,7 @@ name := "sbt-teamcity-logger"
 
 organization := "org.jetbrains.teamcity.plugins"
 
-crossSbtVersions := Seq("0.13.16","1.0.0")
+crossSbtVersions := Seq("0.13.17","1.2.6")
 
 licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html"))
 

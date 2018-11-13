@@ -30,138 +30,146 @@ public class SbtLoggerOutputTest {
 
     @Test
     public void testPluginStatus() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("sbt-teamcity-logger", new File("test/testdata/compileerror").getAbsolutePath(),"plugin_status_output.txt");
+        SbtProcess.runAndTest("sbt-teamcity-logger", testPath("compileerror"),"plugin_status_output.txt");
 
     }
 
     @Test
     public void testCompileErrorOutput() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("compile", new File("test/testdata/compileerror").getAbsolutePath());
+        SbtProcess.runAndTest("compile", testPath("compileerror"));
 
     }
 
     @Test
     public void testCompileSuccessfulOutput() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("compile", new File("test/testdata/compilesuccessful").getAbsolutePath());
+        SbtProcess.runAndTest("compile", testPath("compilesuccessful"));
 
     }
 
     @Test
     public void testMultiProjectsOutput() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("compile", new File("test/testdata/multiproject").getAbsolutePath());
+        SbtProcess.runAndTest("compile", testPath("multiproject"));
     }
 
 
     @Test
     public void testTmp() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("--debug","compile", new File("test/testdata/multiproject").getAbsolutePath());
+        SbtProcess.runAndTestWithAdditionalParams("--debug","compile", testPath("multiproject"));
     }
 
     @Test
     public void testScalaTest() throws IOException, InterruptedException {
-        int exitCode = SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest").getAbsolutePath(), "output.txt", "output1.txt");
+        int exitCode = SbtProcess.runAndTest("test", testPath("testsupport/scalatest"), "output.txt", "output1.txt");
         //if need exit code equals 0, otherwise in TeamCity additional non-informative build problem message will appear
         Assert.assertEquals(0,exitCode);
     }
 
     @Test
     public void testNoSbtFileInProject() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("compile", new File("test/testdata/nosbtfile").getAbsolutePath());
+        SbtProcess.runAndTest("compile", testPath("nosbtfile"));
+    }
+
+    @Test
+    public void testWarningInspectionsInCompile() throws IOException, InterruptedException {
+        SbtProcess.runAndTestWithAdditionalParams("clean compile", "", testPath("compileInspections"));
     }
 
     @Test
     public void testWarningInTestOutput() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("test", new File("test/testdata/TW35693").getAbsolutePath());
+        SbtProcess.runAndTest("test", testPath("TW35693"));
     }
 
     @Test
     public void testTW35404_error() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("compile", new File("test/testdata/TW35404_error").getAbsolutePath());
+        SbtProcess.runAndTest("compile", testPath("TW35404_error"));
     }
 
     @Test
     public void testTW35404_debug() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("compile", new File("test/testdata/TW35404_debug").getAbsolutePath());
+        SbtProcess.runAndTest("compile", testPath("TW35404_debug"));
     }
 
     @Test
     public void testSubProject_compile() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("backend/compile", new File("test/testdata/subproject").getAbsolutePath());
+        SbtProcess.runAndTest("backend/compile", testPath("subproject"));
     }
 
     @Test
     public void testRunTestWithSbt() throws IOException, InterruptedException {
-        int exitCode = SbtProcess.runAndTest("test", new File("test/testdata/testsupport/scalatest").getAbsolutePath(), "output.txt", "output1.txt");
+        int exitCode = SbtProcess.runAndTest("test", testPath("testsupport/scalatest"), "output.txt", "output1.txt");
         //if need exit code equals 0, otherwise in TeamCity additional non-informative build problem message will appear
         Assert.assertEquals(0,exitCode);
     }
 
     @Test
     public void testRunWithPluginFromBintray() throws IOException, InterruptedException {
-        SbtProcess.runWithoutApplyAndTest("test", new File("test/testdata/bintray").getAbsolutePath());
+        SbtProcess.runWithoutApplyAndTest("test", testPath("bintray"));
     }
 
 
     @Test
     public void testRunWithPluginFromBintrayWithReApply() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("test", new File("test/testdata/bintray").getAbsolutePath());
+        SbtProcess.runAndTest("test", testPath("bintray"));
     }
 
     @Test
     public void testOtherSbtVersions() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", new File("test/testdata/otherVersions").getAbsolutePath());
+        SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", testPath("otherVersions"));
     }
 
     @Test
     public void testProjectWithJavaSources() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("clean compile run",  "--debug", new File("test/testdata/withJavaSources").getAbsolutePath(),"output.txt");
+        SbtProcess.runAndTestWithAdditionalParams("clean compile run",  "--debug", testPath("withJavaSources"),"output.txt");
     }
 
     @Test
     public void testIgnoredTest() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("--info", "test", new File("test/testdata/ignoredTest").getAbsolutePath());
+        SbtProcess.runAndTestWithAdditionalParams("--info", "test", testPath("ignoredTest"));
     }
 
     @Test
     public void testNestedSuites() throws IOException, InterruptedException {
-        SbtProcess.runAndTestWithAdditionalParams("--info", "test", new File("test/testdata/testsupport/nested").getAbsolutePath());
+        SbtProcess.runAndTestWithAdditionalParams("--info", "test", testPath("testsupport/nested"));
     }
 
     @Test
     public void testSpecTW46964() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("testOnly", new File("test/testdata/testsupport/scalatest_TW46964").getAbsolutePath(),"output.txt");
+        SbtProcess.runAndTest("testOnly", testPath("testsupport/scalatest_TW46964"),"output.txt");
     }
 
 
     @Test
     public void testSpec2() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("testOnly", new File("test/testdata/testsupport/spec2").getAbsolutePath(),"output.txt");
+        SbtProcess.runAndTest("testOnly", testPath("testsupport/spec2"),"output.txt");
     }
 
     @Test
     public void testTW50753_initErrorInTests() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("clean compile test", new File("test/testdata/TW-50753_initErrorInTests").getAbsolutePath(),"output.txt");
+        SbtProcess.runAndTest("clean compile test", testPath("TW-50753_initErrorInTests"),"output.txt");
     }
 
 
     @Test
     public void testParallelTestExecutionTW43578() throws IOException, InterruptedException {
         SbtProcess.runAndTestWithAdditionalParams("--info", "test",
-                new File("test/testdata/testsupport/parallelTestExecutionTW43578/src/").getAbsolutePath(),
+                testPath("testsupport/parallelTestExecutionTW43578/src/"),
                 "output.txt","output1.txt", "output2.txt","output3.txt","output4.txt","output5.txt", "output7.txt",
                 "output6.txt", "output8.txt", "output9.txt", "output10.txt", "output11.txt");
     }
     /**
      * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
      * Agent output should be placed in test data directory and could be checked against required output
-     *
-     * @throws IOException
      */
     public void testServerLogs() throws IOException {
-        String workingDir = new File("test/testdata/multiproject").getAbsolutePath();
+        String workingDir = testPath("multiproject");
         File requiredFile = new File(workingDir + File.separator + "output.txt");
         File serverLogs = new File(workingDir + File.separator + "server_logs.log");
-        SbtProcess.checkOutputTest(new BufferedReader(new FileReader(serverLogs)), new BufferedReader(new FileReader(requiredFile)), null);
+        SbtProcess.checkOutputTest(new BufferedReader(new FileReader(serverLogs)), new BufferedReader(new FileReader(requiredFile)), (BufferedReader) null);
+    }
+
+    private String testPath(String testRepo) {
+        File testDir = new File("test/testdata/", testRepo);
+        return testDir.getAbsolutePath();
     }
 
 }

@@ -31,11 +31,11 @@ trait LogAppender {
 
   def compilationTestBlockEnd(flowId: String)
 
-  def testSuitStart(name: String, flowId: String)
+  def testSuiteStart(name: String, flowId: String)
 
-  def testSuitSuccessfulResult(name: String, flowId: String)
+  def testSuiteSuccessfulResult(name: String, flowId: String)
 
-  def testSuitFailResult(name: String, t: Throwable, flowId: String)
+  def testSuiteFailResult(name: String, t: Throwable, flowId: String)
 
   def testStart(name: String, flowId: String)
 

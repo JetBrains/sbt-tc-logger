@@ -21,23 +21,23 @@ import java.io.{PrintWriter, StringWriter}
 
 import sbt._
 import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
-import sbt.jetbrains.apiAdapter._
+import sbt.jetbrains.buildServer.sbtlogger.apiAdapter._
 
 
 class TCReportListener(ap: LogAppender) extends TestReportListener {
 
   val appender: LogAppender = ap
 
-  def startGroup(name: String) {
-    appender.testSuitStart(name, flowId)
+  def startGroup(name: String): Unit = {
+    appender.testSuiteStart(name, flowId)
   }
 
   /** called for each test method or equivalent */
-  def testEvent(event: TestEvent) {
+  def testEvent(event: TestEvent): Unit = {
     event.detail.foreach(logSingleTest)
   }
 
-  def formattedException(t: OptionalThrowable):String = {
+  def formattedException(t: OptionalThrowable): String = {
     if (t.isDefined) {
       val w = new StringWriter
       val p = new PrintWriter(w)
@@ -46,23 +46,28 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
     } else ""
   }
   
-  def flowId:String = {
-    "" + Thread.currentThread().getId
+  def flowId: String = {
+    Thread.currentThread().getId.toString
   }
   
-  protected def logSingleTest(event: sbt.testing.Event): Unit =
-  	{
-      val name = event.fullyQualifiedName
+  protected def logSingleTest(event: sbt.testing.Event): Unit = {
+      val fqn = event.fullyQualifiedName
       val status = event.status.toString
       val duration = event.duration
       val throwable = event.throwable
 
       val testName = event.selector match {
           case s: TestSelector =>
-            name + "." + s.testName
+            if (fqn == s.testName()) fqn
+            else fqn + "." + s.testName
+
           case ns: NestedTestSelector =>
-            name + "." + ns.suiteId + "." + ns.testName
-          case _ => name
+            val prefix =
+              if (fqn == ns.testName()) fqn + "."
+              else ""
+            prefix + ns.suiteId + "." + ns.testName
+
+          case _ => fqn
       }
 
       appender.testStart(s"$testName", flowId)
@@ -70,8 +75,8 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
       event.status match {
         case Status.Success => // nothing extra to report
         case Status.Error | Status.Failure =>
-          appender.testFailed(testName,formattedException(throwable),flowId)
-        case Status.Skipped | Status.Ignored | Status.Pending=>
+          appender.testFailed(testName, formattedException(throwable), flowId)
+        case Status.Skipped | Status.Ignored | Status.Pending =>
           appender.testSkipped(testName,flowId)
         case Status.Canceled =>
           appender.testSkipped(testName,flowId)
@@ -81,13 +86,13 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
   	}
 
   /** called if there was an error during test */
-  def endGroup(name: String, t: Throwable) {
-    appender.testSuitFailResult(name, t, flowId)
+  def endGroup(name: String, t: Throwable): Unit = {
+    appender.testSuiteFailResult(name, t, flowId)
   }
 
   /** called if test completed */
-  def endGroup(name: String, result: TestResult) {
-    appender.testSuitSuccessfulResult(name, flowId)
+  def endGroup(name: String, result: TestResult): Unit = {
+    appender.testSuiteSuccessfulResult(name, flowId)
   }
 
 

@@ -17,30 +17,33 @@
 
 package jetbrains.buildServer.sbtlogger
 
-import org.apache.logging.log4j.core
+import org.apache.logging.log4j.{Level, core}
 import org.apache.logging.log4j.core.appender.AbstractAppender
 import org.apache.logging.log4j.core.layout.PatternLayout
 import org.apache.logging.log4j.message.{ObjectMessage, ReusableObjectMessage}
-import sbt.internal.util.StringEvent
+import sbt.internal.util.{ObjectEvent, StringEvent}
 
 
 class TCLoggerAppender(appender: LogAppender, scope: String) extends
   AbstractAppender("tc-logger-" + scope, null, PatternLayout.createDefaultLayout(), true) {
 
-  def appendMessageContent(level: Any, parameter: AnyRef, flowId: String): Unit = {
-    parameter match {
-      case o: StringEvent => appender.log(level.toString, o.message, flowId)
-      case _ => appender.log(level.toString, parameter.toString, flowId)
+  def appendMessageContent(level: Level, parameter: AnyRef, flowId: String): Unit = {
+    val message = parameter match {
+      case o: ObjectEvent[_] => o.message.toString
+      case o: StringEvent => o.message
+      case _ => parameter.toString
     }
+    appender.log(level.toString, message, flowId)
   }
 
-  def appendLog(level: Any, message: Any, flowId: String): Unit = {
+  def appendLog(level: Level, message: Any, flowId: String): Unit = {
     appender.log(level.toString, message.toString, flowId)
   }
 
   override def append(event: core.LogEvent): Unit = {
     event.getMessage match {
-      case o: ObjectMessage => appendMessageContent(event.getLevel, o.getParameter, event.getThreadId.toString)
+      case o: ObjectMessage =>
+        appendMessageContent(event.getLevel, o.getParameter, event.getThreadId.toString)
       case o: ReusableObjectMessage => appendMessageContent(event.getLevel, o.getParameter, event.getThreadId.toString)
       case _ => appendLog(event.getLevel, event.getMessage.getFormattedMessage, event.getThreadId.toString)
     }
