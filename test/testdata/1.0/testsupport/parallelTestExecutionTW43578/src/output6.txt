@@ -1,3 +1,3 @@
-##teamcity\[testStarted name='suites.ParallelSuite.tests.ParallelTest.should Write Failing Tests'.*\]
-##teamcity\[testFailed name='suites.ParallelSuite.tests.ParallelTest.should Write Failing Tests'.*\]
-##teamcity\[testFinished name='suites.ParallelSuite.tests.ParallelTest.should Write Failing Tests'.*\]
+##teamcity\[testStarted name='tests.ParallelTest.should Write Failing Tests'.*\]
+##teamcity\[testFailed name='tests.ParallelTest.should Write Failing Tests'.*\]
+##teamcity\[testFinished name='tests.ParallelTest.should Write Failing Tests'.*\]

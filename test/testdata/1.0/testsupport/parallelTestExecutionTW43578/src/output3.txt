@@ -1,2 +1,2 @@
-##teamcity\[testStarted name='suites.ParallelSuite.tests.ParallelTest.should Write Passing Tests'.*\]
-##teamcity\[testFinished name='suites.ParallelSuite.tests.ParallelTest.should Write Passing Tests'.*\]
+##teamcity\[testStarted name='tests.ParallelTest.should Write Passing Tests'.*\]
+##teamcity\[testFinished name='tests.ParallelTest.should Write Passing Tests'.*\]
