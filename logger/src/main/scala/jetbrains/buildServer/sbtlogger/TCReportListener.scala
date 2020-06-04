@@ -63,8 +63,8 @@ class TCReportListener(ap: LogAppender) extends TestReportListener {
 
           case ns: NestedTestSelector =>
             val prefix =
-              if (fqn == ns.testName()) fqn + "."
-              else ""
+              if (fqn == ns.testName()) ""
+              else fqn + "."
             prefix + ns.suiteId + "." + ns.testName
 
           case _ => fqn
