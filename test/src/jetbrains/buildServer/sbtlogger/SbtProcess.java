@@ -159,40 +159,34 @@ public final class SbtProcess {
 
         //System.out.println("##teamcity[enableServiceMessages]");
 
-
+        List<Pattern> required = new ArrayList<>();
         for (BufferedReader reader : requiredOutput) {
-            int i = 0;
-            int found = 0;
+            List<Pattern> r = getPatterns(reader);
+            required.addAll(r);
+        }
+        assert(! required.isEmpty());
+
+        List<Pattern> hits = new ArrayList<>();
+        for (Pattern currentRequired : required) {
 
             System.out.println("=== Check file ===");
-            List<Pattern> required = getPatterns(reader);
-            assert required.size() > 0;
-            Pattern currentRequired = required.get(i++);
-
             for (String line : allLines) {
-                Matcher matcher = currentRequired.matcher(line);
-                if (matcher.find()) {
-                    found++;
-                    if (i < required.size()) {
-                        currentRequired = required.get(i++);
-                    }
+                if (currentRequired.matcher(line).find()) {
+                    hits.add(currentRequired);
+                    break;
                 }
             }
 
-            if (found != required.size()) {
-                System.out.println("First failed line:");
-                System.out.println(currentRequired);
-            }
-            Assert.assertEquals(required.size(), found);
         }
 
+        Assert.assertEquals(required, hits);
     }
 
-    private static List<Pattern> getPatterns(BufferedReader requiredOutput) throws IOException {
+    private static List<Pattern>  getPatterns(BufferedReader requiredOutput) throws IOException {
         if (requiredOutput == null) {
             return Collections.emptyList();
         }
-        List<Pattern> required = new ArrayList<Pattern>();
+        List<Pattern> required = new ArrayList<>();
         String s;
         while ((s = requiredOutput.readLine()) != null) {
             required.add(Pattern.compile(s));
