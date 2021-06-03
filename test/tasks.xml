@@ -22,7 +22,7 @@
 
     <target name="download">
         <mkdir dir="sbt/bin"/>
-        <get src="http://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.17/sbt-launch.jar"
+        <get src="https://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.17/sbt-launch.jar"
              dest="sbt/bin/sbt-launch.jar" />
     </target>
 
