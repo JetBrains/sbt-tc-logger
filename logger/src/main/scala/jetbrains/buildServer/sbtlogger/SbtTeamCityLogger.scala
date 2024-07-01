@@ -30,19 +30,14 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   override def trigger: PluginTrigger = allRequirements
 
   def apply(state: State): State = {
+    // As seen in https://github.com/JetBrains/sbt-structure/blob/a65499070252b31bd4bf7cf79dbc8a1aa4e5830a/extractor/src/main/scala/org/jetbrains/sbt/operations.scala#L13
     val extracted = Project.extract(state)
-    val sbtLoggerVersion = System.getProperty(TC_LOGGER_PROPERTY_NAME)
-    if (sbtLoggerVersion == "reloaded") {
-      state
-    } else {
-      extracted.structure.allProjectRefs.foldLeft(state)(append(SbtTeamCityLogger.projectSettings, extracted))
+    import extracted.{structure => extractedStructure, _}
+    val transformedProjectSettings = extractedStructure.allProjectRefs.flatMap { projectRef =>
+      transformSettings(projectScope(projectRef), projectRef.build, rootProject, SbtTeamCityLogger.projectSettings)
     }
-  }
-
-  private def append(settings: Seq[Setting[_]], extracted: Extracted)(state: State, projectRef: ProjectRef): State = {
-    val scope = projectScope(projectRef)
-    val appendSettings = transformSettings(scope, projectRef.build, extracted.rootProject, settings)
-    reapply(Project.session(state).appendRaw(appendSettings), state)
+    val transformedSession = session.appendRaw(transformedProjectSettings)
+    reapply(transformedSession, state)
   }
 
   // copied from sbt.internal.Load
@@ -65,15 +60,6 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   val tcVersion: Option[String] = sys.env.get("TEAMCITY_VERSION")
   val tcFound: Boolean = tcVersion.isDefined
-
-  val TC_LOGGER_PROPERTY_NAME = "TEAMCITY_SBT_LOGGER_VERSION"
-
-  val tcLoggerVersion: String = System.getProperty(TC_LOGGER_PROPERTY_NAME)
-  if (tcLoggerVersion == null) {
-    System.setProperty(TC_LOGGER_PROPERTY_NAME, "loaded")
-  } else if (tcLoggerVersion == "loaded") {
-    System.setProperty(TC_LOGGER_PROPERTY_NAME, "reloaded")
-  }
 
   var testResultLoggerFound = true
 
