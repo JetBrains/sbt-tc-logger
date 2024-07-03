@@ -30,6 +30,11 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   override def trigger: PluginTrigger = allRequirements
 
   def apply(state: State): State = {
+    val sbtLoggerVersion = System.getProperty(TC_LOGGER_PROPERTY_NAME)
+    if (sbtLoggerVersion == "reloaded") {
+      return state
+    }
+
     // As seen in https://github.com/JetBrains/sbt-structure/blob/a65499070252b31bd4bf7cf79dbc8a1aa4e5830a/extractor/src/main/scala/org/jetbrains/sbt/operations.scala#L13
     val extracted = Project.extract(state)
     import extracted.{structure => extractedStructure, _}
@@ -60,6 +65,15 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   val tcVersion: Option[String] = sys.env.get("TEAMCITY_VERSION")
   val tcFound: Boolean = tcVersion.isDefined
+
+  val TC_LOGGER_PROPERTY_NAME = "TEAMCITY_SBT_LOGGER_VERSION"
+
+  val tcLoggerVersion: String = System.getProperty(TC_LOGGER_PROPERTY_NAME)
+  if (tcLoggerVersion == null) {
+    System.setProperty(TC_LOGGER_PROPERTY_NAME, "loaded")
+  } else if (tcLoggerVersion == "loaded") {
+    System.setProperty(TC_LOGGER_PROPERTY_NAME, "reloaded")
+  }
 
   var testResultLoggerFound = true
 
