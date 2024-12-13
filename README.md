@@ -18,7 +18,7 @@ Add the following to your project/plugins.sbt file:
 
 or register plugin as a global plugin for your SBT according to [SBT documentation](http://www.scala-sbt.org/0.13.0/docs/Getting-Started/Using-Plugins)
 
-Plugin is compatible with SBT version 0.13.x.
+Plugin is compatible with SBT version 0.13.x and 1.x
 
 
 ### Using
