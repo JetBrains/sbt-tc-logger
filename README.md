@@ -6,19 +6,19 @@ SBT TeamCity logger
 
 This plugin extends SBT standard output with service messages that TeamCity build server uses to present build results.
 
-You don't need this plugin if you use [TeamCity SBT runner](http://confluence.jetbrains.com/display/TW/SBT+Runner+Plugin) with 'Auto' installation mode.
+You don't need this plugin if you use [TeamCity SBT runner](https://www.jetbrains.com/help/teamcity/simple-build-tool-scala.html) with 'Auto' installation mode.
 
 ### Installation
 
 Add the following to your project/plugins.sbt file:
 
-`resolvers += Resolver.url("bintray-sbt-plugin-releases",url("https://dl.bintray.com/content/sbt/sbt-plugin-releases"))(Resolver.ivyStylePatterns)`
+`resolvers += Resolver.url("jetbrains-teamcity-repository",url("https://download.jetbrains.com/teamcity-repository/"))(Resolver.ivyStylePatterns)`
 
-`addSbtPlugin("org.jetbrains.teamcity.plugins" % "sbt-teamcity-logger" % "0.3.0")`
+`addSbtPlugin("org.jetbrains.teamcity.plugins.sbt" % "sbt-teamcity-logger" % "1.0")`
 
-or register plugin as a global plugin for your SBT according to [SBT documentation](http://www.scala-sbt.org/0.13.0/docs/Getting-Started/Using-Plugins)
+or register plugin as a global plugin for your SBT according to [SBT documentation](https://www.scala-sbt.org/1.x/docs/Plugins.html#Plugins)
 
-Plugin is compatible with SBT version 0.13.x.
+Plugin is compatible with SBT version 1.x.
 
 
 ### Using
