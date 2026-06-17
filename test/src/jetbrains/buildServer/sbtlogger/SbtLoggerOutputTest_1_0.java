@@ -85,17 +85,6 @@ public class SbtLoggerOutputTest_1_0 {
         Assert.assertEquals(0, exitCode);
     }
 
-    //todo[shkate]
-    public void testRunWithPluginFromBintray() throws IOException, InterruptedException {
-        SbtProcess.runWithoutApplyAndTest("test", testPath("bintray"));
-    }
-
-
-    //todo[shkate]
-    public void testRunWithPluginFromBintrayWithReApply() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("test", testPath("bintray"));
-    }
-
     @Test
     public void testProjectWithJavaSources() throws IOException, InterruptedException {
         SbtProcess.runAndTestWithAdditionalParams("clean compile run", "--debug", testPath("withJavaSources"), "output.txt");
@@ -137,7 +126,7 @@ public class SbtLoggerOutputTest_1_0 {
     }
 
     private String testPath(String testRepo) {
-        File testDir = new File("test/testdata/1.0/", testRepo);
+        File testDir = new File(new File(SbtProcess.repoRoot(), "test/testdata/1.0"), testRepo);
         return testDir.getAbsolutePath();
     }
 

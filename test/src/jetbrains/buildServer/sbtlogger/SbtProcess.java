@@ -14,6 +14,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class SbtProcess {
+    private static final String REPO_ROOT_PROPERTY = "sbt.tc.repo.root";
+    private static final String SBT_013_LAUNCHER_PROPERTY = "sbt.tc.sbt.launcher.013";
+    private static final String SBT_1_LAUNCHER_PROPERTY = "sbt.tc.sbt.launcher.1";
+    private static final String PLUGIN_013_PROPERTY = "sbt.tc.plugin.013";
+    private static final String PLUGIN_1_PROPERTY = "sbt.tc.plugin.1";
+    private static final String JAVA_HOME_PROPERTY = "sbt.tc.java.home";
 
     public static int runAndTest(String sbtCommands, String workingDir, String... outputFiles) throws IOException, InterruptedException {
         return runSbtAndTest(true,"--error", sbtCommands,workingDir,outputFiles);
@@ -29,32 +35,33 @@ public final class SbtProcess {
 
     private static int runSbtAndTest(boolean applyPlugin, String params, String sbtCommands, String workingDir, String... outputFiles) throws IOException,
             InterruptedException {
-        String javaHome = System.getProperty("java.home");
+        String javaHome = requiredJavaHome();
         String javaBin = javaHome +
                 File.separator + "bin" +
                 File.separator + "java";
-        String classpath = System.getProperty("java.class.path");
 
-        String ourResourceFolder = "test";
-        String sbtPath = new File(ourResourceFolder + File.separator + "sbt").getAbsolutePath();
-        String sbtLauncherPath = new File(sbtPath, "bin" + File.separator + "sbt-launch.jar").getAbsolutePath();
-        String sbtTcLoggerPluginPath = new File(ourResourceFolder + File.separator + "tc_plugin" + File.separator + (workingDir.contains("1.0") ? "1.0" + File.separator : "") + "sbt-teamcity-logger.jar").getAbsolutePath();
+        File sbtGlobalBase = new File(repoRoot(), "test" + File.separator + "sbt").getAbsoluteFile();
+        boolean sbtOneTest = isSbtOneTest(workingDir);
+        String sbtLauncherPath = requiredFile(sbtOneTest ? SBT_1_LAUNCHER_PROPERTY : SBT_013_LAUNCHER_PROPERTY).getAbsolutePath();
+        String sbtTcLoggerPluginPath = requiredFile(sbtOneTest ? PLUGIN_1_PROPERTY : PLUGIN_013_PROPERTY).getAbsolutePath();
 
-        String sbtParam = "-Dsbt.log.noformat=true";
+        String sbtGlobalBaseParam = "-Dsbt.global.base=" + sbtGlobalBase.getAbsolutePath();
+        String sbtLogParam = "-Dsbt.log.noformat=true";
 
         String applyCommand = applyPlugin ? "apply -cp \"" + sbtTcLoggerPluginPath + "\" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger" : "";
         String[] commands = sbtCommands.split(" ");
-        String[] utilityCommands = new String[]{javaBin, "-Xmx512m", "-XX:MaxPermSize=256m", "-cp", classpath, "-jar", sbtLauncherPath,
-                sbtParam, applyCommand, params};
-        String[] fullListOfCommands = new String[utilityCommands.length + commands.length];
-        System.arraycopy(utilityCommands, 0, fullListOfCommands, 0, utilityCommands.length);
-        System.arraycopy(commands, 0, fullListOfCommands, utilityCommands.length, commands.length);
+        List<String> fullListOfCommands = new ArrayList<String>();
+        Collections.addAll(fullListOfCommands, javaBin, "-Xmx512m", "-XX:MaxPermSize=256m", "-jar", sbtLauncherPath,
+                sbtGlobalBaseParam, sbtLogParam);
+        addIfNotBlank(fullListOfCommands, applyCommand);
+        addIfNotBlank(fullListOfCommands, params);
+        Collections.addAll(fullListOfCommands, commands);
         ProcessBuilder builder = new ProcessBuilder(fullListOfCommands);
 
         Map<String, String> env = builder.environment();
         env.put("TEAMCITY_VERSION", "9.0.TEST");
         env.put("JAVA_HOME", javaHome);
-        env.put("SBT_HOME", sbtPath);
+        env.put("SBT_HOME", sbtGlobalBase.getAbsolutePath());
 
         String path = env.get("PATH");
         String jHome = System.getenv("JDK_HOME");
@@ -185,5 +192,62 @@ public final class SbtProcess {
         return required;
     }
 
+    public static File repoRoot() {
+        String repoRoot = System.getProperty(REPO_ROOT_PROPERTY);
+        if (repoRoot == null || repoRoot.trim().length() == 0) {
+            repoRoot = ".";
+        }
+        return new File(repoRoot).getAbsoluteFile();
+    }
+
+    private static File requiredFile(String propertyName) {
+        String path = System.getProperty(propertyName);
+        if (path == null || path.trim().length() == 0) {
+            throw new IllegalStateException("Missing required system property: " + propertyName);
+        }
+
+        File file = new File(path);
+        if (!file.isFile()) {
+            throw new IllegalStateException("Required file from system property " + propertyName + " does not exist: " + file.getAbsolutePath());
+        }
+        return file.getAbsoluteFile();
+    }
+
+    private static String requiredJavaHome() {
+        String javaHome = firstNotBlank(
+                System.getProperty(JAVA_HOME_PROPERTY),
+                System.getenv("IT_JAVA_HOME"),
+                System.getenv("JAVA_8_HOME")
+        );
+        if (javaHome == null) {
+            throw new IllegalStateException("Integration tests require Java 8 for nested sbt processes. Set IT_JAVA_HOME or JAVA_8_HOME.");
+        }
+
+        File javaBin = new File(javaHome, "bin" + File.separator + "java");
+        if (!javaBin.isFile()) {
+            throw new IllegalStateException("Configured Java home does not contain bin/java: " + new File(javaHome).getAbsolutePath());
+        }
+        return new File(javaHome).getAbsolutePath();
+    }
+
+    private static String firstNotBlank(String... values) {
+        for (String value : values) {
+            if (value != null && value.trim().length() > 0) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static void addIfNotBlank(List<String> list, String value) {
+        if (value != null && value.trim().length() > 0) {
+            list.add(value);
+        }
+    }
+
+    private static boolean isSbtOneTest(String workingDir) {
+        String normalized = new File(workingDir).getAbsolutePath().replace(File.separatorChar, '/');
+        return normalized.contains("/test/testdata/1.0/");
+    }
 
 }

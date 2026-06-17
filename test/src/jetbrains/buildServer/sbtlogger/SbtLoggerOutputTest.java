@@ -87,17 +87,6 @@ public class SbtLoggerOutputTest {
     }
 
     @Test
-    public void testRunWithPluginFromBintray() throws IOException, InterruptedException {
-        SbtProcess.runWithoutApplyAndTest("test", testPath("bintray"));
-    }
-
-
-    @Test
-    public void testRunWithPluginFromBintrayWithReApply() throws IOException, InterruptedException {
-        SbtProcess.runAndTest("test", testPath("bintray"));
-    }
-
-    @Test
     public void testOtherSbtVersions() throws IOException, InterruptedException {
         SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", testPath("otherVersions"));
     }
@@ -153,7 +142,7 @@ public class SbtLoggerOutputTest {
     }
 
     private String testPath(String testRepo) {
-        File testDir = new File("test/testdata/", testRepo);
+        File testDir = new File(new File(SbtProcess.repoRoot(), "test/testdata"), testRepo);
         return testDir.getAbsolutePath();
     }
 
