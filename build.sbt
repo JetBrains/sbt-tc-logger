@@ -107,11 +107,11 @@ Global / prepareIntegrationTestArtifacts := {
 }
 
 /**
- * Java JUnit integration-test harness for the TeamCity logger plugin.
+ * Scala/JUnit integration-test harness for the TeamCity logger plugin.
  *
  * The build prepares plugin jars and sbt launchers, then passes their paths to
- * the forked Java harness via `sbt.tc.*` system properties. Runtime selection,
- * fixture cases, and output matching live in `test/src`; see `test/README.md`
+ * the forked Scala harness via `sbt.tc.*` system properties. Runtime selection,
+ * fixture cases, and output matching live in `test/src/test/scala`; see `README.md`
  * for the full test workflow.
  */
 lazy val integrationTests: Project = (project in file("test"))
@@ -121,21 +121,18 @@ lazy val integrationTests: Project = (project in file("test"))
     inConfig(Sbt013Launcher)(Defaults.configSettings),
     inConfig(Sbt1Launcher)(Defaults.configSettings),
 
-    // Keep this helper project private and independent from Scala cross-paths.
+    // Keep this helper project private and independent from published plugin cross-builds.
     name := "sbt-tc-logger-integration-tests",
     publish / skip := true,
-    autoScalaLibrary := false,
-    crossPaths := false,
+    scalaVersion := "3.8.4",
+    crossScalaVersions := Seq(scalaVersion.value),
+    Test / scalacOptions += "-no-indent",
 
     // Resolve legacy sbt launcher artifacts from the ivy-style sbt repository.
     resolvers += Resolver.url(
       "sbt-ivy-releases",
       url("https://repo.typesafe.com/typesafe/ivy-releases")
     )(Resolver.ivyStylePatterns),
-
-    // The harness is plain Java under test/src, not a conventional Scala layout.
-    Test / javaSource := baseDirectory.value / "src",
-    Test / unmanagedSourceDirectories := Seq((Test / javaSource).value),
 
     // Fork so the harness receives a controlled set of sbt.tc.* system properties.
     Test / fork := true,

@@ -52,7 +52,7 @@ The default `test` task builds local logger plugin jars for sbt 0.13 and sbt 1.x
 
 Integration test workflow:
 
-1. `sbt test` enters the Java JUnit harness in the `integrationTests` project.
+1. `sbt test` enters the Scala/JUnit harness in the `integrationTests` project.
 2. `prepareIntegrationTestArtifacts` first packages self-contained logger plugin jars for sbt 0.13 and sbt 1.x.
 3. The packaged jars are staged as `target/integration-test-artifacts/tc_plugin/0.13/sbt-teamcity-logger.jar` and `target/integration-test-artifacts/tc_plugin/1.0/sbt-teamcity-logger.jar`.
 4. The test project resolves sbt launcher jars from managed dependencies instead of downloading them with Ant.
