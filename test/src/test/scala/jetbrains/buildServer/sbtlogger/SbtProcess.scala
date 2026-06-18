@@ -10,9 +10,9 @@ import scala.jdk.CollectionConverters.*
 object SbtProcess {
   private val RepoRootProperty = "sbt.tc.repo.root"
   private val Sbt013LauncherProperty = "sbt.tc.sbt.launcher.013"
-  private val Sbt1LauncherProperty = "sbt.tc.sbt.launcher.1"
+  private val Sbt100LauncherProperty = "sbt.tc.sbt.launcher.100"
   private val Plugin013Property = "sbt.tc.plugin.013"
-  private val Plugin1Property = "sbt.tc.plugin.1"
+  private val Plugin100Property = "sbt.tc.plugin.100"
   private val JavaHomeProperty = "sbt.tc.java.home"
 
   def runAndTest(sbtCommands: String, workingDir: String, outputFiles: String*): Int = {
@@ -40,9 +40,9 @@ object SbtProcess {
       File.separator + "java"
 
     val sbtGlobalBase = new File(repoRoot(), "test" + File.separator + "sbt").getAbsoluteFile
-    val sbtOneTest = isSbtOneTest(workingDir)
-    val sbtLauncherPath = requiredFile(if (sbtOneTest) Sbt1LauncherProperty else Sbt013LauncherProperty).getAbsolutePath
-    val sbtTcLoggerPluginPath = requiredFile(if (sbtOneTest) Plugin1Property else Plugin013Property).getAbsolutePath
+    val sbt100Test = isSbt100Test(workingDir)
+    val sbtLauncherPath = requiredFile(if (sbt100Test) Sbt100LauncherProperty else Sbt013LauncherProperty).getAbsolutePath
+    val sbtTcLoggerPluginPath = requiredFile(if (sbt100Test) Plugin100Property else Plugin013Property).getAbsolutePath
 
     val sbtGlobalBaseParam = "-Dsbt.global.base=" + sbtGlobalBase.getAbsolutePath
     val sbtLogParam = "-Dsbt.log.noformat=true"
@@ -235,7 +235,7 @@ object SbtProcess {
     }
   }
 
-  private def isSbtOneTest(workingDir: String): Boolean = {
+  private def isSbt100Test(workingDir: String): Boolean = {
     val normalized = new File(workingDir).getAbsolutePath.replace(File.separatorChar, '/')
     normalized.contains("/test/testdata/1.0/")
   }

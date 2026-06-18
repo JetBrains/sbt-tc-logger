@@ -17,10 +17,10 @@ lazy val logger: Project = (project in file("."))
 
 // Private, non-published projects used only to give integration tests concrete runtime jar tasks.
 lazy val loggerStagingSbt013: Project = integrationTestLoggerStagingProject(sbt013LoggerArtifact)
-lazy val loggerStagingSbt1: Project = integrationTestLoggerStagingProject(sbt1LoggerArtifact)
+lazy val loggerStagingSbt100: Project = integrationTestLoggerStagingProject(sbt100LoggerArtifact)
 
-lazy val sbt013LoggerArtifact = LoggerArtifactBuild("sbt 0.13", "loggerStagingSbt013", "0.13.17", "2.10.7", "sbt-0.13-artifact", "0.13")
-lazy val sbt1LoggerArtifact = LoggerArtifactBuild("sbt 1.x", "loggerStagingSbt1", "1.12.12", "2.12.21", "sbt-1-artifact", "1.0")
+lazy val sbt013LoggerArtifact = LoggerArtifactBuild("sbt 0.13", "013", "loggerStagingSbt013", "0.13.17", "2.10.7", "sbt-0.13-artifact", "0.13")
+lazy val sbt100LoggerArtifact = LoggerArtifactBuild("sbt 1.x", "100", "loggerStagingSbt100", "1.12.12", "2.12.21", "sbt-1-artifact", "1.0")
 
 lazy val loggerSettings = Seq(
   sbtPlugin := true,
@@ -80,7 +80,7 @@ lazy val integrationTestPluginJarName = "sbt-teamcity-logger.jar"
 def integrationTestPluginJar(artifact: LoggerArtifactBuild): File =
   integrationTestPluginBase / artifact.stagingDirectory / integrationTestPluginJarName
 lazy val integrationTestSbt013PluginJar = integrationTestPluginJar(sbt013LoggerArtifact)
-lazy val integrationTestSbt1PluginJar = integrationTestPluginJar(sbt1LoggerArtifact)
+lazy val integrationTestSbt100PluginJar = integrationTestPluginJar(sbt100LoggerArtifact)
 
 /**
  * Hidden configurations used only to resolve launcher jars for the nested sbt processes.
@@ -89,12 +89,12 @@ lazy val integrationTestSbt1PluginJar = integrationTestPluginJar(sbt1LoggerArtif
  * `update.value.select(...)` find the exact launcher files for forked integration tests.
  */
 lazy val Sbt013Launcher = config("sbt013Launcher").hide
-lazy val Sbt1Launcher = config("sbt1Launcher").hide
+lazy val Sbt100Launcher = config("sbt100Launcher").hide
 
 Global / prepareIntegrationTestArtifacts := {
   val artifacts = Seq(
     (sbt013LoggerArtifact, (loggerStagingSbt013 / Compile / packageBin).value),
-    (sbt1LoggerArtifact, (loggerStagingSbt1 / Compile / packageBin).value)
+    (sbt100LoggerArtifact, (loggerStagingSbt100 / Compile / packageBin).value)
   )
 
   artifacts.map { case (artifact, source) =>
@@ -115,11 +115,11 @@ Global / prepareIntegrationTestArtifacts := {
  * for the full test workflow.
  */
 lazy val integrationTests: Project = (project in file("test"))
-  .configs(Sbt013Launcher, Sbt1Launcher)
+  .configs(Sbt013Launcher, Sbt100Launcher)
   .settings(
     // Give the nested sbt launchers isolated dependency buckets.
     inConfig(Sbt013Launcher)(Defaults.configSettings),
-    inConfig(Sbt1Launcher)(Defaults.configSettings),
+    inConfig(Sbt100Launcher)(Defaults.configSettings),
 
     // Keep this helper project private and independent from published plugin cross-builds.
     name := "sbt-tc-logger-integration-tests",
@@ -144,13 +144,13 @@ lazy val integrationTests: Project = (project in file("test"))
     Test / javaOptions ++= {
       val repoRoot = (LocalRootProject / baseDirectory).value
       val launcher013 = integrationTestSbt013Launcher.value
-      val launcher1 = integrationTestSbt100Launcher.value
+      val launcher100 = integrationTestSbt100Launcher.value
       Seq(
         s"-Dsbt.tc.repo.root=${repoRoot.getAbsolutePath}",
-        s"-Dsbt.tc.sbt.launcher.013=${launcher013.getAbsolutePath}",
-        s"-Dsbt.tc.sbt.launcher.1=${launcher1.getAbsolutePath}",
-        s"-Dsbt.tc.plugin.013=${integrationTestSbt013PluginJar.getAbsolutePath}",
-        s"-Dsbt.tc.plugin.1=${integrationTestSbt1PluginJar.getAbsolutePath}"
+        s"-Dsbt.tc.sbt.launcher.${sbt013LoggerArtifact.versionSuffix}=${launcher013.getAbsolutePath}",
+        s"-Dsbt.tc.sbt.launcher.${sbt100LoggerArtifact.versionSuffix}=${launcher100.getAbsolutePath}",
+        s"-Dsbt.tc.plugin.${sbt013LoggerArtifact.versionSuffix}=${integrationTestSbt013PluginJar.getAbsolutePath}",
+        s"-Dsbt.tc.plugin.${sbt100LoggerArtifact.versionSuffix}=${integrationTestSbt100PluginJar.getAbsolutePath}"
       )
     },
 
@@ -164,7 +164,7 @@ lazy val integrationTests: Project = (project in file("test"))
       launchers.headOption.getOrElse(sys.error("Could not resolve org.scala-sbt:sbt-launch for integration tests."))
     },
     integrationTestSbt100Launcher := {
-      val launchers = update.value.select(configurationFilter(Sbt1Launcher.name), moduleFilter(name = "sbt-launch"), artifactFilter(name = "sbt-launch"))
+      val launchers = update.value.select(configurationFilter(Sbt100Launcher.name), moduleFilter(name = "sbt-launch"), artifactFilter(name = "sbt-launch"))
       launchers.headOption.getOrElse(sys.error("Could not resolve org.scala-sbt:sbt-launch for integration tests."))
     },
 
@@ -173,10 +173,10 @@ lazy val integrationTests: Project = (project in file("test"))
       "junit" % "junit" % "4.13.2" % Test,
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
       "org.scala-sbt" % "sbt-launch" % "0.13.17" % Sbt013Launcher.name,
-      "org.scala-sbt" % "sbt-launch" % "1.0.0" % Sbt1Launcher.name
+      "org.scala-sbt" % "sbt-launch" % "1.0.0" % Sbt100Launcher.name
     )
   )
 
 
-addCommandAlias("testSbt013", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest")
-addCommandAlias("testSbt100", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_0")
+addCommandAlias("testSbt013", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest013")
+addCommandAlias("testSbt100", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest100")

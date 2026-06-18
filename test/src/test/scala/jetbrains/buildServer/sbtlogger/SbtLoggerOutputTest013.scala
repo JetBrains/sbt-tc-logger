@@ -3,18 +3,18 @@ package jetbrains.buildServer.sbtlogger
 import junit.framework.Assert
 import org.junit.Test
 
-import java.io.File
+import java.io.{BufferedReader, File, FileReader, IOException}
 
-class SbtLoggerOutputTest_1_0 {
-
-  @Test
-  def testCompileErrorOutput(): Unit = {
-    SbtProcess.runAndTest("compile", testPath("compileerror"))
-  }
+class SbtLoggerOutputTest013 {
 
   @Test
   def testPluginStatus(): Unit = {
     SbtProcess.runAndTest("sbt-teamcity-logger", testPath("compileerror"), "plugin_status_output.txt")
+  }
+
+  @Test
+  def testCompileErrorOutput(): Unit = {
+    SbtProcess.runAndTest("compile", testPath("compileerror"))
   }
 
   @Test
@@ -33,27 +33,23 @@ class SbtLoggerOutputTest_1_0 {
   }
 
   @Test
-  def testJUnit(): Unit = {
-    val exitCode = SbtProcess.runAndTest("test", testPath("testsupport/junit"), "output.txt")
-    // if need exit code equals 0, otherwise in TeamCity additional non-informative build problem message will appear
-    Assert.assertEquals(0, exitCode)
-  }
-
-  /*
-  @Test
   def testScalaTest(): Unit = {
     val exitCode = SbtProcess.runAndTest("test", testPath("testsupport/scalatest"), "output.txt", "output1.txt")
     // if need exit code equals 0, otherwise in TeamCity additional non-informative build problem message will appear
     Assert.assertEquals(0, exitCode)
   }
-   */
+
+  @Test
+  def testNoSbtFileInProject(): Unit = {
+    SbtProcess.runAndTest("compile", testPath("nosbtfile"))
+  }
 
   @Test
   def testWarningInspectionsInCompile(): Unit = {
     SbtProcess.runAndTestWithAdditionalParams("clean compile", "", testPath("compileInspections"))
   }
 
-  // todo[shkate]
+  @Test
   def testWarningInTestOutput(): Unit = {
     SbtProcess.runAndTest("test", testPath("TW35693"))
   }
@@ -81,16 +77,21 @@ class SbtLoggerOutputTest_1_0 {
   }
 
   @Test
+  def testOtherSbtVersions(): Unit = {
+    SbtProcess.runAndTestWithAdditionalParams("sbtVersion", "--info", testPath("otherVersions"))
+  }
+
+  @Test
   def testProjectWithJavaSources(): Unit = {
     SbtProcess.runAndTestWithAdditionalParams("clean compile run", "--debug", testPath("withJavaSources"), "output.txt")
   }
 
-  // todo[shkate]
+  @Test
   def testIgnoredTest(): Unit = {
     SbtProcess.runAndTestWithAdditionalParams("--info", "test", testPath("ignoredTest"))
   }
 
-  // todo[shkate]
+  @Test
   def testNestedSuites(): Unit = {
     SbtProcess.runAndTestWithAdditionalParams("--info", "test", testPath("testsupport/nested"))
   }
@@ -100,12 +101,12 @@ class SbtLoggerOutputTest_1_0 {
     SbtProcess.runAndTest("testOnly", testPath("testsupport/scalatest_TW46964"), "output.txt")
   }
 
-  // todo[shkate]
+  @Test
   def testSpec2(): Unit = {
     SbtProcess.runAndTest("testOnly", testPath("testsupport/spec2"), "output.txt")
   }
 
-  // todo[shkate]
+  @Test
   def testTW50753_initErrorInTests(): Unit = {
     SbtProcess.runAndTest("clean compile test", testPath("TW-50753_initErrorInTests"), "output.txt")
   }
@@ -131,8 +132,24 @@ class SbtLoggerOutputTest_1_0 {
     )
   }
 
+  /**
+   * Service method. Allows quickly investigate test cases failed directly on TeamCity agent.
+   * Agent output should be placed in test data directory and could be checked against required output
+   */
+  @throws[IOException]
+  def testServerLogs(): Unit = {
+    val workingDir = testPath("multiproject")
+    val requiredFile = new File(workingDir + File.separator + "output.txt")
+    val serverLogs = new File(workingDir + File.separator + "server_logs.log")
+    SbtProcess.checkOutputTest(
+      new BufferedReader(new FileReader(serverLogs)),
+      new BufferedReader(new FileReader(requiredFile)),
+      null
+    )
+  }
+
   private def testPath(testRepo: String): String = {
-    val testDir = new File(new File(SbtProcess.repoRoot(), "test/testdata/1.0"), testRepo)
+    val testDir = new File(new File(SbtProcess.repoRoot(), "test/testdata"), testRepo)
     testDir.getAbsolutePath
   }
 }

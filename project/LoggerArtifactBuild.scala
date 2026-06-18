@@ -8,6 +8,7 @@
  * nested sbt runs.
  *
  * @param displayName human-readable runtime label used in sbt log messages
+ * @param versionSuffix explicit code-facing runtime suffix, such as 013 or 100
  * @param projectId sbt project id for the private staging project
  * @param sbtVersion sbt runtime version used when building the plugin artifact
  * @param scalaVersion Scala version paired with the target sbt runtime
@@ -16,6 +17,7 @@
  */
 final case class LoggerArtifactBuild(
   displayName: String,
+  versionSuffix: String,
   projectId: String,
   sbtVersion: String,
   scalaVersion: String,

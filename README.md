@@ -42,7 +42,7 @@ Releases are versioned by Git tags through `sbt-dynver`, for example `v1.1.0`. T
 - `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_2.10_0.13:<logger version>`
 - `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_2.12_1.0:<logger version>`
 
-The primary published jar is self-contained. The private `loggerStagingSbt013` and `loggerStagingSbt1` projects are integration-test helpers only; they use hidden bases under `target/`, compile the root logger sources, and are not published.
+The primary published jar is self-contained. The private `loggerStagingSbt013` and `loggerStagingSbt100` projects are integration-test helpers only; they use hidden bases under `target/`, compile the root logger sources, and are not published.
 
 Integration tests launch old sbt runtimes and require Java 8. Set either `IT_JAVA_HOME` or `JAVA_8_HOME`:
 
