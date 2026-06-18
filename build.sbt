@@ -5,6 +5,7 @@ ThisBuild / scalaVersion := "2.12.21"
 ThisBuild / crossScalaVersions := Seq("2.10.7", "2.12.21")
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html"))
+ThisBuild / resolvers += "jetbrains-teamcity-repository" at "https://download.jetbrains.com/teamcity-repository"
 
 lazy val repoRoot = file(".").getAbsoluteFile
 
@@ -32,7 +33,10 @@ lazy val loggerSettings = Seq(
       case binaryVersion => sys.error(s"Unsupported Scala binary version for sbt-teamcity-logger: $binaryVersion")
     }
   },
-  unmanagedBase := baseDirectory.value / "lib",
+  libraryDependencies ++= Seq(
+    ("org.jetbrains.teamcity" % "serviceMessages" % "2021.1")
+      .exclude("org.jetbrains.teamcity.idea", "annotations")
+  ),
   Test / publishArtifact := false,
   publishMavenStyle := true,
   sbtPluginPublishLegacyMavenStyle := false,
@@ -46,7 +50,6 @@ def integrationTestLoggerStagingProject(artifact: LoggerArtifactBuild): Project 
     .settings(loggerSettings: _*)
     .settings(
       Compile / sourceDirectory := repoRoot / "src" / "main",
-      unmanagedBase := repoRoot / "lib",
       pluginCrossBuild / sbtVersion := artifact.sbtVersion,
       scalaVersion := artifact.scalaVersion,
       target := repoRoot / "target" / artifact.buildTargetDirectory,

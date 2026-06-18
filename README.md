@@ -34,7 +34,8 @@ Use the repository root as the sbt build. The root project is the `logger` sbt p
 
 `sbt "project logger" "+publishLocal"`
 
-The logger sources and unmanaged TeamCity service-messages jar live directly under `src/` and `lib/`.
+The logger sources live directly under `src/`. 
+TeamCity service messages are resolved as the managed `org.jetbrains.teamcity:serviceMessages` dependency and packaged into the self-contained logger jar.
 
 Releases are versioned by Git tags through `sbt-dynver`, for example `v1.1.0`. The public Maven artifacts use the logger release version as the artifact version and put the Scala/sbt binary versions in the artifact id:
 
