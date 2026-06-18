@@ -28,18 +28,20 @@ To be sure that plugin was installed correctly you can use `sbt-teamcity-logger`
 
 ### Development
 
-Use the repository root as the sbt build. The root build runs on sbt 1.12.12 and builds the logger plugin for both sbt 0.13 and sbt 1.x.
+Use the repository root as the sbt build. The root project is the `logger` sbt plugin project, runs on sbt 1.12.12, and builds the logger plugin for both sbt 0.13 and sbt 1.x.
 
 `sbt projects`
 
 `sbt "project logger" "+publishLocal"`
+
+The logger sources and unmanaged TeamCity service-messages jar live directly under `src/` and `lib/`.
 
 Releases are versioned by Git tags through `sbt-dynver`, for example `v1.1.0`. The public Maven artifacts use the logger release version as the artifact version and put the Scala/sbt binary versions in the artifact id:
 
 - `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_2.10_0.13:<logger version>`
 - `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_2.12_1.0:<logger version>`
 
-The primary published jar is self-contained. The private `loggerStagingSbt013` and `loggerStagingSbt1` projects are integration-test helpers only; they are not nested Git repositories and are not published.
+The primary published jar is self-contained. The private `loggerStagingSbt013` and `loggerStagingSbt1` projects are integration-test helpers only; they use hidden bases under `target/`, compile the root logger sources, and are not published.
 
 Integration tests launch old sbt runtimes and require Java 8. Set either `IT_JAVA_HOME` or `JAVA_8_HOME`:
 

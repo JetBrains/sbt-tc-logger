@@ -6,17 +6,12 @@ ThisBuild / crossScalaVersions := Seq("2.10.7", "2.12.21")
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html"))
 
-lazy val root: Project = (project in file("."))
+lazy val repoRoot = file(".").getAbsoluteFile
+
+lazy val logger: Project = (project in file("."))
   .aggregate(
-    logger,
     integrationTests
   )
-  .settings(
-    name := "sbt-tc-logger-root",
-    publish / skip := true
-  )
-
-lazy val logger: Project = (project in file("logger"))
   .settings(loggerSettings: _*)
 
 // Private, non-published projects used only to give integration tests concrete runtime jar tasks.
@@ -47,12 +42,14 @@ lazy val loggerSettings = Seq(
 )
 
 def integrationTestLoggerStagingProject(artifact: LoggerArtifactBuild): Project =
-  Project(artifact.projectId, file("logger"))
+  Project(artifact.projectId, repoRoot / "target" / artifact.buildTargetDirectory / "project-base")
     .settings(loggerSettings: _*)
     .settings(
+      Compile / sourceDirectory := repoRoot / "src" / "main",
+      unmanagedBase := repoRoot / "lib",
       pluginCrossBuild / sbtVersion := artifact.sbtVersion,
       scalaVersion := artifact.scalaVersion,
-      target := baseDirectory.value / "target" / artifact.buildTargetDirectory,
+      target := repoRoot / "target" / artifact.buildTargetDirectory,
       publish / skip := true
     )
 
@@ -75,7 +72,6 @@ lazy val prepareIntegrationTestArtifacts = taskKey[Seq[File]]("Build and copy sb
 lazy val integrationTestSbt013Launcher = taskKey[File]("Resolved sbt 0.13 launcher jar used by legacy integration tests.")
 lazy val integrationTestSbt100Launcher = taskKey[File]("Resolved sbt 1.0 launcher jar used by sbt 1.x integration tests.")
 
-lazy val repoRoot = file(".").getAbsoluteFile
 lazy val integrationTestPluginBase = repoRoot / "target" / "integration-test-artifacts" / "tc_plugin"
 lazy val integrationTestPluginJarName = "sbt-teamcity-logger.jar"
 def integrationTestPluginJar(artifact: LoggerArtifactBuild): File =
