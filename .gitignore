@@ -1,6 +1,6 @@
 target/
-.idea/libraries
-.idea/workspace.xml
+.idea/
+*.iml
+.bsp/
 out/
 test/sbt/
-test/tc_plugin/
