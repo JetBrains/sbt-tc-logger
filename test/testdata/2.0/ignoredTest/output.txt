@@ -1,0 +1,6 @@
+##teamcity\[testIgnored name='HelloWorldSpec.The \|'Hello world\|' string should::contain 11 characters'(.*)\]
+##teamcity\[testIgnored name='HelloWorldSpec.The \|'Hello world\|' string should::start with \|'Hello\|''(.*)\]
+##teamcity\[testIgnored name='HelloWorldSpec.The \|'Hello world\|' string should::end with \|'world\|''(.*)\]
+
+
+
