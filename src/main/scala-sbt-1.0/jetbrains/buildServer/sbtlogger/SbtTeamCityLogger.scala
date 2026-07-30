@@ -108,7 +108,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     commands += tcLoggerStatusCommand,
     extraLoggers := {
       val currentFunction: Def.ScopedKey[_] => Seq[ExtraLogger] = extraLoggers.value
-      key: ScopedKey[_] => {
+      (key: ScopedKey[_]) => {
         val scope: String = getScopeId(key.scope.project)
         val logger: ExtraLogger = extraLogger(tcLoggers, tcLogAppender, scope)
 
