@@ -18,6 +18,18 @@ object SbtIntegrationTestLayout {
   def sbtGlobalBase(root: File, runtimeId: String, launcherVersion: String): File =
     new File(root, s"$IntegrationTestsTarget/sbt-global-apply/$runtimeId-$launcherVersion").getAbsoluteFile
 
+  /**
+   * SBT 2 starts a per-global-base Unix-domain socket server. The regular global
+   * base intentionally lives under the repository target directory, but that path
+   * can exceed the operating system socket limit. Keep only the server socket in a
+   * short, runtime-specific temporary directory.
+   */
+  def sbtGlobalServerDirectory(runtimeId: String, launcherVersion: String): File = {
+    val suffix = s"tc-sbt-${runtimeId.replace('.', '-')}-${launcherVersion.replace('.', '-')}"
+    if (File.separatorChar == '/') new File("/tmp", suffix).getAbsoluteFile
+    else new File(System.getProperty("java.io.tmpdir"), suffix).getAbsoluteFile
+  }
+
   def sbtLauncherCache(root: File): File =
     new File(root, s"$IntegrationTestsTarget/sbt-launcher").getAbsoluteFile
 

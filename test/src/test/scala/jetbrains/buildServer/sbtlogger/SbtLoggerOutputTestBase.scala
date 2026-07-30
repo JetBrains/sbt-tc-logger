@@ -2,7 +2,7 @@ package jetbrains.buildServer.sbtlogger
 
 import jetbrains.buildServer.sbtlogger.utils.{IntegrationTestLayout, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
 import org.jetbrains.sbt.integrationTests.*
-import org.junit.Assert.assertEquals
+import org.junit.Assert.{assertEquals, assertFalse}
 
 import java.io.File
 
@@ -36,7 +36,9 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       sbtOptions = testCase.sbtOptions,
       sbtCommands = testCase.sbtCommands,
       testRepo = testCase.fixture,
-      outputFiles = testCase.outputFiles
+      outputFiles = testCase.outputFiles,
+      teamCityEnvironment = testCase.teamCityEnvironment,
+      expectNoTeamCityMessages = testCase.expectNoTeamCityMessages
     )
 
     if (testCase.expectZeroExitCode) {
@@ -49,7 +51,9 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     sbtOptions: Seq[String],
     sbtCommands: Seq[String],
     testRepo: String,
-    outputFiles: Seq[String]
+    outputFiles: Seq[String],
+    teamCityEnvironment: Boolean = true,
+    expectNoTeamCityMessages: Boolean = false
   ): Int = {
     val root = IntegrationTestLayout.repoRoot()
     val sourceWorkingDir = SbtFixtureWorkspace.sourceFixtureDirectory(root, runtime.testDataRelativePath, testRepo)
@@ -64,7 +68,6 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val commandLinePrefix = Seq(
       javaBin,
       "-Xmx512m",
-      "-XX:MaxPermSize=256m",
       "-jar",
       SbtLauncher.sbtLauncher(root, runtime.launcherVersion).getAbsolutePath,
       s"-Dsbt.global.base=${sbtGlobalBase.getAbsolutePath}",
@@ -83,35 +86,68 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       new File(sourceWorkingDir, outputFile)
     }
 
+    val commandsAsArguments = runtime.sbtBinaryVersion == "2"
+
+    val sbtGlobalServerDirectory =
+      Option.when(commandsAsArguments)(SbtIntegrationTestLayout.sbtGlobalServerDirectory(runtime.id, runtime.launcherVersion))
+
+    // SBT 2 caches task results across fixture workspaces by default. Give each
+    // copied fixture its own local cache so its compile/test task is executed and
+    // the logger service-message lifecycle is actually covered.
+    val localCacheCommand =
+      s"set Global / localCacheDirectory := file(\"${new File(workingDir, ".sbt-tc-logger-cache").getAbsolutePath}\")"
+
+    val effectiveSbtCommands: Seq[String] =
+      if (commandsAsArguments)
+        plugin.loadCommand(pluginJar) +: localCacheCommand +: sbtCommands :+ "exit"
+      else
+        plugin.loadCommand(pluginJar) +: sbtCommands :+ "exit"
+
     val runResult = SbtProcessRunner.runSbtProcess(
       projectDir = workingDir,
       commandLinePrefix = commandLinePrefix,
-      sbtCommands = sbtOptions ++ (plugin.loadCommand(pluginJar) +: sbtCommands) :+ "exit",
-      envVars = environmentVariables(sbtGlobalBase, javaHome),
+      sbtOptions = sbtOptions,
+      sbtCommands = effectiveSbtCommands,
+      envVars = environmentVariables(sbtGlobalBase, sbtGlobalServerDirectory, javaHome, teamCityEnvironment),
       verbose = true,
       errorsExpected = true,
-      diagnosticLineNormaliser = TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput
+      diagnosticLineNormaliser = TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput,
+      commandsAsArguments = commandsAsArguments
     )
 
     SbtOutputVerifier.checkOutputText(runResult.processOutput, excludesFile, requiredFiles)
+    if (expectNoTeamCityMessages) {
+      assertFalse("Logger emitted TeamCity service messages outside TeamCity", runResult.processOutput.contains("##teamcity["))
+    }
 
     runResult.exitCode
   }
 
-  private def environmentVariables(sbtHome: File, javaHome: File): Seq[String] = {
+  private def environmentVariables(
+    sbtHome: File,
+    sbtGlobalServerDirectory: Option[File],
+    javaHome: File,
+    includeTeamcityVersion: Boolean
+  ): Seq[String] = {
     val javaHomePath = javaHome.getAbsolutePath
     val sbtHomePath = sbtHome.getAbsolutePath
 
     val path = System.getenv("PATH")
     val pathWithJava = prependPath(s"$javaHomePath/bin", path)
 
-    val teamcityVersion = "9.0.TEST"
+    val sbtGlobalServerDirEnv: Option[String] = sbtGlobalServerDirectory.map { dir =>
+      s"SBT_GLOBAL_SERVER_DIR=${dir.getAbsolutePath}"
+    }
+    val teamcityVersionEnv: Option[String] = Option.when(includeTeamcityVersion) {
+      "TEAMCITY_VERSION=9.0.TEST"
+    }
+
     Seq(
       s"PATH=$pathWithJava",
       s"JAVA_HOME=$javaHomePath",
       s"SBT_HOME=$sbtHomePath",
-      s"TEAMCITY_VERSION=$teamcityVersion",
-    )
+    ) ++ sbtGlobalServerDirEnv
+      ++ teamcityVersionEnv
   }
 
   private def prependPath(newPathEntry: String, pathOld: String): String = {
