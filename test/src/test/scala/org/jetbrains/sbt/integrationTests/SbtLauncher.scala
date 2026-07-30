@@ -8,8 +8,7 @@ import java.nio.file.{Files, StandardCopyOption}
 /**
  * Downloads and caches the sbt launcher jar used by nested integration-test sbt processes.
  *
- * The launcher version is selected by the test runtime. Legacy sbt 0.13 fixtures need a legacy launcher because modern
- * launchers can produce a boot/component layout that sbt 0.13 does not understand.
+ * The launcher version is selected by the test runtime, keeping the nested process isolated from the harness build.
  */
 object SbtLauncher {
   private val MavenCentralBaseUrl = "https://repo1.maven.org/maven2"

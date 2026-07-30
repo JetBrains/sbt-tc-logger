@@ -1,2 +1,0 @@
-##teamcity\[message status='NORMAL' flowId='.*' text='.*Initial source changes:.*\]
-\[debug\](.*)

@@ -1,2 +1,0 @@
-##teamcity\[testStarted name='suites.NonParallelSuite.tests.ParallelTest.should Write Passing Tests'.*\]
-##teamcity\[testFinished name='suites.NonParallelSuite.tests.ParallelTest.should Write Passing Tests'.*\]
