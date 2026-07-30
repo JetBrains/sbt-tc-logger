@@ -62,7 +62,7 @@ class TCLogAppender extends LogAppender {
     status
   }
 
-  def processSpecialErrorsMessage(message: String, flowId: String) {
+  def processSpecialErrorsMessage(message: String, flowId: String): Unit = {
     val suffix = "java.lang.ExceptionInInitializerError"
     val prefix = "Could not run test"
     if (message.indexOf(suffix) > -1 && message.indexOf(prefix) > -1){
@@ -71,58 +71,58 @@ class TCLogAppender extends LogAppender {
     }
   }
 
-  def compilationBlockStart(flowId: String) {
+  def compilationBlockStart(flowId: String): Unit = {
     printServerMessage("compilationStarted", "compiler" -> CompilerName, "flowId" -> flowId)
   }
 
-  def compilationBlockEnd(flowId: String) {
+  def compilationBlockEnd(flowId: String): Unit = {
     printServerMessage("compilationFinished", "compiler" -> CompilerName, "flowId" ->  flowId)
   }
 
-  def compilationTestBlockStart(flowId: String) {
+  def compilationTestBlockStart(flowId: String): Unit = {
     printServerMessage("compilationStarted", "compiler" -> s"$CompilerName in Test", "flowId" -> flowId)
   }
 
-  def compilationTestBlockEnd(flowId: String) {
+  def compilationTestBlockEnd(flowId: String): Unit = {
     printServerMessage("compilationFinished", "compiler" -> s"$CompilerName in Test", "flowId" -> flowId)
   }
 
 
-  def testSuiteStart(name: String, flowId: String) {
+  def testSuiteStart(name: String, flowId: String): Unit = {
     printServerMessage("testSuiteStarted","name" -> name, "flowId" -> flowId)
   }
 
 
-  def testStart(name: String, flowId: String){
+  def testStart(name: String, flowId: String): Unit = {
     printServerMessage("testStarted", "name" -> name, "captureStandardOutput" -> "true", "flowId" -> flowId)
   }
 
-  def testFinished(name: String, status: String, duration: Long, flowId: String){
+  def testFinished(name: String, status: String, duration: Long, flowId: String): Unit = {
     printServerMessage("testFinished", "name" -> name, "duration" -> s"$duration", "flowId" -> flowId)
   }
 
-  def testFailed(name: String, details: String, flowId: String){
+  def testFailed(name: String, details: String, flowId: String): Unit = {
     printServerMessage("testFailed", "name" -> name, "details" -> details, "flowId" -> flowId)
   }
 
-  def testSkipped(name: String, flowId: String){
+  def testSkipped(name: String, flowId: String): Unit = {
     printServerMessage("testIgnored","name" -> name, "flowId" -> flowId)
   }
 
-  def testCancelled(name: String, flowId: String){
+  def testCancelled(name: String, flowId: String): Unit = {
     printServerMessage("message", "text" -> s"Test $name was cancelled", "flowId" -> flowId)
   }
 
-  def testSuiteSuccessfulResult(name: String, flowId: String) {
+  def testSuiteSuccessfulResult(name: String, flowId: String): Unit = {
     printServerMessage("testSuiteFinished", "name" -> name, "flowId" -> flowId)
   }
 
-  def testSuiteFailResult(name: String, t: Throwable, flowId: String) {
+  def testSuiteFailResult(name: String, t: Throwable, flowId: String): Unit = {
     val details = t.getStackTrace
     printServerMessage("testSuiteFinished","name" -> name, "message" -> t.getMessage, "details" -> s"$details", "flowId" -> flowId)
   }
 
-  private def printServerMessage(messageName: String, attributes: (String, String)*) {
+  private def printServerMessage(messageName: String, attributes: (String, String)*): Unit = {
     val attributeString = attributes.map {
       case (k, v) => s"$k='${MapSerializerUtil.escapeStr(v,MapSerializerUtil.STD_ESCAPER2)}'"
     }.mkString(" ")
