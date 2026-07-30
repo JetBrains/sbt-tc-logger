@@ -1,10 +1,8 @@
 import sbt.Def
 import sbtassembly.AssemblyPlugin.autoImport.*
 
-val ScalaVersion_210 = "2.10.7"
 val ScalaVersion_212 = "2.12.21"
 
-val SbtVersion_013 = "0.13.17"
 val SbtVersion_1xx = "1.12.12"
 
 lazy val logger: Project = (project in file("."))
@@ -30,13 +28,11 @@ lazy val logger: Project = (project in file("."))
 lazy val pluginCrossBuildSettings: Seq[Def.Setting[_]] = Seq(
   scalaVersion := ScalaVersion_212,
   crossScalaVersions := Seq(
-    ScalaVersion_210, // for sbt 0.13
     ScalaVersion_212 // for sbt 1.x
   ),
   crossSbtVersions := Nil,
   pluginCrossBuild / sbtVersion := {
     scalaBinaryVersion.value match {
-      case "2.10" => SbtVersion_013
       case "2.12" => SbtVersion_1xx
       case binaryVersion => sys.error(s"Unsupported Scala binary version for sbt-teamcity-logger: $binaryVersion")
     }
@@ -84,5 +80,4 @@ lazy val junitTestFrameworkDependencies: Seq[ModuleID] = Seq(
   "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
 )
 
-addCommandAlias("testSbt013", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest013")
 addCommandAlias("testSbt100", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest100")
