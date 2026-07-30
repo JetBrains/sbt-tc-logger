@@ -5,7 +5,8 @@ import java.io.File
 /**
  * @note copied from sbt-structure `org.jetbrains.sbt.integrationTests.utils.CurrentEnvironment`.
  *       Adaptations: package changed; global sbt-structure directories and option building were omitted; Java selection
- *       is auto-only and returns the current Java for sbt 1.3+ and a discovered Java 8/11 for older sbt runtimes.
+ *       is auto-only and returns Java 17 for SBT 2 fixture runs, the current Java for other SBT 1.3+ runs,
+ *       and a discovered Java 8/11 for older sbt runtimes.
  */
 object CurrentEnvironment {
 
@@ -44,12 +45,26 @@ object CurrentEnvironment {
 
   lazy val JavaOldExecutablePath: String = javaExecutable(JavaOldHome).getCanonicalPath
 
+  // SBT 2 itself accepts current JDKs, but this suite intentionally retains
+  // projects compiled with Scala 2.10/2.11. Their compiler bridges cannot be
+  // compiled on Java 25, whereas Java 17 remains compatible with SBT 2.0.4.
+  lazy val Java17Home: File =
+    findJvmInstallation("17").getOrElse {
+      throw new IllegalStateException(
+        "Java 17 was not found in default locations:\n" + PossibleJvmLocations.mkString("\n")
+      )
+    }
+
+  lazy val Java17ExecutablePath: String = javaExecutable(Java17Home).getCanonicalPath
+
   def javaExecutableFor(sbtVersion: Version): String =
-    if (sbtVersion >= Version("1.3.0")) CurrentJavaExecutablePath
+    if (sbtVersion >= Version("2.0.0")) Java17ExecutablePath
+    else if (sbtVersion >= Version("1.3.0")) CurrentJavaExecutablePath
     else JavaOldExecutablePath
 
   def javaHomeFor(sbtVersion: Version): File =
-    if (sbtVersion >= Version("1.3.0")) CurrentJavaHome
+    if (sbtVersion >= Version("2.0.0")) Java17Home
+    else if (sbtVersion >= Version("1.3.0")) CurrentJavaHome
     else JavaOldHome
 
   private def findJvmInstallation(javaVersion: String): Option[File] = {

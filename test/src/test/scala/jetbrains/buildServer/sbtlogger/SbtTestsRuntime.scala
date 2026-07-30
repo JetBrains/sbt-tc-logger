@@ -19,6 +19,10 @@ final case class SbtTestsRuntime(
  */
 object SbtTestsRuntime {
   val Sbt100: SbtTestsRuntime = SbtTestsRuntime("1.0", "test/testdata/1.0", "2.12", "1.0", "1.0.0", "1.0.0")
+  // SBT 2 reports its plugin binary version as `2`, while the runtime line and
+  // fixture directory remain `2.0`. Keep those concepts separate so the harness
+  // locates the jar that the build actually packages.
+  val Sbt200: SbtTestsRuntime = SbtTestsRuntime("2.0", "test/testdata/2.0", "3", "2", "2.0.4", "2.0.4")
 
-  val All: Seq[SbtTestsRuntime] = Seq(Sbt100)
+  val All: Seq[SbtTestsRuntime] = Seq(Sbt100, Sbt200)
 }
