@@ -10,35 +10,13 @@ import org.junit.{Ignore, Test}
  * unified.
  */
 class SbtLoggerOutputTest100 extends SbtLoggerOutputTestsCommon(SbtTestsRuntime.Sbt100) {
-  @Ignore("disabled in the previous sbt 1.x suite; preserved explicitly during suite unification")
-  @Test
-  override def testScalaTest(): Unit = ()
-
-  @Ignore("no active sbt 1.x coverage existed before suite unification")
-  @Test
-  override def testNoSbtFileInProject(): Unit = ()
-
-  @Ignore("disabled in the previous sbt 1.x suite; preserved explicitly during suite unification")
-  @Test
-  override def testWarningInTestOutput(): Unit = ()
-
-  @Ignore("no active sbt 1.x coverage existed before suite unification")
+  // The removed fixture launched SBT 0.13.15, but this plugin now ships only SBT 1.x and 2.x artifacts.
+  @Ignore("otherVersions requires retired SBT 0.13.15 coverage")
   @Test
   override def testOtherSbtVersions(): Unit = ()
 
-  @Ignore("disabled in the previous sbt 1.x suite; preserved explicitly during suite unification")
-  @Test
-  override def testIgnoredTest(): Unit = ()
-
-  @Ignore("disabled in the previous sbt 1.x suite; preserved explicitly during suite unification")
-  @Test
-  override def testNestedSuites(): Unit = ()
-
-  @Ignore("disabled in the previous sbt 1.x suite; preserved explicitly during suite unification")
-  @Test
-  override def testSpec2(): Unit = ()
-
-  @Ignore("disabled in the previous sbt 1.x suite; preserved explicitly during suite unification")
+  // SBT 1 emits only a raw ExceptionInInitializerError, so the SBT 0.13 testFailed/suite-close expectation cannot be met.
+  @Ignore("SBT 1 does not expose initialization-abort test events")
   @Test
   override def testTW50753_initErrorInTests(): Unit = ()
 }

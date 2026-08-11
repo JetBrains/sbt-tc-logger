@@ -1,8 +1,7 @@
-import org.scalatest._
-import org.scalatest.FunSpec
+import org.scalatest.funspec.AnyFunSpec
 import org.slf4j.LoggerFactory
 
-class TestSpec extends FunSpec {
+class TestSpec extends AnyFunSpec {
 
 
   def logger = LoggerFactory.getLogger(this.getClass)
