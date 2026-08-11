@@ -37,8 +37,13 @@ To be sure that plugin was installed correctly you can use `sbt-teamcity-logger`
 
 ## Development
 
-Use the repository root as the sbt build. Its host remains SBT 1.12.12 while it cross-builds the logger against
-SBT 1.12.12/Scala 2.12.21 and SBT 2.0.0/Scala 3.8.4.
+Use JDK 17 to run the repository's SBT build and integration-test harness; set `JAVA_HOME` to a JDK 17 installation
+before invoking `sbt`. The host remains SBT 1.12.12 while it cross-builds the logger against SBT 1.12.12/Scala 2.12.21 and
+SBT 2.0.0/Scala 3.8.4.
+
+The SBT 1.x logger is compiled with Java 8 release compatibility so it remains loadable by supported SBT 1 runtimes;
+the SBT 2.x logger and the build itself run on JDK 17. Running the full integration suite also requires a local
+Java 8 or Java 11 installation for the legacy SBT fixtures.
 
 TODO: after this SBT-2-capable logger release is published, upgrade the host build to SBT 2.0.4. TeamCity currently
 builds and publishes this repository using the preceding logger release, which cannot run on SBT 2.
