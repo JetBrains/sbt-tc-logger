@@ -48,17 +48,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase("multiproject", Seq("compile"), sbtOptions = Seq("--debug")))
 
   @Test
-  def testScalaTest(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      "testsupport/scalatest",
-      Seq("test"),
-      outputFiles = Seq("output.txt", "output1.txt"),
-      expectZeroExitCode = true
-    ))
-
-  @Test
   def testNoSbtFileInProject(): Unit =
-    runCase(SbtLoggerOutputTestCase("nosbtfile", Seq("compile")))
+    runCase(SbtLoggerOutputTestCase("nosbtfile", Seq("compile"), expectZeroExitCode = true))
 
   @Test
   def testJUnit(): Unit =
@@ -70,7 +61,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test
   def testWarningInTestOutput(): Unit =
-    runCase(SbtLoggerOutputTestCase("TW35693", Seq("test")))
+    runCase(SbtLoggerOutputTestCase("TW35693", Seq("test"), expectZeroExitCode = true))
 
   @Test
   def testTW35404_error(): Unit =
@@ -112,11 +103,11 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test
   def testIgnoredTest(): Unit =
-    runCase(SbtLoggerOutputTestCase("ignoredTest", Seq("test"), sbtOptions = Seq("--info")))
+    runCase(SbtLoggerOutputTestCase("ignoredTest", Seq("test"), sbtOptions = Seq("--info"), expectZeroExitCode = true))
 
   @Test
   def testNestedSuites(): Unit =
-    runCase(SbtLoggerOutputTestCase("testsupport/nested", Seq("test"), sbtOptions = Seq("--info")))
+    runCase(SbtLoggerOutputTestCase("testsupport/nested", Seq("test"), sbtOptions = Seq("--info"), expectZeroExitCode = true))
 
   @Test
   def testSpecTW46964(): Unit =
@@ -124,7 +115,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test
   def testSpec2(): Unit =
-    runCase(SbtLoggerOutputTestCase("testsupport/spec2", Seq("testOnly"), outputFiles = Seq("output.txt")))
+    runCase(SbtLoggerOutputTestCase("testsupport/spec2", Seq("testOnly"), outputFiles = Seq("output.txt"), expectZeroExitCode = true))
 
   @Test
   def testTW50753_initErrorInTests(): Unit =

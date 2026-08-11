@@ -1,9 +1,8 @@
 
+import org.scalatest.Suites
+import org.scalatest.funsuite.AnyFunSuite
 
-
-import org.scalatest._
-
-class ASuite extends FunSuite {
+class ASuite extends AnyFunSuite {
   test("A should have ASCII value 41 hex") {
     assert('A' === 0x41)
   }
@@ -11,7 +10,7 @@ class ASuite extends FunSuite {
     assert('a' === 0x61)
   }
 }
-class BSuite extends FunSuite {
+class BSuite extends AnyFunSuite {
   test("B should have ASCII value 42 hex") {
     assert('B' === 0x42)
   }
@@ -19,7 +18,7 @@ class BSuite extends FunSuite {
     assert('b' === 0x62)
   }
 }
-class CSuite extends FunSuite {
+class CSuite extends AnyFunSuite {
   test("C should have ASCII value 43 hex") {
     assert('C' === 0x43)
   }

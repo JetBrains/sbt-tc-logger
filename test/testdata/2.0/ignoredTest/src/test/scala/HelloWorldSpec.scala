@@ -1,16 +1,9 @@
-import org.specs2.mutable.Specification
+import org.scalatest.funspec.AnyFunSpec
 
-class HelloWorldSpec extends Specification {
-  skipAllIf(true)
-  "The 'Hello world' string" should {
-    "contain 11 characters" in {
-      "Hello world" must have size(11)
-    }
-    "start with 'Hello'" in {
-      "Hello world" must startWith("Hello")
-    }
-    "end with 'world'" in {
-      "Hello world" must endWith("world")
-    }
+class HelloWorldSpec extends AnyFunSpec {
+  describe("The 'Hello world' string should") {
+    ignore("contain 11 characters") {}
+    ignore("start with 'Hello'") {}
+    ignore("end with 'world'") {}
   }
 }
