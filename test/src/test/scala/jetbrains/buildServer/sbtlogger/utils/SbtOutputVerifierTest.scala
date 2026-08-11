@@ -49,6 +49,26 @@ class SbtOutputVerifierTest {
     }
   }
 
+  @Test
+  def requiredPatternFailureReportsUsefulMatchContext(): Unit = {
+    val required = patternFile("required", "first", "second")
+
+    val error = expectAssertionError {
+      SbtOutputVerifier.checkOutputText(
+        "first\nunexpected\n",
+        excludesFile = None,
+        requiredFiles = Seq(required)
+      )
+    }
+
+    val message = error.getMessage
+    Assert.assertTrue(message.contains("Matched 1/2 patterns across 2 captured output lines."))
+    Assert.assertTrue(message.contains("Last matched pattern:"))
+    Assert.assertTrue(message.contains("matched output line 1: first"))
+    Assert.assertTrue(message.contains("First missing pattern:"))
+    Assert.assertTrue(message.contains("See the build log for the complete nested-sbt output."))
+  }
+
   private def patternFile(prefix: String, lines: String*): File = {
     val file = FileUtils.createTempFile(prefix, ".txt")
     FileUtils.writeLinesTo(file, lines*)
