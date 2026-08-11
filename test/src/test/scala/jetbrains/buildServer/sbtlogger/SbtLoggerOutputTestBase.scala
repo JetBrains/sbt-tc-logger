@@ -111,6 +111,11 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       else
         Seq.empty
 
+    val environmentVariablesToRemove =
+      if (teamCityEnvironment) Seq.empty
+      // ProcessBuilder inherits the TeamCity agent environment, so merely omitting our test value would still leave this set.
+      else Seq("TEAMCITY_VERSION")
+
     val runResult = SbtProcessRunner.runSbtProcess(
       projectDir = workingDir,
       commandLinePrefix = commandLinePrefix,
@@ -120,7 +125,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       verbose = true,
       errorsExpected = true,
       diagnosticLineNormaliser = TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput,
-      commandsAsArguments = commandsAsArguments
+      commandsAsArguments = commandsAsArguments,
+      environmentVariablesToRemove = environmentVariablesToRemove
     )
 
     SbtOutputVerifier.checkOutputText(runResult.processOutput, excludesFile, requiredFiles)

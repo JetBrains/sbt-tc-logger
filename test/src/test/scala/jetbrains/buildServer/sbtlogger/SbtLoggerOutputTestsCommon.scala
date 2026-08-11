@@ -19,6 +19,19 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase("compileerror", Seq("sbt-teamcity-logger"), outputFiles = Seq("plugin_status_output.txt")))
 
   @Test
+  def testNonTeamCityMode(): Unit =
+    // Keep this shared: the plugin must remain silent outside TeamCity on every supported SBT version.
+    runCase(
+      SbtLoggerOutputTestCase(
+        "compileerror",
+        Seq("sbt-teamcity-logger"),
+        outputFiles = Seq("plugin_status_non_teamcity_output.txt"),
+        teamCityEnvironment = false,
+        expectNoTeamCityMessages = true
+      )
+    )
+
+  @Test
   def testCompileErrorOutput(): Unit =
     runCase(SbtLoggerOutputTestCase("compileerror", Seq("compile")))
 
