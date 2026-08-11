@@ -22,7 +22,8 @@ object SbtProcessRunner {
     verbose: Boolean,
     errorsExpected: Boolean,
     diagnosticLineNormaliser: String => String = identity,
-    commandsAsArguments: Boolean = false
+    commandsAsArguments: Boolean = false,
+    environmentVariablesToRemove: Seq[String] = Seq.empty
   ): ProcessRunResult = {
     val sbtCommandsText = sbtCommands.mkString("\n")
     val commandsFile =
@@ -49,10 +50,22 @@ object SbtProcessRunner {
          |
          |SBT process environment variables:
          |${indented(envVars.mkString("\n"), spaces = 4)}
+         |
+         |SBT process environment variables removed:
+         |${indented(environmentVariablesToRemove.mkString("\n"), spaces = 4)}
          |""".stripMargin
     )
 
-    runProcess(commandLine, commandsFile, projectDir, envVars, verbose, errorsExpected, diagnosticLineNormaliser)
+    runProcess(
+      commandLine,
+      commandsFile,
+      projectDir,
+      envVars,
+      environmentVariablesToRemove,
+      verbose,
+      errorsExpected,
+      diagnosticLineNormaliser
+    )
   }
 
   private def runProcess(
@@ -60,6 +73,7 @@ object SbtProcessRunner {
     commandsFile: Option[File],
     directory: File,
     envVars: Seq[String],
+    environmentVariablesToRemove: Seq[String],
     verbose: Boolean,
     errorsExpected: Boolean,
     diagnosticLineNormaliser: String => String
@@ -68,6 +82,8 @@ object SbtProcessRunner {
     builder.directory(directory)
     commandsFile.foreach(builder.redirectInput)
     val environment = builder.environment()
+    // Remove inherited variables first so callers can model an absent value while still overriding other parent settings.
+    environmentVariablesToRemove.foreach(environment.remove)
     envVars.foreach { envVar =>
       val splitIndex = envVar.indexOf('=')
       if (splitIndex > 0) {
