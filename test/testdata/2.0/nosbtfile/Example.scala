@@ -6,7 +6,7 @@ case class Fun(arg: String, body: Term) extends Term
 case class App(f: Term, v: Term) extends Term
 
 object TermTest extends scala.App {
-  def printTerm(term: Term) {
+  def printTerm(term: Term): Unit = {
     term match {
       case Var(n) =>
         print(n)
@@ -28,7 +28,7 @@ object TermTest extends scala.App {
   val id = Fun("x", Var("x"))
   val t = Fun("x", Fun("y", App(Var("x"), Var("y"))))
   printTerm(t)
-  println
+  println()
   println(isIdentityFun(id))
   println(isIdentityFun(t))
 }
