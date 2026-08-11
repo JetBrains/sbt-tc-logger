@@ -21,9 +21,11 @@ or register plugin as a global plugin for your SBT according to [SBT documentati
 New logger releases support SBT 1.x and SBT 2.x. \
 SBT 1 uses the standard `addSbtPlugin` installation shown above. \
 SBT 2 uses the self-contained direct-load jar:
-`apply -cp <path-to>/sbt-teamcity-logger_3_2.0-<logger version>.jar jetbrains.buildServer.sbtlogger.SbtTeamCityLogger`
+`apply -cp <path-to>/sbt-teamcity-logger_sbt2_3-<logger version>.jar jetbrains.buildServer.sbtlogger.SbtTeamCityLogger`
 
-The TeamCity SBT runner performs that direct load automatically in `Auto` installation mode.
+The TeamCity SBT runner performs that direct load automatically in `Auto` installation mode. It embeds both runtime
+variants under their SBT-line directories as `sbt-teamcity-logger.jar`; the directory, not the filename, selects the
+compatible JAR.
 
 SBT 0.13 is supported by the runner through the immutable final legacy release `L`
 (`sbt-teamcity-logger_2.10_0.13:L`). New logger releases do not publish an SBT 0.13 artifact;
@@ -55,13 +57,22 @@ builds and publishes this repository using the preceding logger release, which c
 The logger sources live directly under `src/`. 
 TeamCity service messages are resolved as the managed `org.jetbrains.teamcity:serviceMessages` dependency and packaged into the self-contained logger jar.
 
-Releases are versioned by Git tags through `sbt-dynver`, for example `v1.1.0`. The public Maven artifacts use the logger release version as the artifact version and put the Scala/sbt binary versions in the artifact id:
+### Artifact contracts
+
+Releases are versioned by Git tags through `sbt-dynver`, for example `v1.1.0`. Maven coordinates identify a
+compatibility variant; the direct-load filename intentionally does not.
 
 - `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_2.12_1.0:<logger version>` for SBT 1.x
-- `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_3_2.0:<logger version>` for SBT 2.x
+- `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_sbt2_3:<logger version>` for SBT 2.x
 
-The SBT 2 artifact is deliberately a direct-load jar, rather than an SBT plugin-discovery artifact, so its
-Maven coordinate remains the stable runner contract above. Load it with `apply -cp` as shown in Installation.
+`Compile / packageBin` produces the self-contained direct-load JARs at
+`target/scala-2.12/sbt-1.0/sbt-teamcity-logger.jar` and
+`target/scala-3/sbt-2/sbt-teamcity-logger.jar`. TeamCity embeds each one in the matching `sbt-distrib/<sbt-line>`
+directory with that same filename.
+
+The SBT 2 artifact is deliberately direct-loaded rather than discovered as an SBT plugin. Its Maven coordinate follows
+SBT 2's `_sbt2_3` convention, but the SBT 1.12 host produces it through an explicit compatibility shim; this is not
+native SBT 2 `SbtPlugin` publication yet. Load it with `apply -cp` as shown in Installation.
 `publishLocal` for the next major release must produce only these two artifacts; it must not produce
 `sbt-teamcity-logger_2.10_0.13`.
 
