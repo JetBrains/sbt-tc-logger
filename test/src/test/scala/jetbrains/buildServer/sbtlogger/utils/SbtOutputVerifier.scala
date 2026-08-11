@@ -165,15 +165,17 @@ private[sbtlogger] object SbtOutputVerifier {
     requiredPatterns: ExpectedPatternGroup
   ): RequiredMatchResult = {
     var matchedCount = 0
+    var lastMatch: Option[OutputMatch] = None
 
-    for (line <- allLines if matchedCount < requiredPatterns.patterns.size) {
+    for ((line, outputLineIndex) <- allLines.iterator.zipWithIndex if matchedCount < requiredPatterns.patterns.size) {
       val currentPattern = requiredPatterns.patterns(matchedCount)
       if (currentPattern.matches(line)) {
+        lastMatch = Some(OutputMatch(currentPattern, outputLineIndex + 1, line))
         matchedCount += 1
       }
     }
 
-    RequiredMatchResult(requiredPatterns, matchedCount)
+    RequiredMatchResult(requiredPatterns, matchedCount, allLines.size, lastMatch)
   }
 
   private def assertNoForbiddenMatches(matches: Seq[ForbiddenMatch]): Unit = {
@@ -191,10 +193,13 @@ private[sbtlogger] object SbtOutputVerifier {
   private def assertRequiredPatternsMatched(result: RequiredMatchResult): Unit = {
     if (!result.isComplete) {
       val message =
-        s"""Required output patterns from ${normalisedAbsolutePath(result.patterns.file)} were not matched in order.
-           |Matched ${result.matchedCount}/${result.patterns.patterns.size} patterns.
+        s"""Output verification failed: required patterns from ${normalisedAbsolutePath(result.patterns.file)} were not matched in order.
+           |Matched ${result.matchedCount}/${result.patterns.patterns.size} patterns across ${result.outputLineCount} captured output lines.
+           |Last matched pattern:
+           |${result.lastMatch.map(_.diagnosticText).getOrElse("<none>")}
            |First missing pattern:
            |${result.firstMissingPattern.map(_.diagnosticText).getOrElse("<none>")}
+           |See the build log for the complete nested-sbt output.
            |""".stripMargin
       println(message)
       Assert.fail(message)
@@ -250,7 +255,17 @@ private[sbtlogger] object SbtOutputVerifier {
       s"${pattern.diagnosticText}${System.lineSeparator()}  matched output: $outputLine"
   }
 
-  private final case class RequiredMatchResult(patterns: ExpectedPatternGroup, matchedCount: Int) {
+  private final case class OutputMatch(pattern: ExpectedPattern, outputLineNumber: Int, outputLine: String) {
+    def diagnosticText: String =
+      s"${pattern.diagnosticText}${System.lineSeparator()}  matched output line $outputLineNumber: $outputLine"
+  }
+
+  private final case class RequiredMatchResult(
+    patterns: ExpectedPatternGroup,
+    matchedCount: Int,
+    outputLineCount: Int,
+    lastMatch: Option[OutputMatch]
+  ) {
     def isComplete: Boolean =
       matchedCount == patterns.patterns.size
 
