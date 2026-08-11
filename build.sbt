@@ -7,6 +7,8 @@ val ScalaVersion_3 = "3.8.4"
 val SbtVersion_1xx = "1.12.12"
 val SbtVersion_2xx = "2.0.0"
 
+def isSbt1(version: String): Boolean = version.startsWith("1.")
+
 lazy val logger: Project = (project in file("."))
   .aggregate(
     integrationTests
@@ -40,6 +42,16 @@ lazy val pluginCrossBuildSettings: Seq[Def.Setting[_]] = Seq(
       case "3" => SbtVersion_2xx
       case binaryVersion => sys.error(s"Unsupported Scala binary version for sbt-teamcity-logger: $binaryVersion")
     }
+  },
+  // SBT 1 plugins must still load in Java 8 runtimes. The SBT 2 cross-build
+  // needs Java 17, so keep its default release target.
+  Compile / scalacOptions ++= {
+    if (isSbt1((pluginCrossBuild / sbtVersion).value)) Seq("-release", "8")
+    else Nil
+  },
+  Compile / javacOptions ++= {
+    if (isSbt1((pluginCrossBuild / sbtVersion).value)) Seq("--release", "8")
+    else Nil
   },
 ) ++ sbt2DirectLoadArtifactSettings
 
