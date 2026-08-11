@@ -86,7 +86,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       new File(sourceWorkingDir, outputFile)
     }
 
-    val commandsAsArguments = runtime.sbtBinaryVersion == "2"
+    val commandsAsArguments = runtime.commandTransport == SbtCommandTransport.CommandArgument
 
     val sbtGlobalServerDirectory =
       Option.when(commandsAsArguments)(SbtIntegrationTestLayout.sbtGlobalServerDirectory(runtime.id, runtime.launcherVersion))
@@ -99,14 +99,22 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
 
     val effectiveSbtCommands: Seq[String] =
       if (commandsAsArguments)
+        // SBT 2 must receive a non-interactive command argument. See this commit's message for the transport rationale.
         plugin.loadCommand(pluginJar) +: localCacheCommand +: sbtCommands :+ "exit"
       else
-        plugin.loadCommand(pluginJar) +: sbtCommands :+ "exit"
+        // SBT 1.0 must keep options in its stdin script. See this commit's message for the compatibility rationale.
+        sbtOptions ++ (plugin.loadCommand(pluginJar) +: sbtCommands :+ "exit")
+
+    val effectiveSbtOptions =
+      if (commandsAsArguments)
+        sbtOptions
+      else
+        Seq.empty
 
     val runResult = SbtProcessRunner.runSbtProcess(
       projectDir = workingDir,
       commandLinePrefix = commandLinePrefix,
-      sbtOptions = sbtOptions,
+      sbtOptions = effectiveSbtOptions,
       sbtCommands = effectiveSbtCommands,
       envVars = environmentVariables(sbtGlobalBase, sbtGlobalServerDirectory, javaHome, teamCityEnvironment),
       verbose = true,

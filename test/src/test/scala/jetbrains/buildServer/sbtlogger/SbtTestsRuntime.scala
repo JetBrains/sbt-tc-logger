@@ -11,18 +11,44 @@ final case class SbtTestsRuntime(
   scalaBinaryVersion: String,
   sbtBinaryVersion: String,
   launcherVersion: String,
-  defaultSbtVersion: String
+  defaultSbtVersion: String,
+  commandTransport: SbtCommandTransport
 )
+
+/** Selects how the nested SBT launcher receives its options and commands. */
+enum SbtCommandTransport {
+  /** Feed the interactive SBT shell through standard input. */
+  case StandardInput
+
+  /** Pass the complete non-interactive command sequence to the launcher as an argument. */
+  case CommandArgument
+}
 
 /**
  * Runtime catalog for all sbt versions that the integration-test harness exercises.
  */
 object SbtTestsRuntime {
-  val Sbt100: SbtTestsRuntime = SbtTestsRuntime("1.0", "test/testdata/1.0", "2.12", "1.0", "1.0.0", "1.0.0")
+  val Sbt100: SbtTestsRuntime = SbtTestsRuntime(
+    id = "1.0",
+    testDataRelativePath = "test/testdata/1.0",
+    scalaBinaryVersion = "2.12",
+    sbtBinaryVersion = "1.0",
+    launcherVersion = "1.0.0",
+    defaultSbtVersion = "1.0.0",
+    commandTransport = SbtCommandTransport.StandardInput
+  )
   // SBT 2 reports its plugin binary version as `2`, while the runtime line and
   // fixture directory remain `2.0`. Keep those concepts separate so the harness
   // locates the jar that the build actually packages.
-  val Sbt200: SbtTestsRuntime = SbtTestsRuntime("2.0", "test/testdata/2.0", "3", "2", "2.0.4", "2.0.4")
+  val Sbt200: SbtTestsRuntime = SbtTestsRuntime(
+    id = "2.0",
+    testDataRelativePath = "test/testdata/2.0",
+    scalaBinaryVersion = "3",
+    sbtBinaryVersion = "2",
+    launcherVersion = "2.0.4",
+    defaultSbtVersion = "2.0.4",
+    commandTransport = SbtCommandTransport.CommandArgument
+  )
 
   val All: Seq[SbtTestsRuntime] = Seq(Sbt100, Sbt200)
 }
