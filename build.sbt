@@ -4,7 +4,8 @@ import sbtassembly.AssemblyPlugin.autoImport.*
 val ScalaVersion_212 = "2.12.21"
 val ScalaVersion_3 = "3.8.4"
 
-val SbtVersion_1xx = "1.12.12"
+// Compile plugin artifacts against stable line baselines. Integration fixtures independently render their exact runtime.
+val SbtVersion_1xx = "1.12.0"
 val SbtVersion_2xx = "2.0.0"
 
 lazy val logger: Project = (project in file("."))
@@ -156,5 +157,9 @@ lazy val junitTestFrameworkDependencies: Seq[ModuleID] = Seq(
   "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
 )
 
-addCommandAlias("testSbt100", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest100")
-addCommandAlias("testSbt200", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest200")
+addCommandAlias("testSbt100", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_0_0")
+addCommandAlias("testSbt1Latest", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_Latest")
+addCommandAlias("testSbt2Latest", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_2_Latest")
+// Compatibility alias retained for callers that previously selected the only SBT 2 suite by its historical version.
+addCommandAlias("testSbt200", "testSbt2Latest")
+addCommandAlias("testAllSbtVersions", ";testSbt100;testSbt1Latest;testSbt2Latest")

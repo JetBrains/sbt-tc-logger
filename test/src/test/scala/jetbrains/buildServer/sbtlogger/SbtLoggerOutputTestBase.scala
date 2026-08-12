@@ -57,11 +57,17 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
   ): Int = {
     val root = IntegrationTestLayout.repoRoot()
     val sourceWorkingDir = SbtFixtureWorkspace.sourceFixtureDirectory(root, runtime.testDataRelativePath, testRepo)
-    val workingDir = SbtFixtureWorkspace.copyFixtureToWorkDirectory(root, runtime.id, testRepo, sourceWorkingDir)
+    val workingDir = SbtFixtureWorkspace.copyFixtureToWorkDirectory(
+      root,
+      runtime.id,
+      testRepo,
+      sourceWorkingDir,
+      runtime.sbtVersion
+    )
     val plugin = SbtLoggerPlugin.UnderTest
     val pluginJar = plugin.packagedJar(root, runtime.sbtBinaryVersion)
     val sbtGlobalBase = SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion)
-    val sbtVersion = SbtBuildPropertiesUtils.sbtVersionIn(workingDir).getOrElse(Version(runtime.launcherVersion))
+    val sbtVersion = Version(runtime.sbtVersion)
     val javaHome = CurrentEnvironment.javaHomeFor(sbtVersion)
     val javaBin = CurrentEnvironment.javaExecutableFor(sbtVersion)
 
@@ -104,7 +110,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
         // SBT 2 must receive a non-interactive command argument. See this commit's message for the transport rationale.
         plugin.loadCommand(pluginJar) +: localCacheCommand +: sbtCommands :+ "exit"
       else
-        // SBT 1.0 must keep options in its stdin script. See this commit's message for the compatibility rationale.
+        // SBT 1 fixtures keep options in their stdin script. See this commit's message for the compatibility rationale.
         sbtOptions ++ (plugin.loadCommand(pluginJar) +: sbtCommands :+ "exit")
 
     val effectiveSbtOptions =

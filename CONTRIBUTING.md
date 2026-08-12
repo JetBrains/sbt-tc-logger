@@ -3,7 +3,8 @@
 ## Prerequisites
 
 Use JDK 17 to run the repository's SBT build and integration-test harness; set `JAVA_HOME` to a JDK 17 installation before invoking `sbt`. \
-The host remains SBT 1.12.12 while it cross-builds the logger against SBT 1.12.12/Scala 2.12.21 and SBT 2.0.0/Scala 3.8.4.
+The host remains SBT 1.12.12 while it cross-builds the logger against the stable line baselines SBT 1.12.0/Scala 2.12.21 and SBT 2.0.0/Scala 3.8.4. \
+Those are plugin compilation targets, not the concrete nested SBT versions exercised by integration tests.
 
 The SBT 1.x logger is compiled with Java 8 release compatibility so it remains loadable by supported SBT 1 runtimes; the SBT 2.x logger and the build itself run on JDK 17. \
 Running the full integration suite also requires a local Java 8 or Java 11 installation for the legacy SBT fixtures.
@@ -20,7 +21,7 @@ TeamCity service messages are resolved as the managed `org.jetbrains.teamcity:se
 ## Run integration tests
 
 Integration tests launch the SBT 1.x and SBT 2.x runtimes. \
-SBT 1 uses Java 8 or Java 11 discovered from standard OS locations; the SBT 2.0.4 fixtures run on Java 17.
+SBT 1.0.0 uses Java 8 or Java 11 discovered from standard OS locations; SBT 1.12.15 uses the harness JVM; and the SBT 2.0.6 fixtures run on Java 17.
 
 Integration tests load the assembled logger jar into nested sbt with sbt's `apply -cp` command. \
 Before running them, build the plugin jar:
@@ -37,16 +38,24 @@ Then run the tests:
 
 1. The pre-step assembles `sbt-teamcity-logger` and stages one self-contained JAR per SBT line under `target/integration-tests/artifacts/`.
 2. `sbt test` enters the Scala/JUnit harness in the `integrationTests` project.
-3. Each JUnit test copies its fixture under `target/integration-tests/work/<runtime>/`, then downloads or reuses the runtime launcher version under `target/integration-tests/sbt-launcher`.
+3. Each JUnit test copies its fixture under `target/integration-tests/work/<runtime>/`, renders its `sbt.version=@SBT_VERSION@` template with that runtime's concrete version, then downloads or reuses the current launcher for the selected SBT line under `target/integration-tests/sbt-launcher`.
 4. The nested sbt command file first runs `apply -cp <logger jar> jetbrains.buildServer.sbtlogger.SbtTeamCityLogger`.
-5. The fixture's own `project/build.properties` still decides which sbt runtime the launcher boots.
+5. Source fixture directories `testdata/1.0` and `testdata/2.0` identify plugin binary-version lines, not exact SBT releases. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
 6. The harness compares nested sbt output with the source fixture's `output.txt` regexes and checks `excludes.txt` when present.
 
 Useful targeted commands:
 
 `sbt testSbt100`
 
+`sbt testSbt1Latest`
+
+`sbt testSbt2Latest`
+
+`sbt testAllSbtVersions`
+
 `sbt testSbt200`
+
+`testSbt200` is retained as a compatibility alias for `testSbt2Latest`. The active matrix runs SBT 1.0.0, SBT 1.12.15, and SBT 2.0.6. It does not run the dormant `jacoco` and `publishTest` fixtures.
 
 ## TeamCity SBT Runner
 
