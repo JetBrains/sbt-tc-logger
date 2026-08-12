@@ -1,4 +1,4 @@
-scalaVersion := "2.12.21"
+scalaVersion := "2.13.18"
 
 libraryDependencies ++= Seq(
   "junit" % "junit" % "4.13.2" % "test",

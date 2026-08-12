@@ -1,21 +1,22 @@
 package org.jetbrains.sbt.integrationTests
 
+import jetbrains.buildServer.sbtlogger.SbtTestJdk
+
 import java.io.File
+import scala.io.Source
+import scala.util.{Try, Using}
 
 /**
  * @note copied from sbt-structure `org.jetbrains.sbt.integrationTests.utils.CurrentEnvironment`.
  *       Adaptations: package changed; global sbt-structure directories and option building were omitted; Java selection
- *       is auto-only and returns Java 17 for SBT 2 fixture runs, the current Java for other SBT 1.3+ runs,
- *       and a discovered Java 8/11 for older sbt runtimes.
+ *       selects the explicit JDK recorded in the test runtime. This makes the JDK dimension visible in the test
+ *       matrix instead of inferring it from an SBT version.
  */
 object CurrentEnvironment {
 
   val OsName: String = System.getProperty("os.name").toLowerCase
   val UserHome: File = new File(System.getProperty("user.home")).getCanonicalFile.ensuring(_.exists())
   val WorkingDir: File = new File(".").getCanonicalFile
-
-  val CurrentJavaHome: File = new File(System.getProperty("java.home")).getCanonicalFile
-  val CurrentJavaExecutablePath: String = javaExecutable(CurrentJavaHome).getCanonicalPath
 
   val PossibleJvmLocations: Seq[File] =
     if (OsName.contains("mac")) Seq(
@@ -33,55 +34,56 @@ object CurrentEnvironment {
     else
       throw new UnsupportedOperationException("Unknown operating system: " + OsName)
 
-  lazy val JavaOldHome: File =
-    findJvmInstallation("1.8")
-      .orElse(findJvmInstallation("8"))
-      .orElse(findJvmInstallation("11"))
-      .getOrElse {
-        throw new IllegalStateException(
-          "Java 8 or 11 was not found in default locations:\n" + PossibleJvmLocations.mkString("\n")
-        )
-      }
+  lazy val Java8Home: File = javaHomeForMajor(SbtTestJdk.Jdk8)
+  lazy val Java8ExecutablePath: String = javaExecutable(Java8Home).getCanonicalPath
 
-  lazy val JavaOldExecutablePath: String = javaExecutable(JavaOldHome).getCanonicalPath
-
-  // SBT 2 itself accepts current JDKs, but this suite intentionally retains
-  // projects compiled with Scala 2.10/2.11. Their compiler bridges cannot be
-  // compiled on Java 25, whereas Java 17 remains compatible with SBT 2.0.4.
-  lazy val Java17Home: File =
-    findJvmInstallation("17").getOrElse {
-      throw new IllegalStateException(
-        "Java 17 was not found in default locations:\n" + PossibleJvmLocations.mkString("\n")
-      )
-    }
+  lazy val Java17Home: File = javaHomeForMajor(SbtTestJdk.Jdk17)
 
   lazy val Java17ExecutablePath: String = javaExecutable(Java17Home).getCanonicalPath
 
-  def javaExecutableFor(sbtVersion: Version): String =
-    if (sbtVersion >= Version("2.0.0")) Java17ExecutablePath
-    else if (sbtVersion >= Version("1.3.0")) CurrentJavaExecutablePath
-    else JavaOldExecutablePath
+  def javaExecutableFor(jdk: SbtTestJdk): String = jdk match {
+    case SbtTestJdk.Jdk8 => Java8ExecutablePath
+    case SbtTestJdk.Jdk17 => Java17ExecutablePath
+  }
 
-  def javaHomeFor(sbtVersion: Version): File =
-    if (sbtVersion >= Version("2.0.0")) Java17Home
-    else if (sbtVersion >= Version("1.3.0")) CurrentJavaHome
-    else JavaOldHome
+  def javaHomeFor(jdk: SbtTestJdk): File = jdk match {
+    case SbtTestJdk.Jdk8 => Java8Home
+    case SbtTestJdk.Jdk17 => Java17Home
+  }
 
-  private def findJvmInstallation(javaVersion: String): Option[File] = {
-    val jvmFolder = PossibleJvmLocations
+  private def javaHomeForMajor(jdk: SbtTestJdk): File =
+    findJvmInstallation(jdk.majorVersion).getOrElse {
+      throw new IllegalStateException(
+        s"Java ${jdk.majorVersion} was not found in default locations:\n${PossibleJvmLocations.mkString("\n")}. " +
+          s"Install an exact Java ${jdk.majorVersion} JDK; this test suite does not fall back to another Java version."
+      )
+    }
+
+  private def findJvmInstallation(majorVersion: Int): Option[File] = {
+    PossibleJvmLocations
       .flatMap { folder =>
         val dirs = Option(folder.listFiles()).getOrElse(Array.empty[File]).filter(_.isDirectory)
-        dirs.filter(_.getName.contains(javaVersion))
+        dirs.toSeq
       }
-      .headOption
-      .map { root =>
-        if (OsName.contains("mac"))
-          new File(root, "Contents/Home")
-        else
-          root
-      }
+      .map(javaHomeFromInstallation)
+      .find(javaHome => javaExecutable(javaHome).isFile && isExactJavaMajor(javaHome, majorVersion))
+  }
 
-    jvmFolder.filter(javaExecutable(_).isFile)
+  private def javaHomeFromInstallation(root: File): File =
+    if (OsName.contains("mac")) new File(root, "Contents/Home") else root
+
+  private def isExactJavaMajor(javaHome: File, majorVersion: Int): Boolean =
+    Try {
+      val process = new ProcessBuilder(javaExecutable(javaHome).getAbsolutePath, "-version")
+        .redirectErrorStream(true)
+        .start()
+      val versionOutput = Using.resource(Source.fromInputStream(process.getInputStream))(_.mkString)
+      process.waitFor() == 0 && expectedJavaVersion(majorVersion).findFirstIn(versionOutput).nonEmpty
+    }.getOrElse(false)
+
+  private def expectedJavaVersion(majorVersion: Int) = {
+    val version = if (majorVersion == 8) "1\\.8(?:\\.|\\\")" else s"$majorVersion(?:\\.|\\\")"
+    s"(?m)^(?:openjdk |java )version \\\"$version".r
   }
 
   private def javaExecutable(javaHome: File): File =
