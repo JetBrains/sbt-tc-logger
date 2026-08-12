@@ -8,6 +8,19 @@ This plugin extends SBT standard output with service messages that TeamCity buil
 
 You don't need this plugin if you use [TeamCity SBT runner](https://www.jetbrains.com/help/teamcity/simple-build-tool-scala.html) with 'Auto' installation mode.
 
+### Reported TeamCity service messages
+
+The plugin reports the following events so TeamCity can display structured SBT build results instead of only plain console output:
+
+- `message` — SBT log output, with error, warning, or normal severity; cancellation notices are reported this way too.
+- `compilationStarted` and `compilationFinished` — the start and end of Scala compilation for main and test sources.
+- `inspectionType` and `inspection` — compiler problems, including their severity, source file, and line, so TeamCity can show them as build inspections.
+- `testSuiteStarted` and `testSuiteFinished` — the lifecycle and outcome of each test suite, including suite-level errors.
+- `testStarted` and `testFinished` — the lifecycle, duration, and captured standard output of each test.
+- `testFailed` and `testIgnored` — failed tests with exception details, and skipped, ignored, pending, or cancelled tests.
+
+Messages include flow IDs where needed, allowing TeamCity to associate output and test events correctly during parallel execution.
+
 ## Installation
 
 Add the following to your project/plugins.sbt file:
