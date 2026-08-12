@@ -1,3 +1,4 @@
+// TW-35693 - Exercises error-like ScalaTest output without reporting a compilation failure.
 resolvers += "SonaType" at "https://oss.sonatype.org/content/groups/public"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test

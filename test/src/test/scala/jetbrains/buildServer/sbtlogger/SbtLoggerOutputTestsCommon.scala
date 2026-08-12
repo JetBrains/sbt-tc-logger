@@ -1,6 +1,7 @@
 package jetbrains.buildServer.sbtlogger
 
 import jetbrains.buildServer.sbtlogger.utils.SbtLoggerOutputTestCase
+import org.junit.Assume.assumeFalse
 import org.junit.Test
 
 /**
@@ -14,165 +15,194 @@ import org.junit.Test
  */
 abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtLoggerOutputTestBase(runtime) {
 
+  // Verifies that the plugin reports loading and detects the TeamCity version.
   @Test
-  def testPluginStatus(): Unit =
+  def pluginStatus_LoadedInTeamCity(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "compileError",
+      fixture = "compilation/failure",
       sbtCommands = Seq("sbt-teamcity-logger"),
       outputFiles = Seq("plugin_status_output.txt")
     ))
 
+  // Verifies that the plugin disables itself and emits no service messages outside TeamCity.
   @Test
-  def testNonTeamCityMode(): Unit =
-    // Keep this shared: the plugin must remain silent outside TeamCity on every supported SBT version.
+  def pluginStatus_DisabledOutsideTeamCity(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "compileError",
+      fixture = "compilation/failure",
       sbtCommands = Seq("sbt-teamcity-logger"),
       outputFiles = Seq("plugin_status_non_teamcity_output.txt"),
       teamCityEnvironment = false,
       expectNoTeamCityMessages = true
     ))
 
+  // Verifies compiler lifecycle, source-error, and final-failure messages for a failed compilation.
   @Test
-  def testCompileErrorOutput(): Unit =
+  def compilation_FailureReported(): Unit = {
+    // SBT 1.0.0 cannot start its x86-only JNA socket server on a native Apple Silicon JVM.
+    assumeFalse(
+      "SBT 1.0.0 requires x86_64 Java under Rosetta or an x86 CI agent on Apple Silicon hosts.",
+      runtime == SbtTestsRuntime.Sbt100 && isNativeAppleSilicon
+    )
+
     runCase(SbtLoggerOutputTestCase(
-      fixture = "compileError",
+      fixture = "compilation/failure",
+      sbtCommands = Seq("compile")
+    ))
+  }
+
+  // Verifies compiler start and finish messages for a successful Scala compilation.
+  @Test
+  def compilation_SuccessReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/success",
       sbtCommands = Seq("compile")
     ))
 
+  // Verifies that compilation failures from both aggregated subprojects are reported.
   @Test
-  def testCompileSuccessfulOutput(): Unit =
+  def compilation_MultiProject_FailuresReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "compileSuccessful",
+      fixture = "compilation/multiProject",
       sbtCommands = Seq("compile")
     ))
 
+  // Verifies that multi-project compilation failures remain reported with the SBT debug option.
   @Test
-  def testMultiProjectsOutput(): Unit =
+  def compilation_MultiProject_FailuresReportedWithDebug(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "multiProject",
-      sbtCommands = Seq("compile")
-    ))
-
-  @Test
-  def testTmp(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "multiProject",
+      fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
       sbtOptions = Seq("--debug")
     ))
 
+  // Verifies that a project without build.sbt compiles successfully and reports its compiler lifecycle.
   @Test
-  def testNoSbtFileInProject(): Unit =
+  def projectConfiguration_NoBuildFileCompiles(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "noSbtFile",
+      fixture = "projectConfiguration/noBuildFile",
       sbtCommands = Seq("compile"),
       expectZeroExitCode = true
     ))
 
+  // Verifies JUnit suite, passing-test, failing-test, and failure-detail service messages.
   @Test
-  def testJUnit(): Unit =
+  def testReporting_JUnit_PassAndFailureReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/junit",
+      fixture = "testSupport/JUnit_PassAndFailure",
       sbtCommands = Seq("test"),
       outputFiles = Seq("output.txt"),
       expectZeroExitCode = true
     ))
 
+  // Verifies that compiler warnings are reported as TeamCity warning inspections.
   @Test
-  def testWarningInspectionsInCompile(): Unit =
+  def compilation_WarningsReportedAsInspections(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "compileInspections",
+      fixture = "compilation/warnings",
       sbtCommands = Seq("clean", "compile"),
       sbtOptions = Seq.empty
     ))
 
-  @Test //TW-35693
-  def testWarningInTestOutput(): Unit =
+  // TW-35693 - Verifies that error-like ScalaTest output is not reported as a compilation failure.
+  @Test
+  def testReporting_ScalaTest_ErrorLikeOutputNotCompilationFailure(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "TW35693",
+      fixture = "testSupport/ScalaTest_ErrorLikeOutputNotCompilationFailure",
       sbtCommands = Seq("test"),
+      // SBT 2 may schedule the main and test compilation lifecycles in either order.
+      // Verify both lifecycles independently while preserving their own start/finish order.
+      outputFiles = Seq("compilation-output.txt", "test-compilation-output.txt", "output.txt"),
       expectZeroExitCode = true
     ))
 
-  @Test //TW-35404
-  def testTW35404Error(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "TW35404Error",
-      sbtCommands = Seq("compile")
-    ))
-
-  @Test //TW-35404
-  def testTW35404Debug(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "TW35404Debug",
-      sbtCommands = Seq("compile")
-    ))
-
+  // TW-35404 - Verifies that error-level logging suppresses compiler debug noise.
   @Test
-  def testSubProjectCompile(): Unit =
+  def compilerLogLevel_DebugOutputSuppressedAtError(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "subProject",
+      fixture = "compilerLogLevel/error",
+      sbtCommands = Seq("compile")
+    ))
+
+  // TW-35404 - Verifies that debug-level logging keeps compiler debug output visible.
+  @Test
+  def compilerLogLevel_DebugOutputShownAtDebug(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compilerLogLevel/debug",
+      sbtCommands = Seq("compile")
+    ))
+
+  // Verifies compiler lifecycle messages for the backend subproject compile command.
+  @Test
+  def compilation_SubprojectLifecycleReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/subproject",
       sbtCommands = Seq("backend/compile")
     ))
 
+  // Verifies standard ScalaTest passing and failing test service messages.
   @Test
-  def testRunTestWithSbt(): Unit =
+  def testReporting_ScalaTest_PassAndFailureReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/scalaTest",
+      fixture = "testSupport/ScalaTest_PassAndFailure",
       sbtCommands = Seq("test"),
       outputFiles = Seq("output.txt", "output1.txt"),
       expectZeroExitCode = true
     ))
 
+  // Verifies that mixed Java and Scala sources compile and the Java main class runs.
   @Test
-  def testProjectWithJavaSources(): Unit =
+  def projectExecution_JavaSourcesCompileAndRun(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "withJavaSources",
+      fixture = "projectExecution/javaSources",
       sbtCommands = Seq("clean", "compile", "run"),
       sbtOptions = Seq("--debug"),
       outputFiles = Seq("output.txt")
     ))
 
+  // Verifies that framework-skipped Specs2 examples are reported as ignored tests.
   @Test
-  def testIgnoredTest(): Unit =
+  def testReporting_Specs2_IgnoredTestsReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "ignoredTest",
+      fixture = "testSupport/Specs2_IgnoredTests",
       sbtCommands = Seq("test"),
       sbtOptions = Seq("--info"),
       expectZeroExitCode = true
     ))
 
+  // Verifies nested ScalaTest suite and member-test service messages.
   @Test
-  def testNestedSuites(): Unit =
+  def testReporting_ScalaTest_NestedSuitesReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/nested",
+      fixture = "testSupport/ScalaTest_NestedSuites",
       sbtCommands = Seq("test"),
       sbtOptions = Seq("--info"),
       expectZeroExitCode = true
     ))
 
-  @Test //TW-46964
-  def testSpecTW46964(): Unit =
+  // TW-46964 - Verifies that long ScalaTest FeatureSpec names do not repeat name segments.
+  @Test
+  def testReporting_ScalaTest_LongNamesNotDuplicated(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/scalaTestTW46964",
+      fixture = "testSupport/ScalaTest_LongNamesNotDuplicated",
       sbtCommands = Seq("testOnly"),
       outputFiles = Seq("output.txt")
     ))
 
+  // Verifies that Specs2 examples invoked through testOnly are reported.
   @Test
-  def testSpec2(): Unit =
+  def testReporting_Specs2_TestOnlyExamplesReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/spec2",
+      fixture = "testSupport/Specs2_TestOnlyExamples",
       sbtCommands = Seq("testOnly"),
       outputFiles = Seq("output.txt"),
       expectZeroExitCode = true
     ))
 
-  @Test //TW-43578
-  def testParallelTestExecutionTW43578(): Unit =
+  // TW-43578 - Verifies parallel and non-parallel ScalaTest test and suite event reporting.
+  @Test
+  def testReporting_ScalaTest_ParallelEventsReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/parallelTestExecutionTW43578/src/",
+      fixture = "testSupport/ScalaTest_ParallelEvents",
       sbtCommands = Seq("test"),
       sbtOptions = Seq("--info"),
       outputFiles = Seq(
@@ -190,4 +220,11 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
         "output11.txt"
       )
     ))
+
+  private def isNativeAppleSilicon: Boolean = {
+    val osName = System.getProperty("os.name", "").toLowerCase
+    val osArchitecture = System.getProperty("os.arch", "").toLowerCase
+    osName.contains("mac") &&
+      Set("aarch64", "arm64").contains(osArchitecture)
+  }
 }
