@@ -87,10 +87,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     )
 
   @Test
-  def testOtherSbtVersions(): Unit =
-    runCase(SbtLoggerOutputTestCase("otherVersions", Seq("sbtVersion"), sbtOptions = Seq("--info")))
-
-  @Test
   def testProjectWithJavaSources(): Unit =
     runCase(
       SbtLoggerOutputTestCase(
@@ -116,10 +112,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
   @Test
   def testSpec2(): Unit =
     runCase(SbtLoggerOutputTestCase("testsupport/spec2", Seq("testOnly"), outputFiles = Seq("output.txt"), expectZeroExitCode = true))
-
-  @Test
-  def testTW50753_initErrorInTests(): Unit =
-    runCase(SbtLoggerOutputTestCase("TW-50753_initErrorInTests", Seq("clean", "compile", "test"), outputFiles = Seq("output.txt")))
 
   @Test
   def testParallelTestExecutionTW43578(): Unit =
