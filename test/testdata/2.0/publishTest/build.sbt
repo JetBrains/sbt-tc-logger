@@ -21,4 +21,3 @@ pomExtra :=
       <distribution>repo</distribution>
     </license>
 </licenses>
-
