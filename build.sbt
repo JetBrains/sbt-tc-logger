@@ -22,9 +22,7 @@ lazy val logger: Project = (project in file("."))
 
     // Library dependency to be able to use Java API for `##teamcity` service messages
     libraryDependencies ++= Seq(
-      //TODO: :update to the latest library version of the serviceMessages
-      ("org.jetbrains.teamcity" % "serviceMessages" % "2021.1")
-        .exclude("org.jetbrains.teamcity.idea", "annotations")
+      "org.jetbrains.teamcity" % "serviceMessages" % "2026.1.3"
     ),
     // needed for "service messages" library
     resolvers += "jetbrains-teamcity-repository" at "https://download.jetbrains.com/teamcity-repository",
