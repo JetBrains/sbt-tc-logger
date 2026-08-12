@@ -70,11 +70,11 @@ lazy val pluginCrossBuildSettings: Seq[Def.Setting[_]] = Seq(
  * Re-add the SBT 2 API as `Provided` and its source directory explicitly. Keeping the SBT 1 settings implicit avoids
  * duplicating its convention-supplied dependency and source-directory configuration.
  *
- * TODO: After moving the host in project/build.properties to SBT 2, enable native SBT 2 `SbtPlugin` publication and
- * remove this compatibility shim (the explicit SBT API, source directory, and cross-version setting).
+ * `sbtPlugin` remains enabled for both targets so each published artifact contains plugin-discovery metadata.
+ * TODO: After moving the host in project/build.properties to SBT 2, remove this compatibility shim (the explicit
+ * SBT API, source directory, and cross-version setting).
  */
 lazy val sbt2CompatibilitySettings: Seq[Def.Setting[_]] = Seq(
-  sbtPlugin := !isSbt2.value,
   crossVersion := {
     if (isSbt2.value) CrossVersion.binaryWith("sbt2_", "")
     else CrossVersion.binary
