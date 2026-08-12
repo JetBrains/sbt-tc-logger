@@ -1,5 +1,7 @@
 
 
+package fixture.jacoco
+
 import math._
 
 class Line(xc: Point, yc: Point) {

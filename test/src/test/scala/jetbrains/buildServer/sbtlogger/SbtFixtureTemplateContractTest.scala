@@ -7,16 +7,16 @@ import org.junit.{Assert, Test}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 
-/** Guards the reusable source-fixture contract for both SBT plugin binary-version lines. */
+/** Guards the reusable and version-specific source-fixture contracts. */
 class SbtFixtureTemplateContractTest {
 
   @Test
   def everyFixtureProjectUsesTheSbtVersionTemplate(): Unit = {
     val root = IntegrationTestLayout.repoRoot().toPath.resolve("test/testdata")
 
-    Seq("1.0", "2.0").foreach { line =>
+    Seq("1.0" -> 18, "2.0" -> 19, "1.9+" -> 1).foreach { case (line, expectedProjectCount) =>
       val propertiesFiles = buildPropertiesFiles(root.resolve(line))
-      Assert.assertEquals(s"Unexpected number of fixture projects under $line", 19, propertiesFiles.size)
+      Assert.assertEquals(s"Unexpected number of fixture projects under $line", expectedProjectCount, propertiesFiles.size)
       propertiesFiles.foreach { propertiesFile =>
         Assert.assertEquals(
           s"Unexpected SBT version template in $propertiesFile",
