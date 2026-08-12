@@ -18,6 +18,7 @@
 package jetbrains.buildServer.sbtlogger
 
 import sbt.Keys._
+import sbt.Configurations.IntegrationTest
 import sbt.jetbrains.buildServer.sbtlogger.apiAdapter._
 import sbt.plugins.JvmPlugin
 import sbt.{Def, _}
@@ -89,19 +90,25 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   //noinspection TypeAnnotation,ConvertExpressionToSAM
   override lazy val projectSettings = if (tcFound && testResultLoggerFound)
     loggerOnSettings ++ Seq(
-      testResultLogger in(Test, test) := new TestResultLogger {
-
-        import sbt.Tests._
-
-        def run(log: Logger, results: Output, taskName: String): Unit = {
-          //default behaviour there is
-          //TestResultLogger.SilentWhenNoTests.run(log, results, taskName)
-          //we will just ignore to prevent appearing of 'exit code 1' when test failed
-        }
-      }
+      testResultLogger in(Test, test) := silentTestResultLogger,
+      // `testQuick` has its own task scope, so it does not inherit the handler
+      // installed for `test`. Reuse it so test failures are represented solely
+      // by TeamCity service messages instead of an SBT exit-code failure.
+      testResultLogger in(Test, testQuick) := (testResultLogger in(Test, test)).value,
+      // SBT 1's built-in IntegrationTest configuration does not delegate its
+      // quick-test result logger to Test, even though its command is `it:testQuick`.
+      testResultLogger in(IntegrationTest, testQuick) := silentTestResultLogger
     )
   else if (tcFound) loggerOnSettings
   else loggerOffSettings
+
+  /**
+   * Suppresses SBT's aggregate test result because [[TCReportListener]] has
+   * already emitted the individual TeamCity test outcomes.
+   */
+  private lazy val silentTestResultLogger: TestResultLogger = new TestResultLogger {
+    def run(log: Logger, results: Tests.Output, taskName: String): Unit = ()
+  }
 
 
   lazy val loggerOnSettings: Seq[Def.Setting[_]] = Seq(

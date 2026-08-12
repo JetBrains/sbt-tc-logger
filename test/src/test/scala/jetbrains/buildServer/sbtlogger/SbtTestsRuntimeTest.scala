@@ -13,7 +13,7 @@ class SbtTestsRuntimeTest {
       testDataRelativePath = "test/testdata/1.0+",
       sbtBinaryVersion = "1.0",
       launcherVersion = "1.12.15",
-      commandTransport = SbtCommandTransport.StandardInput
+      commandTransport = SbtCommandTransport.CommandArgument
     )
   }
 
