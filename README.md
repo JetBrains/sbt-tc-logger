@@ -23,26 +23,29 @@ Messages include flow IDs where needed, allowing TeamCity to associate output an
 
 ## Installation
 
-Add the following to your project/plugins.sbt file:
+To install the logger manually for local testing with SBT 1.x or SBT 2.x, \
+add the following to your project/plugins.sbt file:
 
-`resolvers += "jetbrains-teamcity-repository" at "<TeamCity Maven repository URL>"`
+```scala
+resolvers += "jetbrains-teamcity-repository" at "https://download.jetbrains.com/teamcity-repository"
 
-`addSbtPlugin("org.jetbrains.teamcity.plugins.sbt" % "sbt-teamcity-logger" % "<logger version>")`
+addSbtPlugin("org.jetbrains.teamcity.plugins.sbt" % "sbt-teamcity-logger" % "<logger version>")
+```
 
-or register plugin as a global plugin for your SBT according to [SBT documentation](https://www.scala-sbt.org/1.x/docs/Plugins.html#Plugins)
+## SBT Versions Support
 
-New logger releases support SBT 1.x and SBT 2.x. \
-SBT 1 uses the standard `addSbtPlugin` installation shown above. \
-SBT 2 uses the self-contained direct-load jar:
-`apply -cp <path-to>/sbt-teamcity-logger_sbt2_3-<logger version>.jar jetbrains.buildServer.sbtlogger.SbtTeamCityLogger`
+**SBT 1.x and SBT 2.x** use the `addSbtPlugin` installation shown above. \
+SBT selects the compatible published coordinate automatically: `_2.12_1.0` for SBT 1.x \
+and `_sbt2_3` for SBT 2.x.
 
-The TeamCity SBT runner performs that direct load automatically in `Auto` installation mode. It embeds both runtime
-variants under their SBT-line directories as `sbt-teamcity-logger.jar`; the directory, not the filename, selects the
-compatible JAR.
+**SBT 0.13** is a legacy SBT line. \
+New logger releases do not publish an SBT 0.13 artifact. \
+For a standalone SBT 0.13 build, pin `sbt-teamcity-logger` to `<final SBT 0.13 logger version>`, \
+or upgrade the build to SBT 1 or SBT 2.
 
-SBT 0.13 is supported by the runner through the immutable final legacy release `L`
-(`sbt-teamcity-logger_2.10_0.13:L`). New logger releases do not publish an SBT 0.13 artifact;
-upgrade standalone SBT 0.13 installations to the pinned `L` release, or upgrade the build to SBT 1 or SBT 2.
+In `Auto` installation mode, the TeamCity SBT Runner selects its bundled logger for SBT 0.13, SBT 1.x, or SBT 2.x. \
+For SBT 0.13, it uses the final SBT 0.13 logger release. \
+The Runner loads the selected logger internally with `apply -cp`.
 
 
 ## Using
