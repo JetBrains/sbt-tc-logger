@@ -9,8 +9,8 @@ object SbtIntegrationTestLayout {
   private val IntegrationIvyHome = "target/integration-test-ivy"
   private val IntegrationTestsTarget = "target/integration-tests"
 
-  def sbtIvyHome(root: File): File =
-    new File(root, IntegrationIvyHome).getAbsoluteFile
+  def sbtIvyHome(root: File, runtimeId: String): File =
+    new File(root, s"$IntegrationIvyHome/$runtimeId").getAbsoluteFile
 
   def sbtGlobalBase(root: File, runtimeId: String): File =
     new File(root, s"$IntegrationTestsTarget/sbt-global-apply/$runtimeId").getAbsoluteFile

@@ -1,0 +1,4 @@
+##teamcity\[compilationStarted compiler='Scala compiler' flowId='.*'\]
+##teamcity\[compilationStarted compiler='Scala compiler' flowId='.*'\]
+##teamcity\[inspection SEVERITY='ERROR'.*\]
+##teamcity\[inspection SEVERITY='ERROR'.*\]

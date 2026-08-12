@@ -70,8 +70,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val pluginJar = plugin.packagedJar(root, runtime.sbtBinaryVersion)
     val sbtGlobalBase = SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion)
     val sbtVersion = Version(runtime.sbtVersion)
-    val javaHome = CurrentEnvironment.javaHomeFor(sbtVersion)
-    val javaBin = CurrentEnvironment.javaExecutableFor(sbtVersion)
+    val javaHome = CurrentEnvironment.javaHomeFor(runtime.jdk)
+    val javaBin = CurrentEnvironment.javaExecutableFor(runtime.jdk)
 
     val commandLinePrefix = Seq(
       javaBin,
@@ -79,7 +79,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       "-jar",
       SbtLauncher.sbtLauncher(root, runtime.launcherVersion).getAbsolutePath,
       s"-Dsbt.global.base=${sbtGlobalBase.getAbsolutePath}",
-      s"-Dsbt.ivy.home=${SbtIntegrationTestLayout.sbtIvyHome(root).getAbsolutePath}",
+      s"-Dsbt.ivy.home=${SbtIntegrationTestLayout.sbtIvyHome(root, runtime.id).getAbsolutePath}",
       "-Dsbt.log.noformat=true"
     )
 
@@ -103,14 +103,16 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
 
     // SBT 2 caches task results across fixture workspaces by default. Give each
     // copied fixture its own local cache so its compile/test task is executed and
-    // the logger service-message lifecycle is actually covered.
-    val localCacheCommand =
+    // the logger service-message lifecycle is actually covered. This setting was
+    // introduced by SBT 2, so legacy SBT 1 runtimes must not receive its slash syntax.
+    val localCacheCommand = Option.when(sbtVersion >= Version("2.0.0")) {
       s"set Global / localCacheDirectory := file(\"${new File(workingDir, ".sbt-tc-logger-cache").getAbsolutePath}\")"
+    }
 
     val effectiveSbtCommands: Seq[String] =
       if (commandsAsArguments)
         // SBT 2 must receive a non-interactive command argument. See this commit's message for the transport rationale.
-        plugin.loadCommand(pluginJar) +: localCacheCommand +: sbtCommands :+ "exit"
+        plugin.loadCommand(pluginJar) +: (localCacheCommand.toSeq ++ sbtCommands :+ "exit")
       else
         // SBT 1 fixtures keep options in their stdin script. See this commit's message for the compatibility rationale.
         sbtOptions ++ (plugin.loadCommand(pluginJar) +: sbtCommands :+ "exit")
