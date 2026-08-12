@@ -6,6 +6,16 @@ import org.junit.Test
 /** Scenarios supported by SBT 2.0.0 and later. */
 trait SbtLoggerOutputTestsSbt2Plus { this: SbtLoggerOutputTestBase =>
 
+  // TW-53224 - SBT 2's slash syntax invokes the same IntegrationTest quick-test task as SBT 1's `it:testQuick`.
+  @Test
+  def testReporting_IntegrationTest_TestQuickPassAndFailureReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testSupport/IntegrationTest_TestQuick",
+      sbtCommands = Seq("IntegrationTest / testQuick"),
+      outputFiles = Seq("output.txt"),
+      expectZeroExitCode = true
+    ))
+
   // TW-34982 and TW-36108 (GitHub #3)
   // The expected test-suite messages prove that JaCoCo instrumentation retains normal JUnit TeamCity reporting.
   // The expected coverage-summary messages are sbt-jacoco's ordinary log output, not a TeamCity coverage protocol:

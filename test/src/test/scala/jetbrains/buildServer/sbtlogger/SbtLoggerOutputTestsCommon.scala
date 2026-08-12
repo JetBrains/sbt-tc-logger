@@ -94,6 +94,18 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       expectZeroExitCode = true
     ))
 
+  // TW-53224 - `testQuick` must preserve the normal per-test TeamCity protocol, including failures.
+  // A deliberately failing JUnit method proves the task uses the logger's silent result handler instead of only
+  // exercising an empty quick-test selection.
+  @Test
+  def testReporting_JUnit_TestQuickPassAndFailureReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testSupport/JUnit_PassAndFailure",
+      sbtCommands = Seq("testQuick"),
+      outputFiles = Seq("output.txt"),
+      expectZeroExitCode = true
+    ))
+
   // Verifies that compiler warnings are reported as TeamCity warning inspections.
   @Test
   def compilation_WarningsReportedAsInspections(): Unit =
