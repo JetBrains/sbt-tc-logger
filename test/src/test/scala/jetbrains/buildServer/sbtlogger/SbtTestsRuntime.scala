@@ -34,8 +34,9 @@ enum SbtCommandTransport {
  * Runtime catalog for all SBT versions that the integration-test harness exercises.
  *
  * The `testdata/1.0` and `testdata/2.0` directory names identify plugin binary-version lines, not exact nested SBT
- * releases. Every fixture contains [[org.jetbrains.sbt.integrationTests.SbtFixtureWorkspace.SbtVersionTemplate]],
- * which is rendered with [[SbtTestsRuntime.sbtVersion]] only in the isolated copied workspace.
+ * releases. A scenario whose support begins later can select a dedicated root such as `testdata/1.9+`. Every fixture
+ * contains [[org.jetbrains.sbt.integrationTests.SbtFixtureWorkspace.SbtVersionTemplate]], which is rendered with
+ * [[SbtTestsRuntime.sbtVersion]] only in the isolated copied workspace.
  */
 object SbtTestsRuntime {
   private[sbtlogger] val LatestSbt1Version = "1.12.15"

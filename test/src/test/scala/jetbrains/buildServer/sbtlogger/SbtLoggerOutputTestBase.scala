@@ -33,6 +33,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
   private[sbtlogger] final def runCase(testCase: SbtLoggerOutputTestCase): Unit = {
     val exitCode = runSbtAndTest(
       runtime = runtime,
+      fixtureRootRelativePath = testCase.fixtureRootRelativePath.getOrElse(runtime.testDataRelativePath),
       sbtOptions = testCase.sbtOptions,
       sbtCommands = testCase.sbtCommands,
       testRepo = testCase.fixture,
@@ -48,6 +49,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
 
   private def runSbtAndTest(
     runtime: SbtTestsRuntime,
+    fixtureRootRelativePath: String,
     sbtOptions: Seq[String],
     sbtCommands: Seq[String],
     testRepo: String,
@@ -56,7 +58,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     expectNoTeamCityMessages: Boolean = false
   ): Int = {
     val root = IntegrationTestLayout.repoRoot()
-    val sourceWorkingDir = SbtFixtureWorkspace.sourceFixtureDirectory(root, runtime.testDataRelativePath, testRepo)
+    val sourceWorkingDir = SbtFixtureWorkspace.sourceFixtureDirectory(root, fixtureRootRelativePath, testRepo)
     val workingDir = SbtFixtureWorkspace.copyFixtureToWorkDirectory(
       root,
       runtime.id,

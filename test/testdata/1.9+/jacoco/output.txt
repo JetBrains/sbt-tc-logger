@@ -1,0 +1,7 @@
+##teamcity\[testSuiteStarted name='fixture.jacoco.PointTest' flowId='.*'\]
+##teamcity\[testStarted name='fixture.jacoco.PointTest.movesPoint' captureStandardOutput='true' flowId='.*'\]
+##teamcity\[testFinished name='fixture.jacoco.PointTest.movesPoint' duration='.*' flowId='.*'\]
+##teamcity\[testSuiteFinished name='fixture.jacoco.PointTest' flowId='.*'\]
+.*Jacoco Coverage Report.*
+.*Lines: .* covered.*
+.*Check .*jacoco/report.*

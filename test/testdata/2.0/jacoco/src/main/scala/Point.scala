@@ -1,5 +1,7 @@
 
 
+package fixture.jacoco
+
 class Point(xc: Int, yc: Int) {
   var x: Int = xc
   var y: Int = yc
