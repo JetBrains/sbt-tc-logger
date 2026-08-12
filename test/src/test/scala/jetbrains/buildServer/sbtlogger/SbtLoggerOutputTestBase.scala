@@ -61,7 +61,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val plugin = SbtLoggerPlugin.UnderTest
     val pluginJar = plugin.packagedJar(root, runtime.sbtBinaryVersion)
     val sbtGlobalBase = SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion)
-    val sbtVersion = SbtBuildPropertiesUtils.sbtVersionIn(workingDir).getOrElse(Version(runtime.defaultSbtVersion))
+    val sbtVersion = SbtBuildPropertiesUtils.sbtVersionIn(workingDir).getOrElse(Version(runtime.launcherVersion))
     val javaHome = CurrentEnvironment.javaHomeFor(sbtVersion)
     val javaBin = CurrentEnvironment.javaExecutableFor(sbtVersion)
 
@@ -88,8 +88,10 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
 
     val commandsAsArguments = runtime.commandTransport == SbtCommandTransport.CommandArgument
 
+    // Recent SBT versions use a Unix-domain socket for their server. Keep it in a short directory to avoid exceeding
+    // the platform's socket-path limit when the test harness isolates its global base under the repository.
     val sbtGlobalServerDirectory =
-      Option.when(commandsAsArguments)(SbtIntegrationTestLayout.sbtGlobalServerDirectory(runtime.id, runtime.launcherVersion))
+      Option.when(sbtVersion >= Version("1.4.0"))(SbtIntegrationTestLayout.sbtGlobalServerDirectory(runtime.id, runtime.launcherVersion))
 
     // SBT 2 caches task results across fixture workspaces by default. Give each
     // copied fixture its own local cache so its compile/test task is executed and

@@ -9,7 +9,6 @@ package jetbrains.buildServer.sbtlogger
  * @param testDataRelativePath    path from the repository root to this runtime's fixture directory.
  * @param sbtBinaryVersion        sbt plugin binary version used to select the staged logger JAR.
  * @param launcherVersion         sbt launcher version used to start nested sbt and select its global directories.
- * @param defaultSbtVersion       sbt version used for Java selection when the fixture has no `build.properties` version.
  * @param commandTransport        mechanism for passing options and commands to the nested sbt launcher.
  */
 final case class SbtTestsRuntime(
@@ -17,7 +16,6 @@ final case class SbtTestsRuntime(
   testDataRelativePath: String,
   sbtBinaryVersion: String,
   launcherVersion: String,
-  defaultSbtVersion: String,
   commandTransport: SbtCommandTransport
 )
 
@@ -34,25 +32,55 @@ enum SbtCommandTransport {
  * Runtime catalog for all sbt versions that the integration-test harness exercises.
  */
 object SbtTestsRuntime {
-  val Sbt100: SbtTestsRuntime = SbtTestsRuntime(
-    id = "1.0",
-    testDataRelativePath = "test/testdata/1.0",
-    sbtBinaryVersion = "1.0",
-    launcherVersion = "1.0.0",
-    defaultSbtVersion = "1.0.0",
-    commandTransport = SbtCommandTransport.StandardInput
-  )
-  // SBT 2 reports its plugin binary version as `2`, while the runtime line and
-  // fixture directory remain `2.0`. Keep those concepts separate so the harness
-  // locates the jar that the build actually packages.
-  val Sbt200: SbtTestsRuntime = SbtTestsRuntime(
-    id = "2.0",
-    testDataRelativePath = "test/testdata/2.0",
-    sbtBinaryVersion = "2",
-    launcherVersion = "2.0.4",
-    defaultSbtVersion = "2.0.4",
-    commandTransport = SbtCommandTransport.CommandArgument
-  )
+  private enum SbtLine(
+    val testDataRelativePath: String,
+    val sbtBinaryVersion: String,
+    val launcherVersion: String,
+    val commandTransport: SbtCommandTransport
+  ) {
+    case Sbt1 extends SbtLine(
+      testDataRelativePath = "test/testdata/1.0",
+      sbtBinaryVersion = "1.0",
+      launcherVersion = "1.12.15",
+      commandTransport = SbtCommandTransport.StandardInput
+    )
+    case Sbt2 extends SbtLine(
+      testDataRelativePath = "test/testdata/2.0",
+      sbtBinaryVersion = "2", // SBT 2 publishes plugins under sbt-2, rather than sbt-2.0.
+      launcherVersion = "2.0.6",
+      commandTransport = SbtCommandTransport.CommandArgument
+    )
+  }
+
+  private val SbtVersionPattern = """^([0-9]+)(?:\.[0-9]+)*(?:[-+][0-9A-Za-z][0-9A-Za-z.+-]*)?$""".r
+
+  /**
+   * Creates metadata for an SBT runtime while selecting the current launcher for its supported SBT line.
+   *
+   * @param sbtVersion stable or prerelease SBT 1.x or 2.x version used as the runtime identifier.
+   * @throws IllegalArgumentException when the version is malformed or belongs to an unsupported SBT line.
+   */
+  private[sbtlogger] def forSbtVersion(sbtVersion: String): SbtTestsRuntime = {
+    val line = sbtVersion match {
+      case SbtVersionPattern("1") => SbtLine.Sbt1
+      case SbtVersionPattern("2") => SbtLine.Sbt2
+      case _ => throw new IllegalArgumentException(s"Unsupported SBT version '$sbtVersion'; supported lines are 1.x and 2.x.")
+    }
+
+    SbtTestsRuntime(
+      id = sbtVersion,
+      testDataRelativePath = line.testDataRelativePath,
+      sbtBinaryVersion = line.sbtBinaryVersion,
+      launcherVersion = line.launcherVersion,
+      commandTransport = line.commandTransport
+    )
+  }
+
+  // See the latest versions here:
+  //  - https://www.scala-sbt.org/download/
+  //  - https://github.com/sbt/sbt/releases
+  val Sbt100: SbtTestsRuntime = forSbtVersion("1.0.0")
+  val Sbt200: SbtTestsRuntime = forSbtVersion("2.0.4")
 
   val All: Seq[SbtTestsRuntime] = Seq(Sbt100, Sbt200)
 }
