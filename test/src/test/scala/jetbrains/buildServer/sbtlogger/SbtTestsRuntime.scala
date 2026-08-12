@@ -3,12 +3,18 @@ package jetbrains.buildServer.sbtlogger
 /**
  * Describes one sbt runtime covered by the integration-test harness.
  *
- * The runtime metadata selects the fixture root and the assembled plugin jar that nested sbt should load.
+ * The runtime metadata selects the fixture root and the staged logger JAR that nested sbt should load.
+ *
+ * @param id                      identifier used for isolated fixture workspaces and runtime-specific SBT directories.
+ * @param testDataRelativePath    path from the repository root to this runtime's fixture directory.
+ * @param sbtBinaryVersion        sbt plugin binary version used to select the staged logger JAR.
+ * @param launcherVersion         sbt launcher version used to start nested sbt and select its global directories.
+ * @param defaultSbtVersion       sbt version used for Java selection when the fixture has no `build.properties` version.
+ * @param commandTransport        mechanism for passing options and commands to the nested sbt launcher.
  */
 final case class SbtTestsRuntime(
   id: String,
   testDataRelativePath: String,
-  scalaBinaryVersion: String,
   sbtBinaryVersion: String,
   launcherVersion: String,
   defaultSbtVersion: String,
@@ -31,7 +37,6 @@ object SbtTestsRuntime {
   val Sbt100: SbtTestsRuntime = SbtTestsRuntime(
     id = "1.0",
     testDataRelativePath = "test/testdata/1.0",
-    scalaBinaryVersion = "2.12",
     sbtBinaryVersion = "1.0",
     launcherVersion = "1.0.0",
     defaultSbtVersion = "1.0.0",
@@ -43,7 +48,6 @@ object SbtTestsRuntime {
   val Sbt200: SbtTestsRuntime = SbtTestsRuntime(
     id = "2.0",
     testDataRelativePath = "test/testdata/2.0",
-    scalaBinaryVersion = "3",
     sbtBinaryVersion = "2",
     launcherVersion = "2.0.4",
     defaultSbtVersion = "2.0.4",

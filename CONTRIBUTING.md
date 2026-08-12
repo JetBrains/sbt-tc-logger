@@ -25,9 +25,9 @@ SBT 1 uses Java 8 or Java 11 discovered from standard OS locations; the SBT 2.0.
 Integration tests load the assembled logger jar into nested sbt with sbt's `apply -cp` command. \
 Before running them, build the plugin jar:
 
-`sbt +packageBin`
+`sbt +prepareIntegrationTestArtifacts`
 
-This test-only packaging step produces the stable direct-load `sbt-teamcity-logger.jar` files used by the harness. Their filenames intentionally differ from the Maven artifact filenames published by `sbt +publishLocal`.
+This test-only preparation step copies the self-contained primary artifact to `target/integration-tests/artifacts/sbt-<binary-version>.jar`. It does not change the versioned filenames or target-directory layout used by normal packaging and publishing.
 
 Then run the tests:
 
@@ -35,7 +35,7 @@ Then run the tests:
 
 ### Integration test workflow
 
-1. The pre-step assembles `sbt-teamcity-logger` for the selected SBT line under `target/scala-*/sbt-*`.
+1. The pre-step assembles `sbt-teamcity-logger` and stages one self-contained JAR per SBT line under `target/integration-tests/artifacts/`.
 2. `sbt test` enters the Scala/JUnit harness in the `integrationTests` project.
 3. Each JUnit test copies its fixture under `target/integration-tests/work/<runtime>/`, then downloads or reuses the runtime launcher version under `target/integration-tests/sbt-launcher`.
 4. The nested sbt command file first runs `apply -cp <logger jar> jetbrains.buildServer.sbtlogger.SbtTeamCityLogger`.
@@ -56,18 +56,18 @@ It is JetBrains-private, but documents and implements the runner integration tha
 ## Artifact compatibility
 
 Releases are versioned by Git tags through `sbt-dynver`, for example `v1.1.0`. \
-Maven coordinates identify a compatibility variant; the direct-load filename intentionally does not.
+Maven coordinates identify a compatibility variant and the published filename derives from that coordinate and version.
 
 - `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_2.12_1.0:<logger version>` for SBT 1.x
 - `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_sbt2_3:<logger version>` for SBT 2.x
 
-`Compile / packageBin` produces the self-contained direct-load JARs at `target/scala-2.12/sbt-1.0/sbt-teamcity-logger.jar` and `target/scala-3/sbt-2/sbt-teamcity-logger.jar`. \
-TeamCity embeds each one in the matching `sbt-distrib/<sbt-line>` directory with that same filename.
+`prepareIntegrationTestArtifacts` stages the self-contained primary JARs as `target/integration-tests/artifacts/sbt-1.0.jar` and `target/integration-tests/artifacts/sbt-2.jar`. \
+The test harness uses only these test-only paths; it does not reconstruct package-output paths or filenames. TeamCity embeds the matching published artifact in each `sbt-distrib/<sbt-line>` directory; Maven publication uses that same self-contained primary artifact with its coordinate- and version-derived filename.
 
 The SBT 2 artifact is deliberately direct-loaded rather than discovered as an SBT plugin. \
 Its Maven coordinate follows SBT 2's `_sbt2_3` convention, but the SBT 1.12 host produces it through an explicit compatibility shim; this is not native SBT 2 `SbtPlugin` publication yet. \
 Load it with `apply -cp` as shown in the README. \
-`publishLocal` for the next major release must produce only these two artifacts; it must not produce `sbt-teamcity-logger_2.10_0.13`.
+`publishLocal` for the next major release must publish the SBT 1.x and SBT 2.x compatibility variants above; it must not produce the obsolete `sbt-teamcity-logger_2.10_0.13` variant.
 
 ## Maintainer release notes
 
@@ -82,3 +82,4 @@ The next major release `N` publishes only the SBT 1 and SBT 2 artifacts listed a
 After `N` is published and used by TeamCity to build this repository, upgrade this repository's host build to SBT 2.0.4.
 
 The primary published jar is self-contained.
+”
