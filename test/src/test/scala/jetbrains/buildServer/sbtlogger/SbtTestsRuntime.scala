@@ -52,7 +52,10 @@ object SbtTestsRuntime {
       testDataRelativePath = "test/testdata/1.0+",
       sbtBinaryVersion = "1.0",
       launcherVersion = LatestSbt1Version,
-      commandTransport = SbtCommandTransport.StandardInput
+      // SBT 1.12's server shell no longer consumes a redirected command file.
+      // Semicolon-delimited arguments work on every supported SBT 1 runtime and
+      // ensure the nested process executes the fixture commands instead of idling.
+      commandTransport = SbtCommandTransport.CommandArgument
     )
     case Sbt2 extends SbtLine(
       testDataRelativePath = "test/testdata/2.0+",
