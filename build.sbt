@@ -17,9 +17,11 @@ lazy val logger: Project = (project in file("."))
 
     pluginCrossBuildSettings,
     pluginPublishingSettings,
+    integrationTestArtifactPreparationSettings,
 
     // Library dependency to be able to use Java API for `##teamcity` service messages
     libraryDependencies ++= Seq(
+      //TODO: :update to the latest library version of the serviceMessages
       ("org.jetbrains.teamcity" % "serviceMessages" % "2021.1")
         .exclude("org.jetbrains.teamcity.idea", "annotations")
     ),
@@ -94,30 +96,35 @@ lazy val pluginPublishingSettings: Seq[Def.Setting[_]] = Seq(
   organization := "org.jetbrains.teamcity.plugins.sbt",
   versionScheme := Some("early-semver"),
   licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html")),
-  publishMavenStyle := true,
-  sbtPluginPublishLegacyMavenStyle := false,
+  // Details:
+  //  1. `packageBin` normally creates a thin JAR containing only this project's classes and resources
+  //  2. `assembly` also embeds runtime dependencies in the JAR
+  //  3. `publish` publishes the file returned by `packageBin`.
+  // TeamCity direct-loads that one published JAR; without this override, serviceMessages would be absent at runtime.
   Compile / packageBin := (Compile / assembly).value,
-  // Avoid feeding packageBin back into assembly's classpath: packageBin is the
-  // assembly task for this project, so exported classes must remain directories.
-  Compile / exportJars := false,
-  // The helper integration-test project is aggregated for compilation but does not
-  // produce a plugin jar. Keep packageBin focused on the logger artifact.
-  Compile / packageBin / aggregate := false,
-  assembly / aggregate := false,
-  // Assembly runs its scoped test task by default. The integration test harness is
-  // exercised explicitly by testSbt100/testSbt200; do not run it as a packaging
-  // dependency.
+  // Tests run in a dedicated build configuration, so do not rerun them while assembling or publishing.
   assembly / test := sbt.protocol.testing.TestResult.Passed,
-  // TODO: Modernize deprecated sbt API usage in logger sources in a focused follow-up.
-  // TeamCity selects the compatible JAR by its sbt-distrib/<sbt-line> directory, so both direct-load files use this
-  // stable filename. Maven publication derives its version-qualified filename from the project coordinate instead.
-  assembly / assemblyJarName := "sbt-teamcity-logger.jar",
-  assembly / assemblyOutputPath := {
-    val scala = scalaBinaryVersion.value
-    val sbt = (pluginCrossBuild / sbtBinaryVersion).value
-    baseDirectory.value / "target" / s"scala-$scala" / s"sbt-$sbt" / "sbt-teamcity-logger.jar"
+)
+
+val prepareIntegrationTestArtifacts = taskKey[File](
+  "Assembles and stages a logger JAR for integration tests."
+)
+
+lazy val integrationTestArtifactPreparationSettings: Seq[Def.Setting[_]] = Seq(
+  prepareIntegrationTestArtifacts := {
+    val packagedJar = (Compile / packageBin).value
+    // Test-artifact contract: one staged JAR per sbt plugin binary version. `SbtPluginUnderTest.packagedJar`
+    // resolves this same path, so tests never depend on `packageBin`'s versioned output layout or filename.
+    val sbtPluginBinaryVersion = (pluginCrossBuild / sbtBinaryVersion).value
+    val stagedJar = target.value / "integration-tests" / "artifacts" / s"sbt-$sbtPluginBinaryVersion.jar"
+
+    IO.createDirectory(stagedJar.getParentFile)
+    IO.copyFile(packagedJar, stagedJar, preserveLastModified = true)
+
+    streams.value.log.info(s"Staged integration-test logger JAR: ${stagedJar.getAbsolutePath}")
+    stagedJar
   },
-  Test / publishArtifact := false,
+  prepareIntegrationTestArtifacts / aggregate := false,
 )
 
 /**

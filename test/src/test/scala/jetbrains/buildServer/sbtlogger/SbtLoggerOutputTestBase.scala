@@ -59,7 +59,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val sourceWorkingDir = SbtFixtureWorkspace.sourceFixtureDirectory(root, runtime.testDataRelativePath, testRepo)
     val workingDir = SbtFixtureWorkspace.copyFixtureToWorkDirectory(root, runtime.id, testRepo, sourceWorkingDir)
     val plugin = SbtLoggerPlugin.UnderTest
-    val pluginJar = plugin.packagedJar(root, runtime.scalaBinaryVersion, runtime.sbtBinaryVersion)
+    val pluginJar = plugin.packagedJar(root, runtime.sbtBinaryVersion)
     val sbtGlobalBase = SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion)
     val sbtVersion = SbtBuildPropertiesUtils.sbtVersionIn(workingDir).getOrElse(Version(runtime.defaultSbtVersion))
     val javaHome = CurrentEnvironment.javaHomeFor(sbtVersion)
