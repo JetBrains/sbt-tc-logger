@@ -18,7 +18,7 @@ private[sbtlogger] object SbtOutputVerifier {
    *
    * The output file is echoed with TeamCity service messages made inert, then checked in the same way as [[checkOutputText]].
    * This is mainly useful for ad-hoc agent logs; for example, such a log can be checked against
-   * `test/testdata/1.0/multiProject/output.txt`.
+   * `test/testdata/1.0/compilation/multiProject/output.txt`.
    */
   def checkOutputFile(outputFile: File, excludesFile: Option[File], requiredFiles: Seq[File]): Unit = {
     val outputLines = FileUtils.readLines(outputFile)
@@ -34,9 +34,9 @@ private[sbtlogger] object SbtOutputVerifier {
    * Each line in every `requiredFiles` entry is also compiled as a regex, but required patterns must be found in order. \
    * Unrelated output lines may appear between required matches.
    *
-   * Real required-pattern fixtures include `test/testdata/1.0/compileError/output.txt`,
-   * `test/testdata/1.0/testSupport/junit/output.txt`, and `test/testdata/1.0/compileInspections/output.txt`.
-   * A real forbidden-pattern fixture is `test/testdata/1.0/TW35404Error/excludes.txt`.
+   * Real required-pattern fixtures include `test/testdata/1.0/compilation/failure/output.txt`,
+   * `test/testdata/1.0/testSupport/JUnit_PassAndFailure/output.txt`, and `test/testdata/1.0/compilation/warnings/output.txt`.
+   * A real forbidden-pattern fixture is `test/testdata/1.0/compilerLogLevel/error/excludes.txt`.
    *
    * Example:
    * ```txt
@@ -80,7 +80,8 @@ private[sbtlogger] object SbtOutputVerifier {
    * output.
    *
    * Some scenarios pass multiple required files for the same output stream; for example,
-   * `test/testdata/1.0/testSupport/scalaTest/output.txt` and `test/testdata/1.0/testSupport/scalaTest/output1.txt`.
+   * `test/testdata/1.0/testSupport/ScalaTest_PassAndFailure/output.txt` and
+   * `test/testdata/1.0/testSupport/ScalaTest_PassAndFailure/output1.txt`.
    */
   private def checkOutputLines(allLines: Seq[String], excludesFile: Option[File], requiredFiles: Seq[File]): Unit = {
     val excludedPatterns = excludesFile.toSeq.flatMap(compilePatterns)
@@ -98,7 +99,7 @@ private[sbtlogger] object SbtOutputVerifier {
    * Finds every output line matched by every forbidden pattern.
    *
    * The regex is applied with `find`, not full-line matching.
-   * See `test/testdata/1.0/TW35404Error/excludes.txt`, which forbids the nested sbt output from reporting
+   * See `test/testdata/1.0/compilerLogLevel/error/excludes.txt`, which forbids the nested sbt output from reporting
    * `Initial source changes` as a normal TeamCity message.
    *
    * Example:
@@ -128,8 +129,8 @@ private[sbtlogger] object SbtOutputVerifier {
    * one line cannot satisfy two consecutive expected lines, even if it contains text that would match both regexes.
    *
    * Ordered multi-line required patterns are used throughout the fixture outputs. Examples include
-   * `test/testdata/1.0/compileError/output.txt`, where compilation start, error, finish, and final failure messages
-   * must appear in that order, and `test/testdata/1.0/testSupport/junit/output.txt`, where suite and test messages
+   * `test/testdata/1.0/compilation/failure/output.txt`, where compilation start, error, finish, and final failure messages
+   * must appear in that order, and `test/testdata/1.0/testSupport/JUnit_PassAndFailure/output.txt`, where suite and test messages
    * must appear in their emitted order.
    *
    * Example:
@@ -208,8 +209,8 @@ private[sbtlogger] object SbtOutputVerifier {
 
   /**
    * Compiles a fixture file where each line is one regex pattern and reports invalid regexes with file and line number.
-   * The same compiler is used for required files such as `test/testdata/1.0/compileInspections/output.txt` and for
-   * excludes files such as `test/testdata/1.0/TW35404Error/excludes.txt`.
+   * The same compiler is used for required files such as `test/testdata/1.0/compilation/warnings/output.txt` and for
+   * excludes files such as `test/testdata/1.0/compilerLogLevel/error/excludes.txt`.
    *
    * Example:
    * ```txt

@@ -1,0 +1,2 @@
+##teamcity\[compilationStarted compiler='Scala compiler in Test' flowId='.*'\]
+##teamcity\[compilationFinished compiler='Scala compiler in Test' flowId='.*'\]
