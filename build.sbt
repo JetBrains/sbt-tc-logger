@@ -150,7 +150,7 @@ lazy val integrationTests: Project = (project in file("test"))
     libraryDependencies ++= junitTestFrameworkDependencies,
   )
 
-// JUnit runs the outer harness; the single current sbt launcher boots fixture-selected sbt versions.
+// JUnit runs the outer harness; the current launcher for each supported SBT line boots fixture-selected sbt versions.
 lazy val junitTestFrameworkDependencies: Seq[ModuleID] = Seq(
   "junit" % "junit" % "4.13.2" % Test,
   "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
