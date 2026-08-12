@@ -62,9 +62,39 @@ Useful targeted commands:
 The [TeamCity SBT Runner repository](https://github.com/JetBrains/tc-sbt-runner) is the logger's intended consumer. \
 It is JetBrains-private, but documents and implements the runner integration that selects the compatible logger artifact and embeds it into TeamCity distributions.
 
+## Publishing the plugin
+
+For the version format, its meaning, and the historical-version context, see the [README versioning section](README.md#versioning). This section covers the maintainer procedure only.
+
+### Version source and release tag
+
+`sbt-dynver` is the sole source of the SBT `version` setting: do not add an explicit `version := ...` setting to the build. On an exact, clean release tag, dynver produces `YYYY.0.PATCH`; on another commit or a dirty checkout, it produces a non-release version.
+
+To create a release after its candidate commit has passed the required checks:
+
+```bash
+git tag -a v2026.0.0 -m "Release 2026.0.0"
+git push origin v2026.0.0
+```
+
+The tag is immutable once publication starts; correct a bad release with a new release version rather than moving or replacing its tag.
+
+### CI release contract
+
+The checked-in CI configuration will be updated separately. Until then, this is the contract that its release workflow must implement:
+
+1. A normal branch or pull-request build runs validation but never publishes to the production repository.
+2. A release build starts only for a pushed `vYYYY.0.PATCH` tag.
+3. The checkout fetches complete history and tags. A shallow checkout or `--no-tags` clone makes dynver unable to find the release tag.
+4. CI verifies that the checkout is clean, `git describe --exact-match --tags HEAD` is the triggering tag, `sbt dynverAssertTagVersion` succeeds, and `sbt 'show version'` equals the tag with its leading `v` removed.
+5. CI runs the required test matrix, including the SBT 1.x and SBT 2.x integration tests.
+6. Only after those checks pass, CI cross-publishes both logger variants with the same derived version. The CI publishing step must use cross publication (for example, `+publish`), not a single-target `publish` invocation.
+7. CI records the immutable tag, commit SHA, and published version in the release result. Snapshot publication, if introduced later, must use a separate snapshots repository and must never replace a release artifact.
+
+The release checkout must have Git available and must fetch tags before SBT loads the build. This is required by dynver, not merely by the CI implementation.
+
 ## Artifact compatibility
 
-Releases are versioned by Git tags through `sbt-dynver`, for example `v1.1.0`. \
 Maven coordinates identify a compatibility variant and the published filename derives from that coordinate and version.
 
 - `org.jetbrains.teamcity.plugins.sbt:sbt-teamcity-logger_2.12_1.0:<logger version>` for SBT 1.x
@@ -87,7 +117,7 @@ Before ending new SBT 0.13 logger production, tag and publish the final SBT-0.13
 `L` is immutable: the TeamCity SBT runner must use its `sbt-teamcity-logger_2.10_0.13:L` artifact for SBT 0.13 rather than a later logger release.
 
 The next major release `N` publishes only the SBT 1 and SBT 2 artifacts listed above. \
-`L` and `N` are release-time tag versions, not snapshots or source revisions. \
+`L` and `N` are placeholders for release-time versions, not snapshots or source revisions. Once CalVer starts, use the `YYYY.0.PATCH` format and its matching `vYYYY.0.PATCH` tag. \
 After `N` is published and used by TeamCity to build this repository, upgrade this repository's host build to SBT 2.0.4.
 
 The primary published jar is self-contained.

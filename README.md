@@ -47,6 +47,33 @@ In `Auto` installation mode, the TeamCity SBT Runner selects its bundled logger 
 For SBT 0.13, it uses the final SBT 0.13 logger release. \
 The Runner loads the selected logger internally with `apply -cp`.
 
+## Versioning
+
+The logger uses calendar versioning (CalVer) in the Maven-compatible form `YYYY.0.PATCH`. \
+The version describes this independently published SBT plugin; it is not a TeamCity server version, TeamCity build number, or SBT runtime version.
+
+### Current scheme
+
+Starting with `2026.0.0`, releases use the following rules:
+
+- `YYYY` is the calendar year in which the release is tagged and published.
+- The middle component is reserved as `0`.
+- `PATCH` starts at `0` each year and increases for every later release in that year: `2026.0.0`, `2026.0.1`, and so on.
+- The Git release tag is `vYYYY.0.PATCH`, for example `v2026.0.0`. `sbt-dynver` derives the published version by removing the `v`.
+
+The year is a release-date convenience, not a compatibility boundary. \
+For example, a TeamCity runner released in 2027 may use `2026.0.0` when that logger version remains suitable. \
+The version has no direct correlation with a TeamCity release version: a logger update may happen because of work for a recent TeamCity release in the same year, but `2026.0.0` neither targets nor requires a particular TeamCity `2026.x` release. \
+Both the SBT 1.x and SBT 2.x artifact coordinates for one release use the same logger version.
+
+### Historical versions
+
+The historical versioning story was inconsistent. Early builds hard-coded `0.1.0-SNAPSHOT`; later builds introduced `sbt-dynver`; and the public repository does not retain an authoritative release-tag history. \
+Consequently, old version numbers do not provide a reliable timeline or compatibility policy. They also predate the current split between SBT 0.13, SBT 1.x, and SBT 2.x artifacts.
+
+Existing published versions remain valid for consumers that need them, especially the final SBT 0.13-compatible logger. \
+New releases start the documented CalVer sequence at `2026.0.0`; do not infer a relationship between this sequence and the earlier ad-hoc versions.
+
 
 ## Using
 
