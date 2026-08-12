@@ -9,6 +9,7 @@ class SbtTestsRuntimeTest {
     assertRuntime(
       SbtTestsRuntime.forSbtVersion("1.0.0"),
       id = "1.0.0",
+      sbtVersion = "1.0.0",
       testDataRelativePath = "test/testdata/1.0",
       sbtBinaryVersion = "1.0",
       launcherVersion = "1.12.15",
@@ -19,8 +20,9 @@ class SbtTestsRuntimeTest {
   @Test
   def forSbtVersionDerivesSbt2Metadata(): Unit = {
     assertRuntime(
-      SbtTestsRuntime.forSbtVersion("2.0.4"),
-      id = "2.0.4",
+      SbtTestsRuntime.forSbtVersion("2.0.6"),
+      id = "2.0.6",
+      sbtVersion = "2.0.6",
       testDataRelativePath = "test/testdata/2.0",
       sbtBinaryVersion = "2",
       launcherVersion = "2.0.6",
@@ -32,6 +34,14 @@ class SbtTestsRuntimeTest {
   def forSbtVersionAcceptsPrereleaseVersions(): Unit = {
     Assert.assertEquals("1.12.15", SbtTestsRuntime.forSbtVersion("1.13.0-RC1").launcherVersion)
     Assert.assertEquals("2.0.6", SbtTestsRuntime.forSbtVersion("2.1.0-M2").launcherVersion)
+  }
+
+  @Test
+  def catalogCoversTheSelectedRuntimeMatrix(): Unit = {
+    Assert.assertEquals(
+      Seq("1.0.0", "1.12.15", "2.0.6"),
+      SbtTestsRuntime.All.map(_.sbtVersion)
+    )
   }
 
   @Test
@@ -47,12 +57,14 @@ class SbtTestsRuntimeTest {
   private def assertRuntime(
     runtime: SbtTestsRuntime,
     id: String,
+    sbtVersion: String,
     testDataRelativePath: String,
     sbtBinaryVersion: String,
     launcherVersion: String,
     commandTransport: SbtCommandTransport
   ): Unit = {
     Assert.assertEquals(id, runtime.id)
+    Assert.assertEquals(sbtVersion, runtime.sbtVersion)
     Assert.assertEquals(testDataRelativePath, runtime.testDataRelativePath)
     Assert.assertEquals(sbtBinaryVersion, runtime.sbtBinaryVersion)
     Assert.assertEquals(launcherVersion, runtime.launcherVersion)
