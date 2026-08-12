@@ -87,7 +87,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       sbtOptions = Seq.empty
     ))
 
-  @Test
+  @Test //TW-35693
   def testWarningInTestOutput(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "TW35693",
@@ -95,14 +95,14 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       expectZeroExitCode = true
     ))
 
-  @Test
+  @Test //TW-35404
   def testTW35404Error(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "TW35404Error",
       sbtCommands = Seq("compile")
     ))
 
-  @Test
+  @Test //TW-35404
   def testTW35404Debug(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "TW35404Debug",
@@ -152,7 +152,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       expectZeroExitCode = true
     ))
 
-  @Test
+  @Test //TW-46964
   def testSpecTW46964(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "testSupport/scalaTestTW46964",
@@ -169,7 +169,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       expectZeroExitCode = true
     ))
 
-  @Test
+  @Test //TW-43578
   def testParallelTestExecutionTW43578(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "testSupport/parallelTestExecutionTW43578/src/",
