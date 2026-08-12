@@ -40,7 +40,7 @@ Then run the tests:
 2. `sbt test` enters the Scala/JUnit harness in the `integrationTests` project.
 3. Each JUnit test copies its fixture under `target/integration-tests/work/<runtime>/`, renders its `sbt.version=@SBT_VERSION@` template with that runtime's concrete version, then downloads or reuses the current launcher for the selected SBT line under `target/integration-tests/sbt-launcher`.
 4. The nested sbt command file first runs `apply -cp <logger jar> jetbrains.buildServer.sbtlogger.SbtTeamCityLogger`.
-5. Source fixture directories `testdata/1.0` and `testdata/2.0` identify plugin binary-version lines, not exact SBT releases. A scenario with a later support boundary can use a dedicated root such as `testdata/1.9+`. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
+5. Source fixture directories `testdata/1.0+` and `testdata/2.0+` identify plugin binary-version lines, not exact SBT releases. A scenario with a later support boundary can use a dedicated root such as `testdata/1.9+`. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
 6. The harness compares nested sbt output with the source fixture's `output.txt` regexes and checks `excludes.txt` when present.
 
 Useful targeted commands:

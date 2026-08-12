@@ -33,7 +33,7 @@ enum SbtCommandTransport {
 /**
  * Runtime catalog for all SBT versions that the integration-test harness exercises.
  *
- * The `testdata/1.0` and `testdata/2.0` directory names identify plugin binary-version lines, not exact nested SBT
+ * The `testdata/1.0+` and `testdata/2.0+` directory names identify plugin binary-version lines, not exact nested SBT
  * releases. A scenario whose support begins later can select a dedicated root such as `testdata/1.9+`. Every fixture
  * contains [[org.jetbrains.sbt.integrationTests.SbtFixtureWorkspace.SbtVersionTemplate]], which is rendered with
  * [[SbtTestsRuntime.sbtVersion]] only in the isolated copied workspace.
@@ -49,13 +49,13 @@ object SbtTestsRuntime {
     val commandTransport: SbtCommandTransport
   ) {
     case Sbt1 extends SbtLine(
-      testDataRelativePath = "test/testdata/1.0",
+      testDataRelativePath = "test/testdata/1.0+",
       sbtBinaryVersion = "1.0",
       launcherVersion = LatestSbt1Version,
       commandTransport = SbtCommandTransport.StandardInput
     )
     case Sbt2 extends SbtLine(
-      testDataRelativePath = "test/testdata/2.0",
+      testDataRelativePath = "test/testdata/2.0+",
       sbtBinaryVersion = "2", // SBT 2 publishes plugins under sbt-2, rather than sbt-2.0.
       launcherVersion = LatestSbt2Version,
       commandTransport = SbtCommandTransport.CommandArgument
