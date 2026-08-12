@@ -10,7 +10,7 @@ class SbtTestsRuntimeTest {
       SbtTestsRuntime.forSbtVersion("1.0.0"),
       id = "1.0.0",
       sbtVersion = "1.0.0",
-      testDataRelativePath = "test/testdata/1.0",
+      testDataRelativePath = "test/testdata/1.0+",
       sbtBinaryVersion = "1.0",
       launcherVersion = "1.12.15",
       commandTransport = SbtCommandTransport.StandardInput
@@ -23,7 +23,7 @@ class SbtTestsRuntimeTest {
       SbtTestsRuntime.forSbtVersion("2.0.6"),
       id = "2.0.6",
       sbtVersion = "2.0.6",
-      testDataRelativePath = "test/testdata/2.0",
+      testDataRelativePath = "test/testdata/2.0+",
       sbtBinaryVersion = "2",
       launcherVersion = "2.0.6",
       commandTransport = SbtCommandTransport.CommandArgument
