@@ -8,17 +8,17 @@ import java.io.File
  * Describes an sbt plugin artifact that nested sbt integration tests can load with `apply -cp`.
  */
 final case class SbtPluginUnderTest(
-  jarName: String,
   entrypointClass: String,
   packageCommandHint: String
 ) {
-  def packagedJar(root: File, scalaBinaryVersion: String, sbtBinaryVersion: String): File = {
-    val jarRelativePath = s"target/scala-$scalaBinaryVersion/sbt-$sbtBinaryVersion/$jarName"
-    val jarFile = new File(root, jarRelativePath).getAbsoluteFile
+  def packagedJar(root: File, sbtBinaryVersion: String): File = {
+    // Must match `prepareIntegrationTestArtifacts`: one staged JAR per sbt plugin binary version,
+    // independent of `packageBin`'s versioned output layout and filename.
+    val jarFile = new File(root, s"target/integration-tests/artifacts/sbt-$sbtBinaryVersion.jar").getAbsoluteFile
 
     if (!jarFile.isFile) {
       throw new IllegalStateException(
-        s"""Integration tests load the sbt plugin directly from the assembled plugin jar, but it does not exist: ${jarFile.getAbsolutePath}.
+        s"""Integration tests load the sbt plugin directly from the staged logger JAR, but it does not exist: ${jarFile.getAbsolutePath}.
            |Run: $packageCommandHint""".stripMargin
       )
     }

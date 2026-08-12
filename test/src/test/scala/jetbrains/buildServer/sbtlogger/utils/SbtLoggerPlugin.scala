@@ -7,8 +7,7 @@ import org.jetbrains.sbt.integrationTests.SbtPluginUnderTest
  */
 private[sbtlogger] object SbtLoggerPlugin {
   val UnderTest: SbtPluginUnderTest = SbtPluginUnderTest(
-    jarName = "sbt-teamcity-logger.jar",
     entrypointClass = "jetbrains.buildServer.sbtlogger.SbtTeamCityLogger",
-    packageCommandHint = "sbt +packageBin"
+    packageCommandHint = "sbt +prepareIntegrationTestArtifacts"
   )
 }
