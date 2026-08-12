@@ -16,124 +16,178 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test
   def testPluginStatus(): Unit =
-    runCase(SbtLoggerOutputTestCase("compileerror", Seq("sbt-teamcity-logger"), outputFiles = Seq("plugin_status_output.txt")))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compileerror",
+      sbtCommands = Seq("sbt-teamcity-logger"),
+      outputFiles = Seq("plugin_status_output.txt")
+    ))
 
   @Test
   def testNonTeamCityMode(): Unit =
     // Keep this shared: the plugin must remain silent outside TeamCity on every supported SBT version.
-    runCase(
-      SbtLoggerOutputTestCase(
-        "compileerror",
-        Seq("sbt-teamcity-logger"),
-        outputFiles = Seq("plugin_status_non_teamcity_output.txt"),
-        teamCityEnvironment = false,
-        expectNoTeamCityMessages = true
-      )
-    )
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compileerror",
+      sbtCommands = Seq("sbt-teamcity-logger"),
+      outputFiles = Seq("plugin_status_non_teamcity_output.txt"),
+      teamCityEnvironment = false,
+      expectNoTeamCityMessages = true
+    ))
 
   @Test
   def testCompileErrorOutput(): Unit =
-    runCase(SbtLoggerOutputTestCase("compileerror", Seq("compile")))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compileerror",
+      sbtCommands = Seq("compile")
+    ))
 
   @Test
   def testCompileSuccessfulOutput(): Unit =
-    runCase(SbtLoggerOutputTestCase("compilesuccessful", Seq("compile")))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compilesuccessful",
+      sbtCommands = Seq("compile")
+    ))
 
   @Test
   def testMultiProjectsOutput(): Unit =
-    runCase(SbtLoggerOutputTestCase("multiproject", Seq("compile")))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "multiproject",
+      sbtCommands = Seq("compile")
+    ))
 
   @Test
   def testTmp(): Unit =
-    runCase(SbtLoggerOutputTestCase("multiproject", Seq("compile"), sbtOptions = Seq("--debug")))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "multiproject",
+      sbtCommands = Seq("compile"),
+      sbtOptions = Seq("--debug")
+    ))
 
   @Test
   def testNoSbtFileInProject(): Unit =
-    runCase(SbtLoggerOutputTestCase("nosbtfile", Seq("compile"), expectZeroExitCode = true))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "nosbtfile",
+      sbtCommands = Seq("compile"),
+      expectZeroExitCode = true
+    ))
 
   @Test
   def testJUnit(): Unit =
-    runCase(SbtLoggerOutputTestCase("testsupport/junit", Seq("test"), outputFiles = Seq("output.txt"), expectZeroExitCode = true))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testsupport/junit",
+      sbtCommands = Seq("test"),
+      outputFiles = Seq("output.txt"),
+      expectZeroExitCode = true
+    ))
 
   @Test
   def testWarningInspectionsInCompile(): Unit =
-    runCase(SbtLoggerOutputTestCase("compileInspections", Seq("clean", "compile"), sbtOptions = Seq.empty))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compileInspections",
+      sbtCommands = Seq("clean", "compile"),
+      sbtOptions = Seq.empty
+    ))
 
   @Test
   def testWarningInTestOutput(): Unit =
-    runCase(SbtLoggerOutputTestCase("TW35693", Seq("test"), expectZeroExitCode = true))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "TW35693",
+      sbtCommands = Seq("test"),
+      expectZeroExitCode = true
+    ))
 
   @Test
   def testTW35404_error(): Unit =
-    runCase(SbtLoggerOutputTestCase("TW35404_error", Seq("compile")))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "TW35404_error",
+      sbtCommands = Seq("compile")
+    ))
 
   @Test
   def testTW35404_debug(): Unit =
-    runCase(SbtLoggerOutputTestCase("TW35404_debug", Seq("compile")))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "TW35404_debug",
+      sbtCommands = Seq("compile")
+    ))
 
   @Test
   def testSubProject_compile(): Unit =
-    runCase(SbtLoggerOutputTestCase("subproject", Seq("backend/compile")))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "subproject",
+      sbtCommands = Seq("backend/compile")
+    ))
 
   @Test
   def testRunTestWithSbt(): Unit =
-    runCase(
-      SbtLoggerOutputTestCase(
-        "testsupport/scalatest",
-        Seq("test"),
-        outputFiles = Seq("output.txt", "output1.txt"),
-        expectZeroExitCode = true
-      )
-    )
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testsupport/scalatest",
+      sbtCommands = Seq("test"),
+      outputFiles = Seq("output.txt", "output1.txt"),
+      expectZeroExitCode = true
+    ))
 
   @Test
   def testProjectWithJavaSources(): Unit =
-    runCase(
-      SbtLoggerOutputTestCase(
-        "withJavaSources",
-        Seq("clean", "compile", "run"),
-        sbtOptions = Seq("--debug"),
-        outputFiles = Seq("output.txt")
-      )
-    )
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "withJavaSources",
+      sbtCommands = Seq("clean", "compile", "run"),
+      sbtOptions = Seq("--debug"),
+      outputFiles = Seq("output.txt")
+    ))
 
   @Test
   def testIgnoredTest(): Unit =
-    runCase(SbtLoggerOutputTestCase("ignoredTest", Seq("test"), sbtOptions = Seq("--info"), expectZeroExitCode = true))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "ignoredTest",
+      sbtCommands = Seq("test"),
+      sbtOptions = Seq("--info"),
+      expectZeroExitCode = true
+    ))
 
   @Test
   def testNestedSuites(): Unit =
-    runCase(SbtLoggerOutputTestCase("testsupport/nested", Seq("test"), sbtOptions = Seq("--info"), expectZeroExitCode = true))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testsupport/nested",
+      sbtCommands = Seq("test"),
+      sbtOptions = Seq("--info"),
+      expectZeroExitCode = true
+    ))
 
   @Test
   def testSpecTW46964(): Unit =
-    runCase(SbtLoggerOutputTestCase("testsupport/scalatest_TW46964", Seq("testOnly"), outputFiles = Seq("output.txt")))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testsupport/scalatest_TW46964",
+      sbtCommands = Seq("testOnly"),
+      outputFiles = Seq("output.txt")
+    ))
 
   @Test
   def testSpec2(): Unit =
-    runCase(SbtLoggerOutputTestCase("testsupport/spec2", Seq("testOnly"), outputFiles = Seq("output.txt"), expectZeroExitCode = true))
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testsupport/spec2",
+      sbtCommands = Seq("testOnly"),
+      outputFiles = Seq("output.txt"),
+      expectZeroExitCode = true
+    ))
 
   @Test
   def testParallelTestExecutionTW43578(): Unit =
-    runCase(
-      SbtLoggerOutputTestCase(
-        "testsupport/parallelTestExecutionTW43578/src/",
-        Seq("test"),
-        sbtOptions = Seq("--info"),
-        outputFiles = Seq(
-          "output.txt",
-          "output1.txt",
-          "output2.txt",
-          "output3.txt",
-          "output4.txt",
-          "output5.txt",
-          "output7.txt",
-          "output6.txt",
-          "output8.txt",
-          "output9.txt",
-          "output10.txt",
-          "output11.txt"
-        )
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testsupport/parallelTestExecutionTW43578/src/",
+      sbtCommands = Seq("test"),
+      sbtOptions = Seq("--info"),
+      outputFiles = Seq(
+        "output.txt",
+        "output1.txt",
+        "output2.txt",
+        "output3.txt",
+        "output4.txt",
+        "output5.txt",
+        "output7.txt",
+        "output6.txt",
+        "output8.txt",
+        "output9.txt",
+        "output10.txt",
+        "output11.txt"
       )
-    )
+    ))
 }
