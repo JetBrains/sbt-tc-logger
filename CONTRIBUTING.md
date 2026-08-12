@@ -7,7 +7,7 @@ The host remains SBT 1.12.12 while it cross-builds the logger against the stable
 Those are plugin compilation targets, not the concrete nested SBT versions exercised by integration tests.
 
 The SBT 1.x logger is compiled with Java 8 release compatibility so it remains loadable by supported SBT 1 runtimes; the SBT 2.x logger and the build itself run on JDK 17. \
-Running the full integration suite also requires a local Java 8 or Java 11 installation for the legacy SBT fixtures.
+Running the full integration suite also requires an exact local JDK 8 installation. The harness deliberately rejects Java 11 or another newer version in place of JDK 8, and requires an exact JDK 17 installation for its JDK-17 matrix entries.
 
 ## Build the logger locally
 
@@ -20,8 +20,7 @@ TeamCity service messages are resolved as the managed `org.jetbrains.teamcity:se
 
 ## Run integration tests
 
-Integration tests launch the SBT 1.x and SBT 2.x runtimes. \
-SBT 1.0.0 uses Java 8 or Java 11 discovered from standard OS locations; SBT 1.12.15 uses the harness JVM; and the SBT 2.0.6 fixtures run on Java 17.
+Integration tests launch nested SBT with the exact, explicit JDK selected by each concrete JUnit class. The outer harness still runs on JDK 17.
 
 Integration tests load the assembled logger jar into nested sbt with sbt's `apply -cp` command. \
 Before running them, build the plugin jar:
@@ -40,22 +39,35 @@ Then run the tests:
 2. `sbt test` enters the Scala/JUnit harness in the `integrationTests` project.
 3. Each JUnit test copies its fixture under `target/integration-tests/work/<runtime>/`, renders its `sbt.version=@SBT_VERSION@` template with that runtime's concrete version, then downloads or reuses the current launcher for the selected SBT line under `target/integration-tests/sbt-launcher`.
 4. The nested sbt command file first runs `apply -cp <logger jar> jetbrains.buildServer.sbtlogger.SbtTeamCityLogger`.
-5. Source fixture directories `testdata/1.0+` and `testdata/2.0+` identify plugin binary-version lines, not exact SBT releases. A scenario with a later support boundary can use a dedicated root such as `testdata/1.9+`. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
+5. Fixture-root names express their minimum SBT version: `testdata/1.0` is the legacy SBT 1.0 corpus, `testdata/1.3+` is the Scala-2.13 modern SBT 1 corpus, `testdata/1.9+` is the JaCoCo extension, and `testdata/2.0+` is the SBT 2 corpus. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
 6. The harness compares nested sbt output with the source fixture's `output.txt` regexes and checks `excludes.txt` when present.
 
 Useful targeted commands:
 
-`sbt testSbt100`
+`sbt testSbt100Jdk8`
 
-`sbt testSbt1Latest`
+`sbt testSbt1LatestJdk8`
 
-`sbt testSbt2Latest`
+`sbt testSbt1LatestJdk17`
+
+`sbt testSbt2LatestJdk17`
 
 `sbt testAllSbtVersions`
 
-`sbt testSbt200`
+The integration matrix is intentionally limited rather than a full SBT × JDK cross-product:
 
-`testSbt200` is retained as a compatibility alias for `testSbt2Latest`. The active matrix runs SBT 1.0.0, SBT 1.12.15, and SBT 2.0.6. The JaCoCo scenario runs on SBT 1.9.0+ and SBT 2.0.0+; `publishTest` remains dormant.
+| JUnit class | Nested SBT | JDK | Fixture roots |
+| --- | --- | --- | --- |
+| `SbtLoggerOutputTest_1_0_0_Jdk8` | 1.0.0 | 8 | `1.0` |
+| `SbtLoggerOutputTest_1_Latest_Jdk8` | 1.12.15 | 8 | `1.3+`, `1.9+` |
+| `SbtLoggerOutputTest_1_Latest_Jdk17` | 1.12.15 | 17 | `1.3+`, `1.9+` |
+| `SbtLoggerOutputTest_2_Latest_Jdk17` | 2.0.6 | 17 | `2.0+` |
+
+This balance makes the legacy baseline, current SBT 1 on both supported JDKs, and current SBT 2 meaningful and visible while avoiding the runtime and maintenance cost of combinations that do not add useful compatibility evidence. Future JDK changes intentionally rename the affected concrete class and alias.
+
+`testSbt100`, `testSbt1Latest`, `testSbt2Latest`, and `testSbt200` remain compatibility aliases; use the JDK-qualified aliases when selecting a concrete matrix entry. The JaCoCo scenario runs on the current SBT 1 classes through `1.9+` and on SBT 2 through `2.0+`; `publishTest` remains dormant.
+
+The TeamCity job must require both `env.JDK_1_8_0` and `env.JDK_17_0` before it is scheduled. This matches the explicit matrix and prevents a Java-8 entry from reaching the harness on an incompatible agent.
 
 ## TeamCity SBT Runner
 

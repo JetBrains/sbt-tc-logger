@@ -9,16 +9,16 @@ import java.nio.file.Files
  * Prepares per-test fixture workspaces for nested sbt runs.
  *
  * Source fixtures stay immutable under `test/testdata`; each run copies one fixture into `target/integration-tests/work`
- * and skips any fixture-local `target` directories. Test-data directories represent SBT plugin binary-version lines;
- * the source `project/build.properties` file contains [[SbtVersionTemplate]] and is rendered only in the copied fixture
- * with the exact nested SBT version selected by the concrete runtime.
+ * and skips any fixture-local `target` directories. Test-data directory names state a fixture root's minimum supported
+ * SBT version; the source `project/build.properties` file contains [[SbtVersionTemplate]] and is rendered only in the
+ * copied fixture with the exact nested SBT version selected by the concrete runtime.
  */
 object SbtFixtureWorkspace {
   /**
    * Required value of every test fixture's `sbt.version` property.
    *
    * `@SBT_VERSION@` is intentionally not shell or SBT syntax: the harness performs the only substitution after copying
-   * the source fixture. This keeps one reusable fixture corpus for each SBT plugin binary-version line.
+   * the source fixture. This keeps one reusable fixture corpus for each compatible SBT range.
    */
   val SbtVersionTemplate = "@SBT_VERSION@"
 

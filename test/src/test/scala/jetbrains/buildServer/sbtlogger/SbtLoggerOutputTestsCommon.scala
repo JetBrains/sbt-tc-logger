@@ -41,7 +41,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     // SBT 1.0.0 cannot start its x86-only JNA socket server on a native Apple Silicon JVM.
     assumeFalse(
       "SBT 1.0.0 requires x86_64 Java under Rosetta or an x86 CI agent on Apple Silicon hosts.",
-      runtime == SbtTestsRuntime.Sbt_1_0_0 && isNativeAppleSilicon
+      runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8 && isNativeAppleSilicon
     )
 
     runCase(SbtLoggerOutputTestCase(

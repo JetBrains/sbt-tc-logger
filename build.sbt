@@ -155,9 +155,21 @@ lazy val junitTestFrameworkDependencies: Seq[ModuleID] = Seq(
   "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
 )
 
-addCommandAlias("testSbt100", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_0_0")
-addCommandAlias("testSbt1Latest", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_Latest")
-addCommandAlias("testSbt2Latest", "integrationTests / testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_2_Latest")
+addCommandAlias("testSbt100Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_0_0_Jdk8")
+addCommandAlias("testSbt1LatestJdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_Latest_Jdk8")
+addCommandAlias("testSbt1LatestJdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_Latest_Jdk17")
+addCommandAlias("testSbt2LatestJdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_2_Latest_Jdk17")
+// Compatibility aliases retain their previous intent while the JDK-qualified aliases select exact matrix entries.
+addCommandAlias("testSbt100", "testSbt100Jdk8")
+addCommandAlias("testSbt1Latest", "testSbt1LatestJdk17")
+addCommandAlias("testSbt2Latest", "testSbt2LatestJdk17")
 // Compatibility alias retained for callers that previously selected the only SBT 2 suite by its historical version.
 addCommandAlias("testSbt200", "testSbt2Latest")
-addCommandAlias("testAllSbtVersions", ";testSbt100;testSbt1Latest;testSbt2Latest")
+addCommandAlias(
+  "testAllSbtVersions",
+  ";project integrationTests" +
+    ";testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_0_0_Jdk8" +
+    ";testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_Latest_Jdk8" +
+    ";testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_Latest_Jdk17" +
+    ";testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_2_Latest_Jdk17"
+)
