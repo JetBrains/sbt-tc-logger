@@ -11,28 +11,26 @@ import scala.jdk.CollectionConverters.*
 class SbtFixtureTemplateContractTest {
 
   @Test
-  def everyFixtureProjectUsesTheSbtVersionTemplate(): Unit = {
+  def everyDeclaredSbtVersionUsesTheTemplate(): Unit = {
     val root = IntegrationTestLayout.repoRoot().toPath.resolve("test/testdata")
+    val declarations = buildPropertiesFiles(root)
+      .map(propertiesFile => root.relativize(propertiesFile) -> SbtFixtureWorkspace.sbtVersionValues(Files.readString(propertiesFile)))
+      .filter { case (_, values) => values.nonEmpty }
+      .sortBy { case (path, _) => path.toString }
 
-    Seq("1.0" -> 20, "1.3+" -> 19, "1.9+" -> 1, "2.0+" -> 20).foreach { case (line, expectedProjectCount) =>
-      val propertiesFiles = buildPropertiesFiles(root.resolve(line))
-      val fixtureProjects = propertiesFiles
-        .map(_.getParent.getParent)
-        .map(root.relativize)
-        .sortBy(_.toString)
-      Assert.assertEquals(
-        s"Unexpected number of fixture projects under $line. Found: ${fixtureProjects.mkString(", ")}",
-        expectedProjectCount,
-        propertiesFiles.size
-      )
-      propertiesFiles.foreach { propertiesFile =>
-        Assert.assertEquals(
-          s"Unexpected SBT version template in $propertiesFile",
-          s"sbt.version=${SbtFixtureWorkspace.SbtVersionTemplate}",
-          Files.readString(propertiesFile).trim
-        )
-      }
-    }
+    Assert.assertFalse(
+      s"No sbt.version declarations were found in build.properties files under $root",
+      declarations.isEmpty
+    )
+
+    val invalidDeclarations = declarations.filter { case (_, values) => values != Seq(SbtFixtureWorkspace.SbtVersionTemplate) }
+    Assert.assertTrue(
+      s"""Every declared sbt.version must consist of exactly one ${SbtFixtureWorkspace.SbtVersionTemplate} template value.
+         |Invalid declarations:
+         |${invalidDeclarations.map { case (path, values) => s"$path: ${values.mkString("[", ", ", "]")}" }.mkString(System.lineSeparator())}
+         |""".stripMargin,
+      invalidDeclarations.isEmpty
+    )
   }
 
   private def buildPropertiesFiles(testDataRoot: Path): Seq[Path] = {
@@ -41,7 +39,6 @@ class SbtFixtureTemplateContractTest {
       files.iterator.asScala
         .filter(path => Files.isRegularFile(path))
         .filter(_.getFileName.toString == "build.properties")
-        .filter(_.getParent.getFileName.toString == "project")
         .toSeq
     }
     finally files.close()

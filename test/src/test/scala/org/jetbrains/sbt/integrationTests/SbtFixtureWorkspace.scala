@@ -22,6 +22,15 @@ object SbtFixtureWorkspace {
    */
   val SbtVersionTemplate = "@SBT_VERSION@"
 
+  /**
+   * Returns the values of every line-oriented `sbt.version` declaration in source order.
+   *
+   * Values are trimmed so callers can validate a source fixture independently of insignificant surrounding whitespace.
+   * An empty result means that the content does not declare `sbt.version`.
+   */
+  def sbtVersionValues(content: String): Seq[String] =
+    sbtVersionDeclarations(content).map(_.value)
+
   def sourceFixtureDirectory(root: File, testDataRelativePath: String, testRepo: String): File = {
     val source = new File(new File(root, testDataRelativePath), testRepo).getAbsoluteFile
     if (!source.isDirectory) {
@@ -48,23 +57,32 @@ object SbtFixtureWorkspace {
     }
 
     val content = Files.readString(propertiesFile.toPath)
-    val properties = SbtVersionProperty.findAllMatchIn(content).toSeq
-    if (properties.size != 1) {
-      templateError(propertiesFile, s"expected one sbt.version property but found ${properties.size}")
+    val declarations = sbtVersionDeclarations(content)
+    if (declarations.size != 1) {
+      templateError(propertiesFile, s"expected one sbt.version property but found ${declarations.size}")
     }
 
-    val property = properties.head
-    if (property.group(1).trim != SbtVersionTemplate) {
+    val declaration = declarations.head
+    if (declaration.value != SbtVersionTemplate) {
       templateError(propertiesFile, s"expected sbt.version=$SbtVersionTemplate")
     }
 
     val rendered = content.patch(
-      property.start(1),
+      declaration.valueStart,
       sbtVersion,
-      property.end(1) - property.start(1)
+      declaration.valueEnd - declaration.valueStart
     )
     Files.writeString(propertiesFile.toPath, rendered)
   }
+
+  private def sbtVersionDeclarations(content: String): Seq[SbtVersionDeclaration] =
+    SbtVersionProperty.findAllMatchIn(content).map { property =>
+      SbtVersionDeclaration(
+        value = property.group(1).trim,
+        valueStart = property.start(1),
+        valueEnd = property.end(1)
+      )
+    }.toSeq
 
   private def templateError(propertiesFile: File, reason: String): Nothing =
     throw new IllegalStateException(
@@ -73,6 +91,8 @@ object SbtFixtureWorkspace {
     )
 
   private val SbtVersionProperty = """(?m)^[\t ]*sbt\.version[\t ]*=[\t ]*([^\r\n]*)$""".r
+
+  private final case class SbtVersionDeclaration(value: String, valueStart: Int, valueEnd: Int)
 
   private def normalizedPathParts(path: String): Seq[String] =
     normalisePathSeparator(path).split('/').toSeq.filter(_.nonEmpty)
