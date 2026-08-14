@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.SbtLoggerOutputTestCase
+import jetbrains.buildServer.sbtlogger.utils.{SbtExitCodeExpectation, SbtLoggerOutputTestCase}
 import org.junit.Assume.assumeFalse
 import org.junit.Test
 
@@ -46,7 +46,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/failure",
-      sbtCommands = Seq("compile")
+      sbtCommands = Seq("compile"),
+      expectedExitCode = SbtExitCodeExpectation.NonZero
     ))
   }
 
@@ -81,7 +82,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "projectConfiguration/noBuildFile",
       sbtCommands = Seq("compile"),
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
   // Verifies JUnit suite, passing-test, failing-test, and failure-detail service messages.
@@ -91,7 +92,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "testSupport/JUnit_PassAndFailure",
       sbtCommands = Seq("test"),
       outputFiles = Seq("output.txt"),
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
   // TW-53224 - `testQuick` must preserve the normal per-test TeamCity protocol, including failures.
@@ -103,7 +104,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "testSupport/JUnit_PassAndFailure",
       sbtCommands = Seq("testQuick"),
       outputFiles = Seq("output.txt"),
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
   // Verifies that compiler warnings are reported as TeamCity warning inspections.
@@ -146,7 +147,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "testSupport/ScalaTest_PassAndFailure",
       sbtCommands = Seq("test"),
       outputFiles = Seq("output.txt", "output1.txt"),
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
   // Verifies that mixed Java and Scala sources compile and the Java main class runs.
@@ -166,7 +167,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "testSupport/Specs2_IgnoredTests",
       sbtCommands = Seq("test"),
       sbtOptions = Seq("--info"),
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
   // Verifies nested ScalaTest suite and member-test service messages.
@@ -176,7 +177,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "testSupport/ScalaTest_NestedSuites",
       sbtCommands = Seq("test"),
       sbtOptions = Seq("--info"),
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
   // TW-46964 - Verifies that long ScalaTest FeatureSpec names do not repeat name segments.
@@ -195,7 +196,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "testSupport/Specs2_TestOnlyExamples",
       sbtCommands = Seq("testOnly"),
       outputFiles = Seq("output.txt"),
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
   // TW-43578 - Verifies parallel and non-parallel ScalaTest test and suite event reporting.

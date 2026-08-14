@@ -9,7 +9,7 @@ package jetbrains.buildServer.sbtlogger.utils
  * @param sbtCommands        sbt commands sent through the nested process command transport.
  * @param sbtOptions         launcher command-line options passed before the command transport.
  * @param outputFiles        expected output regex files to check; defaults to `output.txt` when empty.
- * @param expectZeroExitCode whether the nested sbt process must finish successfully.
+ * @param expectedExitCode   expected result of the nested sbt process.
  * @param teamCityEnvironment whether the nested process receives `TEAMCITY_VERSION`; when false, an inherited value is
  *                            removed before the process starts.
  * @param expectNoTeamCityMessages asserts the logger remains completely inactive when TeamCity is absent.
@@ -20,7 +20,19 @@ final case class SbtLoggerOutputTestCase(
   sbtCommands: Seq[String],
   sbtOptions: Seq[String] = Seq("--error"),
   outputFiles: Seq[String] = Seq.empty,
-  expectZeroExitCode: Boolean = false,
+  expectedExitCode: SbtExitCodeExpectation = SbtExitCodeExpectation.Any,
   teamCityEnvironment: Boolean = true,
   expectNoTeamCityMessages: Boolean = false
 )
+
+/** Exit-code contract for a fixture-backed nested sbt invocation. */
+sealed trait SbtExitCodeExpectation
+
+object SbtExitCodeExpectation {
+  /** The scenario's output is relevant but its exit status is not. */
+  case object Any extends SbtExitCodeExpectation
+  /** The command must complete successfully. */
+  case object Zero extends SbtExitCodeExpectation
+  /** The command must fail, proving a captured compilation failure was rethrown. */
+  case object NonZero extends SbtExitCodeExpectation
+}
