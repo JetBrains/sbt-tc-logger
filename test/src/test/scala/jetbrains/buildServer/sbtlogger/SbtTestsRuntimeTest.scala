@@ -16,8 +16,7 @@ class SbtTestsRuntimeTest {
       jdk = SbtTestJdk.Jdk8,
       testDataRelativePath = "test/testdata/1.0",
       sbtBinaryVersion = "1.0",
-      launcherVersion = "1.12.15",
-      commandTransport = SbtCommandTransport.CommandArgument
+      launcherVersion = "1.12.15"
     )
   }
 
@@ -30,8 +29,7 @@ class SbtTestsRuntimeTest {
       jdk = SbtTestJdk.Jdk17,
       testDataRelativePath = "test/testdata/2.0+",
       sbtBinaryVersion = "2",
-      launcherVersion = "2.0.6",
-      commandTransport = SbtCommandTransport.CommandArgument
+      launcherVersion = "2.0.6"
     )
   }
 
@@ -88,8 +86,7 @@ class SbtTestsRuntimeTest {
     jdk: SbtTestJdk,
     testDataRelativePath: String,
     sbtBinaryVersion: String,
-    launcherVersion: String,
-    commandTransport: SbtCommandTransport
+    launcherVersion: String
   ): Unit = {
     Assert.assertEquals(id, runtime.id)
     Assert.assertEquals(sbtVersion, runtime.sbtVersion)
@@ -97,7 +94,6 @@ class SbtTestsRuntimeTest {
     Assert.assertEquals(testDataRelativePath, runtime.testDataRelativePath)
     Assert.assertEquals(sbtBinaryVersion, runtime.sbtBinaryVersion)
     Assert.assertEquals(launcherVersion, runtime.launcherVersion)
-    Assert.assertEquals(commandTransport, runtime.commandTransport)
   }
 
   private def expectIllegalArgumentException(block: => Unit): IllegalArgumentException = {

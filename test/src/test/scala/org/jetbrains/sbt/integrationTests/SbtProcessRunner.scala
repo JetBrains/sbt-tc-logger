@@ -1,7 +1,5 @@
 package org.jetbrains.sbt.integrationTests
 
-import org.jetbrains.sbt.integrationTests.FileUtils.normalisedAbsolutePath
-
 import java.io.File
 import scala.io.Source
 import scala.util.Try
@@ -22,30 +20,16 @@ object SbtProcessRunner {
     verbose: Boolean,
     errorsExpected: Boolean,
     diagnosticLineNormaliser: String => String = identity,
-    commandsAsArguments: Boolean = false,
     environmentVariablesToRemove: Seq[String] = Seq.empty
   ): ProcessRunResult = {
     val sbtCommandsText = sbtCommands.mkString("\n")
-    val commandsFile =
-      if (commandsAsArguments) None
-      else {
-        val file = FileUtils.createTempFile("sbt-commands", ".lst")
-        FileUtils.writeLinesTo(file, sbtCommandsText.linesIterator.toSeq *)
-        Some(file)
-      }
-    val launcherCommandLine = commandLinePrefix ++ sbtOptions
-    val commandLine =
-      if (commandsAsArguments) launcherCommandLine :+ sbtCommands.mkString(";", ";", "")
-      else launcherCommandLine
-    val commandInputDescription =
-      if (commandsAsArguments) "SBT command arguments"
-      else s"< ${normalisedAbsolutePath(commandsFile.get)}"
+    val commandLine = buildCommandLine(commandLinePrefix, sbtOptions, sbtCommands)
 
     println(
       s"""SBT process command line:
          |${indented(commandLine.mkString("\n"), spaces = 4)}
          |
-         |$commandInputDescription:
+         |SBT command arguments:
          |${indented(sbtCommandsText.linesIterator.map("  " + _).mkString("\n"), spaces = 4)}
          |
          |SBT process environment variables:
@@ -58,7 +42,6 @@ object SbtProcessRunner {
 
     runProcess(
       commandLine,
-      commandsFile,
       projectDir,
       envVars,
       environmentVariablesToRemove,
@@ -68,9 +51,16 @@ object SbtProcessRunner {
     )
   }
 
+  /** Builds the non-interactive nested-sbt command line with exactly one trailing command argument. */
+  private[integrationTests] def buildCommandLine(
+    commandLinePrefix: Seq[String],
+    sbtOptions: Seq[String],
+    sbtCommands: Seq[String]
+  ): Seq[String] =
+    commandLinePrefix ++ sbtOptions :+ sbtCommands.mkString(";", ";", "")
+
   private def runProcess(
     commands: Seq[String],
-    commandsFile: Option[File],
     directory: File,
     envVars: Seq[String],
     environmentVariablesToRemove: Seq[String],
@@ -80,7 +70,6 @@ object SbtProcessRunner {
   ): ProcessRunResult = {
     val builder = new ProcessBuilder(commands*)
     builder.directory(directory)
-    commandsFile.foreach(builder.redirectInput)
     val environment = builder.environment()
     // Remove inherited variables first so callers can model an absent value while still overriding other parent settings.
     environmentVariablesToRemove.foreach(environment.remove)

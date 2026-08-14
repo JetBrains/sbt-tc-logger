@@ -11,7 +11,6 @@ package jetbrains.buildServer.sbtlogger
  * @param testDataRelativePath    path from the repository root to this runtime's fixture directory.
  * @param sbtBinaryVersion        sbt plugin binary version used to select the staged logger JAR.
  * @param launcherVersion         sbt launcher version used to start nested sbt and select its global directories.
- * @param commandTransport        mechanism for passing options and commands to the nested sbt launcher.
  */
 final case class SbtTestsRuntime(
   id: String,
@@ -19,8 +18,7 @@ final case class SbtTestsRuntime(
   jdk: SbtTestJdk,
   testDataRelativePath: String,
   sbtBinaryVersion: String,
-  launcherVersion: String,
-  commandTransport: SbtCommandTransport
+  launcherVersion: String
 )
 
 /**
@@ -33,15 +31,6 @@ final case class SbtTestsRuntime(
 enum SbtTestJdk(val id: String, val majorVersion: Int) {
   case Jdk8 extends SbtTestJdk("jdk8", 8)
   case Jdk17 extends SbtTestJdk("jdk17", 17)
-}
-
-/** Selects how the nested SBT launcher receives its options and commands. */
-enum SbtCommandTransport {
-  /** Feed the interactive SBT shell through standard input. */
-  case StandardInput
-
-  /** Pass the complete non-interactive command sequence to the launcher as an argument. */
-  case CommandArgument
 }
 
 /**
@@ -59,21 +48,15 @@ object SbtTestsRuntime {
 
   private enum SbtLine(
     val sbtBinaryVersion: String,
-    val launcherVersion: String,
-    val commandTransport: SbtCommandTransport
+    val launcherVersion: String
     ) {
     case Sbt1 extends SbtLine(
       sbtBinaryVersion = "1.0",
-      launcherVersion = LatestSbt1Version,
-      // SBT 1.12's server shell no longer consumes a redirected command file.
-      // Semicolon-delimited arguments work on every supported SBT 1 runtime and
-      // ensure the nested process executes the fixture commands instead of idling.
-      commandTransport = SbtCommandTransport.CommandArgument
+      launcherVersion = LatestSbt1Version
     )
     case Sbt2 extends SbtLine(
       sbtBinaryVersion = "2", // SBT 2 publishes plugins under sbt-2, rather than sbt-2.0.
-      launcherVersion = LatestSbt2Version,
-      commandTransport = SbtCommandTransport.CommandArgument
+      launcherVersion = LatestSbt2Version
     )
   }
 
@@ -105,8 +88,7 @@ object SbtTestsRuntime {
       jdk = jdk,
       testDataRelativePath = testDataRelativePath,
       sbtBinaryVersion = line.sbtBinaryVersion,
-      launcherVersion = line.launcherVersion,
-      commandTransport = line.commandTransport
+      launcherVersion = line.launcherVersion
     )
   }
 

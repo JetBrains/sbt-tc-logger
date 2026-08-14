@@ -118,8 +118,6 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       new File(sourceWorkingDir, outputFile)
     }
 
-    val commandsAsArguments = runtime.commandTransport == SbtCommandTransport.CommandArgument
-
     // Recent SBT versions use a Unix-domain socket for their server. Keep it in a short directory to avoid exceeding
     // the platform's socket-path limit when the test harness isolates its global base under the repository.
     val sbtGlobalServerDirectory =
@@ -136,18 +134,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val failurePropagationSetup = SbtFailurePropagationExpectation.setupCommand(failurePropagation)
 
     val effectiveSbtCommands: Seq[String] =
-      if (commandsAsArguments)
-        // SBT 2 must receive a non-interactive command argument. See this commit's message for the transport rationale.
-        plugin.loadCommand(pluginJar) +: (localCacheCommand.toSeq ++ failurePropagationSetup.toSeq ++ sbtCommands :+ "exit")
-      else
-        // SBT 1 fixtures keep options in their stdin script. See this commit's message for the compatibility rationale.
-        sbtOptions ++ (plugin.loadCommand(pluginJar) +: (failurePropagationSetup.toSeq ++ sbtCommands :+ "exit"))
-
-    val effectiveSbtOptions =
-      if (commandsAsArguments)
-        sbtOptions
-      else
-        Seq.empty
+      plugin.loadCommand(pluginJar) +: (localCacheCommand.toSeq ++ failurePropagationSetup.toSeq ++ sbtCommands :+ "exit")
 
     val environmentVariablesToRemove =
       if (teamCityEnvironment) Seq.empty
@@ -157,13 +144,12 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val runResult = SbtProcessRunner.runSbtProcess(
       projectDir = workingDir,
       commandLinePrefix = commandLinePrefix,
-      sbtOptions = effectiveSbtOptions,
+      sbtOptions = sbtOptions,
       sbtCommands = effectiveSbtCommands,
       envVars = environmentVariables(sbtGlobalBase, sbtGlobalServerDirectory, javaHome, teamCityEnvironment),
       verbose = true,
       errorsExpected = true,
       diagnosticLineNormaliser = TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput,
-      commandsAsArguments = commandsAsArguments,
       environmentVariablesToRemove = environmentVariablesToRemove
     )
 
