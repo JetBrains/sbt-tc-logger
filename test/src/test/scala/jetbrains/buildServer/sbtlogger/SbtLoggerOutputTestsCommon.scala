@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtLoggerOutputTestCase}
+import jetbrains.buildServer.sbtlogger.utils.{SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase}
 import org.junit.Test
 
 /**
@@ -40,7 +40,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/failure",
       sbtCommands = Seq("compile"),
-      expectedExitCode = expectedCompilationFailureExitCode,
+      failurePropagation = compilationFailurePropagation,
       compilationLifecycle = compilationFailureLifecycle(expectedClosures = 1, expectedLegacyErrorSummaries = 1)
     ))
 
@@ -59,7 +59,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
       outputFiles = multiProjectOutputFiles,
-      expectedExitCode = expectedCompilationFailureExitCode,
+      failurePropagation = compilationFailurePropagation,
       compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2)
     ))
 
@@ -71,7 +71,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       sbtCommands = Seq("compile"),
       sbtOptions = Seq("--debug"),
       outputFiles = multiProjectOutputFiles,
-      expectedExitCode = expectedCompilationFailureExitCode
+      failurePropagation = compilationFailurePropagation
     ))
 
   // Verifies Test / compile closes its lifecycle and rethrows an underlying compiler failure.
@@ -81,7 +81,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/testFailure",
       sbtCommands = Seq(testCompileCommand),
       outputFiles = testCompilationOutputFiles,
-      expectedExitCode = expectedCompilationFailureExitCode,
+      failurePropagation = compilationFailurePropagation,
       compilationLifecycle = testCompilationFailureLifecycle
     ))
 
@@ -260,13 +260,14 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   /**
    * SBT 1.0 must receive commands through its interactive standard-input script: passing its options at the launcher
-   * level makes the logger fixture miss service messages. When that script explicitly executes `exit`, the legacy
-   * launcher returns zero even after a failed compile task. The output fixture and lifecycle assertion still require
-   * the compiler error and TeamCity `Compilation failed` message, so this preserves the actual regression coverage.
+   * level makes the logger fixture miss service messages. Its launcher returns zero after a failed compile task even
+   * without an explicit `exit`, so process status cannot prove the logger rethrew the failure. The SBT 1.0 case instead
+   * runs an `onFailure` handler that prints a unique marker, while newer runtimes prove propagation through a non-zero
+   * process status.
    */
-  private def expectedCompilationFailureExitCode: SbtExitCodeExpectation =
-    if (runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8) SbtExitCodeExpectation.Zero
-    else SbtExitCodeExpectation.NonZero
+  private def compilationFailurePropagation: SbtFailurePropagationExpectation =
+    if (runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8) SbtFailurePropagationExpectation.SbtOnFailureHandler
+    else SbtFailurePropagationExpectation.ProcessExitNonZero
 
   /**
    * SBT 1.0 may emit the reporter's `one error found` callback either side of `compilationFinished`. Its reporter and
