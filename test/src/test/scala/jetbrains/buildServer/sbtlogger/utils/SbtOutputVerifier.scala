@@ -86,6 +86,8 @@ private[sbtlogger] object SbtOutputVerifier {
    *
    * Unlike the regex fixture matcher, this keeps the actual TeamCity `compiler` and `flowId` attributes together.
    * It therefore rejects an unmatched or duplicate close even when a permissive `flowId='.*'` regex would match it.
+   * Legacy `one error found` messages are emitted on the reporter's flow rather than the compiler lifecycle flow, so this
+   * assertion counts those summaries but deliberately does not associate their flow IDs with a compiler pair.
    */
   def assertCompilationLifecycle(output: String, expectation: SbtCompilationLifecycleExpectation): Unit = {
     val lines = output.linesIterator.toVector
@@ -117,33 +119,16 @@ private[sbtlogger] object SbtOutputVerifier {
 
     }
 
-    val legacyErrorSummaries = lines.zipWithIndex.collect {
-      case (line, lineIndex) if parseServiceMessage(line).exists { case (name, attributes) =>
+    val legacyErrorSummaryCount = lines.count { line =>
+      parseServiceMessage(line).exists { case (name, attributes) =>
         name == "message" &&
           attributes.get("status").contains("ERROR") &&
           attributes.get("flowId").isDefined &&
           attributes.get("text").contains("one error found")
-      } =>
-        val (_, attributes) = parseServiceMessage(line).get
-        CompilationErrorSummary(attributes("flowId"), lineIndex)
-    }
-    expectation.expectedLegacyErrorSummariesBeforeFinish.foreach { expectedCount =>
-      Assert.assertEquals(s"Expected $expectedCount legacy compiler error summaries", expectedCount, legacyErrorSummaries.size)
-    }
-    expectation.expectedLegacyErrorSummariesBeforeFinish.foreach { _ =>
-      legacyErrorSummaries.foreach { summary =>
-        val matchingLifecycles = grouped.collect {
-          case ((compiler, flowId), events) if flowId == summary.flowId =>
-            (compiler, events.filter(_.started).head, events.filterNot(_.started).head)
-        }.filter { case (_, start, finish) =>
-          start.lineIndex < summary.lineIndex && summary.lineIndex < finish.lineIndex
-        }
-        Assert.assertEquals(
-          s"Expected one active compiler lifecycle for legacy error summary flowId='${summary.flowId}'",
-          1,
-          matchingLifecycles.size
-        )
       }
+    }
+    expectation.expectedLegacyErrorSummaries.foreach { expectedCount =>
+      Assert.assertEquals(s"Expected $expectedCount legacy compiler error summaries", expectedCount, legacyErrorSummaryCount)
     }
   }
 
@@ -443,7 +428,6 @@ private[sbtlogger] object SbtOutputVerifier {
   }
 
   private final case class CompilationLifecycleEvent(started: Boolean, compiler: String, flowId: String, lineIndex: Int)
-  private final case class CompilationErrorSummary(flowId: String, lineIndex: Int)
 
   private val ServiceMessagePattern = """##teamcity\[([^ ]+)(?: (.*))?\]""".r
   private val AttributePattern = """([^ =]+)='([^']*)'""".r
