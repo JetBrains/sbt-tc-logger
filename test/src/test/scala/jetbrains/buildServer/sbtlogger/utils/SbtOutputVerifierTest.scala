@@ -36,7 +36,7 @@ class SbtOutputVerifierTest {
         SbtCompilationLifecycleExpectation(expectedClosures = 1)
       )
     }
-    Assert.assertTrue(duplicateFinish.getMessage.contains("exactly one compilation finish"))
+    assertFailureMessageContains(duplicateFinish, "exactly one compilation finish")
 
     val unmatchedFinish = expectAssertionError {
       SbtOutputVerifier.assertCompilationLifecycle(
@@ -44,7 +44,7 @@ class SbtOutputVerifierTest {
         SbtCompilationLifecycleExpectation(expectedClosures = 1)
       )
     }
-    Assert.assertTrue(unmatchedFinish.getMessage.contains("exactly one compilation start"))
+    assertFailureMessageContains(unmatchedFinish, "exactly one compilation start")
   }
 
   @Test
@@ -62,7 +62,7 @@ class SbtOutputVerifierTest {
       )
     }
 
-    Assert.assertTrue(error.getMessage.contains("Expected 1 legacy compiler error summaries"))
+    assertFailureMessageContains(error, "legacy error summary flowId='other'")
   }
 
   @Test
@@ -114,12 +114,11 @@ class SbtOutputVerifierTest {
       )
     }
 
-    val message = error.getMessage
-    Assert.assertTrue(message.contains("Matched 1/2 patterns across 2 captured output lines."))
-    Assert.assertTrue(message.contains("Last matched pattern:"))
-    Assert.assertTrue(message.contains("matched output line 1: first"))
-    Assert.assertTrue(message.contains("First missing pattern:"))
-    Assert.assertTrue(message.contains("See the build log for the complete nested-sbt output."))
+    assertFailureMessageContains(error, "Matched 1/2 patterns across 2 captured output lines.")
+    assertFailureMessageContains(error, "Last matched pattern:")
+    assertFailureMessageContains(error, "matched output line 1: first")
+    assertFailureMessageContains(error, "First missing pattern:")
+    assertFailureMessageContains(error, "See the build log for the complete nested-sbt output.")
   }
 
   private def patternFile(prefix: String, lines: String*): File = {
@@ -136,7 +135,15 @@ class SbtOutputVerifierTest {
         return e
     }
 
-    Assert.fail("Expected AssertionError")
+    Assert.fail("Expected the verifier to throw AssertionError, but it completed successfully")
     throw new AssertionError("unreachable")
+  }
+
+  private def assertFailureMessageContains(error: AssertionError, expectedText: String): Unit = {
+    val actualMessage = Option(error.getMessage).getOrElse("<no failure message>")
+    Assert.assertTrue(
+      s"Expected verifier failure message to contain '$expectedText', but was: $actualMessage",
+      actualMessage.contains(expectedText)
+    )
   }
 }
