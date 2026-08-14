@@ -8,8 +8,8 @@ import org.junit.Test
  * Common JUnit scenarios for sbt TeamCity logger output integration tests.
  *
  * Each `@Test` method keeps the fixture details next to the test name and delegates to [[runCase]], which performs the
- * actual nested sbt execution and output verification. Runtime-specific suites may inherit these tests, ignore selected
- * ones, or add their own scenarios next to their runtime-specific fixtures.
+ * actual nested sbt execution and output verification. Runtime-specific suites may inherit these tests or add
+ * capability-specific scenarios through a dedicated trait.
  *
  * @param runtime sbt runtime used by every case in this suite instance.
  */
@@ -113,18 +113,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/warnings",
       sbtCommands = Seq("clean", "compile"),
       sbtOptions = Seq.empty
-    ))
-
-  // TW-35693 - Verifies that error-like ScalaTest output is not reported as a compilation failure.
-  @Test
-  def testReporting_ScalaTest_ErrorLikeOutputNotCompilationFailure(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/ScalaTest_ErrorLikeOutputNotCompilationFailure",
-      sbtCommands = Seq("test"),
-      // SBT 2 may schedule the main and test compilation lifecycles in either order.
-      // Verify both lifecycles independently while preserving their own start/finish order.
-      outputFiles = Seq("compilation-output.txt", "test-compilation-output.txt", "output.txt"),
-      expectZeroExitCode = true
     ))
 
   // TW-35404 - Verifies that error-level logging suppresses compiler debug noise.
