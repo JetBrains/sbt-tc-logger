@@ -66,6 +66,34 @@ class SbtFixtureTemplateContractTest {
     }
   }
 
+  /**
+   * Required expected-output fixtures are regexes, but flow IDs are protocol relationships rather than arbitrary text.
+   * Keep that relationship explicit with a file-local symbolic token. `excludes.txt` deliberately remains a plain regex
+   * fixture, so it is excluded from this contract.
+   */
+  @Test
+  def everyFlowBearingRequiredFixtureMessageUsesASymbolicFlowId(): Unit = {
+    val root = IntegrationTestLayout.repoRoot().toPath.resolve("test/testdata")
+    val violations = fixtureTextFiles(root)
+      .filterNot(_.getFileName.toString == "excludes.txt")
+      .flatMap { file =>
+        Files.readAllLines(file).asScala.zipWithIndex.collect {
+          case (line, index) if line.contains("flowId='.*'") =>
+            s"${root.relativize(file)}:${index + 1}: flowId='.*' is not permitted: $line"
+          case (line, index) if flowBearingServiceMessage(line) && !hasValidFlowIdPlaceholder(line) =>
+            s"${root.relativize(file)}:${index + 1}: missing flowId='<flowIdN>' placeholder: $line"
+        }
+      }
+
+    Assert.assertTrue(
+      s"""Every flow-bearing TeamCity message in a required fixture must use a symbolic flow-ID placeholder.
+         |Violations:
+         |${violations.mkString(System.lineSeparator())}
+         |""".stripMargin,
+      violations.isEmpty
+    )
+  }
+
   private def buildPropertiesFiles(testDataRoot: Path): Seq[Path] = {
     val files = Files.walk(testDataRoot)
     try {
@@ -76,4 +104,34 @@ class SbtFixtureTemplateContractTest {
     }
     finally files.close()
   }
+
+  private def fixtureTextFiles(testDataRoot: Path): Seq[Path] = {
+    val files = Files.walk(testDataRoot)
+    try {
+      files.iterator.asScala
+        .filter(path => Files.isRegularFile(path))
+        .filter(_.getFileName.toString.endsWith(".txt"))
+        .toSeq
+    }
+    finally files.close()
+  }
+
+  private def flowBearingServiceMessage(line: String): Boolean = {
+    val prefix = "##teamcity\\["
+    val name = line.stripPrefix(prefix).takeWhile(character => character != ' ' && character != ']')
+    Set(
+      "compilationStarted",
+      "compilationFinished",
+      "message",
+      "testSuiteStarted",
+      "testSuiteFinished",
+      "testStarted",
+      "testFinished",
+      "testFailed",
+      "testIgnored"
+    ).contains(name)
+  }
+
+  private def hasValidFlowIdPlaceholder(line: String): Boolean =
+    """flowId='<flowId[1-9][0-9]*>'""".r.findFirstIn(line).nonEmpty
 }

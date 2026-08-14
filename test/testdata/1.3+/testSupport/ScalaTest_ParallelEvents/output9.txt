@@ -1,2 +1,2 @@
-##teamcity\[testStarted name='suites.NonParallelSuite.tests.NonParallelTest.should Write Passing Tests'.*\]
-##teamcity\[testFinished name='suites.NonParallelSuite.tests.NonParallelTest.should Write Passing Tests'.*\]
+##teamcity\[testStarted name='suites.NonParallelSuite.tests.NonParallelTest.should Write Passing Tests'.* flowId='<flowId1>'\]
+##teamcity\[testFinished name='suites.NonParallelSuite.tests.NonParallelTest.should Write Passing Tests'.* flowId='<flowId1>'\]

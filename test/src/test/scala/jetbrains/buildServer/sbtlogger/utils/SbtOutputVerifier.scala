@@ -5,6 +5,7 @@ import org.junit.Assert
 
 import java.io.File
 import java.util.regex.{Pattern, PatternSyntaxException}
+import scala.collection.mutable
 
 /**
  * Verifies nested sbt console output against fixture regex files.
@@ -32,7 +33,15 @@ private[sbtlogger] object SbtOutputVerifier {
    * Each line in `excludesFile`, when present, is compiled as a regex. \
    * If any forbidden regex is found in any output line, the assertion fails. \
    * Each line in every `requiredFiles` entry is also compiled as a regex, but required patterns must be found in order. \
-   * Unrelated output lines may appear between required matches.
+   * Unrelated output lines may appear between required matches. Every required file is checked independently against the
+   * complete output: it has its own ordered subsequence and its own placeholder bindings, and does not consume lines or
+   * bindings from another required file.
+   *
+   * Required fixtures may replace a TeamCity `flowId` value with `flowId='<flowIdN>'`, where `N` is a positive integer.
+   * The first matching service message binds that token to its concrete flow ID. Later occurrences of the same token in
+   * the *same fixture file* must match that value; two different tokens must bind to two different concrete values.
+   * All other fixture text remains an ordinary Java regex. Exclude fixtures intentionally have no placeholder semantics
+   * and continue to be unrestricted regex assertions.
    *
    * Real required-pattern fixtures include `test/testdata/1.0/compilation/failure/output.txt`,
    * `test/testdata/1.0/testSupport/JUnit_PassAndFailure/output.txt`, and `test/testdata/1.0/compilation/warnings/output.txt`.
@@ -143,7 +152,7 @@ private[sbtlogger] object SbtOutputVerifier {
    *
    * Excludes are checked first so forbidden output is reported even when no required file is supplied. Required files are
    * checked independently: each file describes one acceptable ordered subsequence that must be present in the same full
-   * output.
+   * output. Consequently, placeholders are deliberately scoped to one required file rather than the whole test case.
    *
    * Some scenarios pass multiple required files for the same output stream; for example,
    * `test/testdata/1.0/testSupport/ScalaTest_PassAndFailure/output.txt` and
@@ -161,13 +170,16 @@ private[sbtlogger] object SbtOutputVerifier {
     }
   }
 
-  private def parseServiceMessage(line: String): Option[(String, Map[String, String])] = line match {
-    case ServiceMessagePattern(name, rawAttributes) =>
-      Some(name -> AttributePattern.findAllMatchIn(rawAttributes).map { attribute =>
+  private def parseServiceMessage(line: String): Option[(String, Map[String, String])] =
+    // Nested SBT can append ordinary console text after a service message on the same physical output line. Required
+    // fixture regexes have always used `Matcher.find`, so parse the first embedded message with the same tolerance.
+    ServiceMessagePattern.findFirstMatchIn(line).map { serviceMessage =>
+      val name = serviceMessage.group(1)
+      val rawAttributes = Option(serviceMessage.group(2)).getOrElse("")
+      name -> AttributePattern.findAllMatchIn(rawAttributes).map { attribute =>
         attribute.group(1) -> attribute.group(2)
-      }.toMap)
-    case _ => None
-  }
+      }.toMap
+    }
 
   /**
    * Finds every output line matched by every forbidden pattern.
@@ -197,10 +209,18 @@ private[sbtlogger] object SbtOutputVerifier {
     } yield ForbiddenMatch(pattern, line)
 
   /**
-   * Counts how many required patterns were matched as an ordered subsequence of the output.
+   * Finds a valid ordered subsequence of the output for all required patterns, or the best partial subsequence when no
+   * complete one exists.
    *
    * Matching advances by at most one required pattern per output line. This preserves the historical fixture semantics:
    * one line cannot satisfy two consecutive expected lines, even if it contains text that would match both regexes.
+   *
+   * The historical matcher greedily selected the first matching output line. That is sufficient for fixed regexes:
+   * choosing an earlier matching line can never prevent a later fixed regex from matching. A previously unbound flow-ID
+   * placeholder is different, because an early candidate can bind it to a value incompatible with a later line. For
+   * those candidates this method explores each distinct concrete flow ID, while retaining the earliest occurrence of
+   * each value. It therefore finds any valid ordered subsequence without the combinatorial cost of retrying equivalent
+   * occurrences of the same flow.
    *
    * Ordered multi-line required patterns are used throughout the fixture outputs. Examples include
    * `test/testdata/1.0/compilation/failure/output.txt`, where compilation start, error, finish, and final failure messages
@@ -239,18 +259,60 @@ private[sbtlogger] object SbtOutputVerifier {
     allLines: Seq[String],
     requiredPatterns: ExpectedPatternGroup
   ): RequiredMatchResult = {
-    var matchedCount = 0
-    var lastMatch: Option[OutputMatch] = None
+    def search(
+      patternIndex: Int,
+      nextOutputLineIndex: Int,
+      bindings: Map[String, String]
+    ): RequiredMatchBranch = {
+      if (patternIndex == requiredPatterns.patterns.size) {
+        RequiredMatchBranch(Vector.empty, bindings, None)
+      } else {
+        val currentPattern = requiredPatterns.patterns(patternIndex)
+        val candidates = (nextOutputLineIndex until allLines.size).iterator.map { outputLineIndex =>
+          currentPattern.matchLine(allLines(outputLineIndex), bindings) match {
+            case RequiredPatternMatch.Matched(updatedBindings) =>
+              Some(RequiredMatchCandidate(OutputMatch(currentPattern, outputLineIndex + 1, allLines(outputLineIndex)), updatedBindings))
+            case conflict: RequiredPatternMatch.ConflictingFlowId =>
+              Some(conflict)
+            case RequiredPatternMatch.NotMatched =>
+              None
+          }
+        }.flatten.toVector
 
-    for ((line, outputLineIndex) <- allLines.iterator.zipWithIndex if matchedCount < requiredPatterns.patterns.size) {
-      val currentPattern = requiredPatterns.patterns(matchedCount)
-      if (currentPattern.matches(line)) {
-        lastMatch = Some(OutputMatch(currentPattern, outputLineIndex + 1, line))
-        matchedCount += 1
+        val successfulCandidates = candidates.collect { case candidate: RequiredMatchCandidate => candidate }
+        val conflicts = candidates.collect { case conflict: RequiredPatternMatch.ConflictingFlowId => conflict }
+        val candidateChoices =
+          if (currentPattern.hasUnboundFlowId(bindings)) firstCandidateForEachFlowId(currentPattern, successfulCandidates)
+          else successfulCandidates.headOption.toSeq
+
+        candidateChoices.foldLeft(RequiredMatchBranch(Vector.empty, bindings, conflicts.headOption)) { (best, candidate) =>
+          val continuation = search(patternIndex + 1, candidate.outputMatch.outputLineNumber, candidate.bindings)
+          val branch = continuation.prepend(candidate.outputMatch).withFallbackConflict(conflicts.headOption)
+          RequiredMatchBranch.best(best, branch)
+        }
       }
     }
 
-    RequiredMatchResult(requiredPatterns, matchedCount, allLines.size, lastMatch)
+    val bestBranch = search(patternIndex = 0, nextOutputLineIndex = 0, bindings = Map.empty)
+    RequiredMatchResult(requiredPatterns, allLines.size, bestBranch)
+  }
+
+  /**
+   * Keeps the earliest candidate for each newly bound concrete flow ID.
+   *
+   * Once a token has chosen a concrete value, a later occurrence of that same value cannot enable any ordered suffix
+   * that the earlier occurrence could not also enable. Keeping only the first occurrence makes the placeholder search
+   * deterministic and avoids revisiting equivalent subsequences.
+   */
+  private def firstCandidateForEachFlowId(
+    pattern: ExpectedPattern,
+    candidates: Seq[RequiredMatchCandidate]
+  ): Seq[RequiredMatchCandidate] = {
+    val seenFlowIds = mutable.Set.empty[String]
+    candidates.filter { candidate =>
+      val concreteFlowId = candidate.bindings(pattern.flowIdPlaceholder.get)
+      seenFlowIds.add(concreteFlowId)
+    }
   }
 
   private def assertNoForbiddenMatches(matches: Seq[ForbiddenMatch]): Unit = {
@@ -274,6 +336,13 @@ private[sbtlogger] object SbtOutputVerifier {
            |${result.lastMatch.map(_.diagnosticText).getOrElse("<none>")}
            |First missing pattern:
            |${result.firstMissingPattern.map(_.diagnosticText).getOrElse("<none>")}
+           |Bound flow-ID placeholders:
+           |${result.flowIdBindings.map { case (token, flowId) => s"$token = '$flowId'" }.mkString(System.lineSeparator()) match {
+                case "" => "<none>"
+                case bindings => bindings
+              }}
+           |Conflicting concrete flow ID:
+           |${result.flowIdConflict.map(_.diagnosticText).getOrElse("<none>")}
            |See the build log for the complete nested-sbt output.
            |""".stripMargin
       println(message)
@@ -302,7 +371,11 @@ private[sbtlogger] object SbtOutputVerifier {
     FileUtils.readLines(file).zipWithIndex.map { case (line, index) =>
       val lineNumber = index + 1
       try {
-        ExpectedPattern(file, lineNumber, line, Pattern.compile(line))
+        val flowIdPlaceholder = FlowIdPlaceholderPattern.findFirstMatchIn(line).map(_.group(1))
+        val unboundFlowIdPattern = flowIdPlaceholder.map { token =>
+          Pattern.compile(line.replace(s"flowId='<$token>'", "flowId='[^']*'"))
+        }
+        ExpectedPattern(file, lineNumber, line, Pattern.compile(line), flowIdPlaceholder, unboundFlowIdPattern)
       } catch {
         case e: PatternSyntaxException =>
           throw new IllegalArgumentException(s"Invalid regex pattern in ${normalisedAbsolutePath(file)}:$lineNumber: $line", e)
@@ -315,9 +388,55 @@ private[sbtlogger] object SbtOutputVerifier {
       println(TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput(line))
     }
 
-  private final case class ExpectedPattern(file: File, lineNumber: Int, text: String, pattern: Pattern) {
+  private final case class ExpectedPattern(
+    file: File,
+    lineNumber: Int,
+    text: String,
+    pattern: Pattern,
+    flowIdPlaceholder: Option[String],
+    unboundFlowIdPattern: Option[Pattern]
+  ) {
+    private val boundFlowIdPatterns = mutable.Map.empty[String, Pattern]
+
     def matches(line: String): Boolean =
       pattern.matcher(line).find()
+
+    def hasUnboundFlowId(bindings: Map[String, String]): Boolean =
+      flowIdPlaceholder.exists(token => !bindings.contains(token))
+
+    /** Matches one output line and applies this pattern's file-local flow-ID binding rule, if present. */
+    def matchLine(line: String, bindings: Map[String, String]): RequiredPatternMatch = flowIdPlaceholder match {
+      case None if matches(line) =>
+        RequiredPatternMatch.Matched(bindings)
+      case None =>
+        RequiredPatternMatch.NotMatched
+      case Some(token) =>
+        bindings.get(token) match {
+          case Some(flowId) if boundFlowIdPattern(flowId).matcher(line).find() =>
+            RequiredPatternMatch.Matched(bindings)
+          case Some(_) =>
+            RequiredPatternMatch.NotMatched
+          case None if unboundFlowIdPattern.get.matcher(line).find() =>
+            // The generic pattern preserves every non-flow regex constraint; parse the same service message only to
+            // obtain the concrete attribute value that the symbolic token must bind.
+            parseServiceMessage(line).flatMap(_._2.get("flowId")) match {
+              case Some(flowId) =>
+                bindings.collectFirst { case (boundToken, boundFlowId) if boundFlowId == flowId => boundToken } match {
+                  case Some(boundToken) => RequiredPatternMatch.ConflictingFlowId(token, flowId, boundToken)
+                  case None => RequiredPatternMatch.Matched(bindings.updated(token, flowId))
+                }
+              case None => RequiredPatternMatch.NotMatched
+            }
+          case None =>
+            RequiredPatternMatch.NotMatched
+        }
+    }
+
+    private def boundFlowIdPattern(flowId: String): Pattern =
+      boundFlowIdPatterns.getOrElseUpdate(
+        flowId,
+        Pattern.compile(text.replace(s"flowId='<${flowIdPlaceholder.get}>'", s"flowId='${Pattern.quote(flowId)}'"))
+      )
 
     def diagnosticText: String =
       s"${normalisedAbsolutePath(file)}:$lineNumber: $text"
@@ -328,6 +447,7 @@ private[sbtlogger] object SbtOutputVerifier {
 
   private val ServiceMessagePattern = """##teamcity\[([^ ]+)(?: (.*))?\]""".r
   private val AttributePattern = """([^ =]+)='([^']*)'""".r
+  private val FlowIdPlaceholderPattern = """flowId='<(flowId[1-9][0-9]*)>'""".r
 
   private final case class ExpectedPatternGroup(file: File, patterns: Seq[ExpectedPattern])
 
@@ -341,14 +461,60 @@ private[sbtlogger] object SbtOutputVerifier {
       s"${pattern.diagnosticText}${System.lineSeparator()}  matched output line $outputLineNumber: $outputLine"
   }
 
+  private sealed trait RequiredPatternMatch
+
+  private object RequiredPatternMatch {
+    final case class Matched(bindings: Map[String, String]) extends RequiredPatternMatch
+    final case class ConflictingFlowId(token: String, concreteFlowId: String, alreadyBoundTo: String) extends RequiredPatternMatch {
+      def diagnosticText: String =
+        s"$token cannot bind to '$concreteFlowId': it is already bound to $alreadyBoundTo"
+    }
+    case object NotMatched extends RequiredPatternMatch
+  }
+
+  private final case class RequiredMatchCandidate(outputMatch: OutputMatch, bindings: Map[String, String])
+
+  private final case class RequiredMatchBranch(
+    matches: Vector[OutputMatch],
+    bindings: Map[String, String],
+    flowIdConflict: Option[RequiredPatternMatch.ConflictingFlowId]
+  ) {
+    def prepend(outputMatch: OutputMatch): RequiredMatchBranch =
+      copy(matches = outputMatch +: matches)
+
+    def withFallbackConflict(conflict: Option[RequiredPatternMatch.ConflictingFlowId]): RequiredMatchBranch =
+      copy(flowIdConflict = flowIdConflict.orElse(conflict))
+  }
+
+  private object RequiredMatchBranch {
+    /** Chooses the furthest partial ordered subsequence, preferring one that explains a flow-ID collision on a tie. */
+    def best(first: RequiredMatchBranch, second: RequiredMatchBranch): RequiredMatchBranch =
+      if (
+        second.matches.size > first.matches.size ||
+          (second.matches.size == first.matches.size && second.flowIdConflict.nonEmpty && first.flowIdConflict.isEmpty)
+      ) second
+      else first
+  }
+
   private final case class RequiredMatchResult(
     patterns: ExpectedPatternGroup,
-    matchedCount: Int,
     outputLineCount: Int,
-    lastMatch: Option[OutputMatch]
+    branch: RequiredMatchBranch
   ) {
+    def matchedCount: Int =
+      branch.matches.size
+
     def isComplete: Boolean =
       matchedCount == patterns.patterns.size
+
+    def lastMatch: Option[OutputMatch] =
+      branch.matches.lastOption
+
+    def flowIdBindings: Map[String, String] =
+      branch.bindings
+
+    def flowIdConflict: Option[RequiredPatternMatch.ConflictingFlowId] =
+      branch.flowIdConflict
 
     def firstMissingPattern: Option[ExpectedPattern] =
       patterns.patterns.lift(matchedCount)

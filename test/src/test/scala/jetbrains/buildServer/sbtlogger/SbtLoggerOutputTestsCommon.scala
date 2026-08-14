@@ -58,6 +58,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
+      outputFiles = multiProjectOutputFiles,
       expectedExitCode = SbtExitCodeExpectation.NonZero,
       compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2)
     ))
@@ -69,6 +70,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
       sbtOptions = Seq("--debug"),
+      outputFiles = multiProjectOutputFiles,
       expectedExitCode = SbtExitCodeExpectation.NonZero
     ))
 
@@ -254,4 +256,14 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
   private def testCompileCommand: String =
     if (runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8) "test:compile"
     else "Test / compile"
+
+  /**
+   * SBT 1.3+ reports compile errors as inspections, while SBT 1.0 and SBT 2 report two legacy `one error found`
+   * messages. Those messages have two distinct subproject flows, but their ordering is scheduler-dependent. Keep the
+   * start and summary assertions in separate required files so each file can assert its own ordered, distinct flows;
+   * [[SbtOutputVerifier.assertCompilationLifecycle]] verifies that every summary belongs to a complete compiler flow.
+   */
+  private def multiProjectOutputFiles: Seq[String] =
+    if (runtime.testDataRelativePath == "test/testdata/1.3+") Seq("output.txt")
+    else Seq("output.txt", "error-output.txt")
 }
