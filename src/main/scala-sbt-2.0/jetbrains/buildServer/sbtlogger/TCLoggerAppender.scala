@@ -32,10 +32,10 @@ class TCLoggerAppender(appender: LogAppender, scope: String) extends Appender {
   override def close(): Unit = ()
 
   override def appendLog(level: Level.Value, message: => String): Unit = {
-    appender.log(level, message, Thread.currentThread().getId.toString)
+    appender.log(level, message, scope)
   }
 
   override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
-    appender.log(level, event.message.toString, Thread.currentThread().getId.toString)
+    appender.log(level, event.message.toString, scope)
   }
 }
