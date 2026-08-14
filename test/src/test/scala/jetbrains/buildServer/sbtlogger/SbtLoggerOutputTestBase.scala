@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{IntegrationTestLayout, SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
+import jetbrains.buildServer.sbtlogger.utils.{IntegrationTestLayout, SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
 import org.jetbrains.sbt.integrationTests.*
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 
@@ -42,11 +42,12 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
    * when the command result itself is part of the regression contract.
    */
   private[sbtlogger] final def runCase(testCase: SbtLoggerOutputTestCase): Unit = {
-    val exitCode = runSbtAndTest(
+    val runResult = runSbtAndTest(
       runtime = runtime,
       fixtureRootRelativePath = testCase.fixtureRootRelativePath.getOrElse(runtime.testDataRelativePath),
       sbtOptions = testCase.sbtOptions,
       sbtCommands = testCase.sbtCommands,
+      failurePropagation = testCase.failurePropagation,
       testRepo = testCase.fixture,
       outputFiles = testCase.outputFiles,
       compilationLifecycle = testCase.compilationLifecycle,
@@ -56,10 +57,16 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
 
     testCase.expectedExitCode match {
       case SbtExitCodeExpectation.Any =>
-      case SbtExitCodeExpectation.Zero => assertEquals(0, exitCode)
+      case SbtExitCodeExpectation.Zero => assertEquals(0, runResult.exitCode)
       case SbtExitCodeExpectation.NonZero =>
-        assertTrue(s"Expected nested sbt command to fail, but it exited with $exitCode", exitCode != 0)
+        assertTrue(s"Expected nested sbt command to fail, but it exited with ${runResult.exitCode}", runResult.exitCode != 0)
     }
+
+    SbtFailurePropagationExpectation.assertObserved(
+      testCase.failurePropagation,
+      runResult.exitCode,
+      runResult.processOutput
+    )
   }
 
   private def runSbtAndTest(
@@ -67,12 +74,13 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     fixtureRootRelativePath: String,
     sbtOptions: Seq[String],
     sbtCommands: Seq[String],
+    failurePropagation: SbtFailurePropagationExpectation,
     testRepo: String,
     outputFiles: Seq[String],
     compilationLifecycle: Option[SbtCompilationLifecycleExpectation],
     teamCityEnvironment: Boolean = true,
     expectNoTeamCityMessages: Boolean = false
-  ): Int = {
+  ): SbtProcessRunner.ProcessRunResult = {
     val root = IntegrationTestLayout.repoRoot()
     val sourceWorkingDir = SbtFixtureWorkspace.sourceFixtureDirectory(root, fixtureRootRelativePath, testRepo)
     val workingDir = SbtFixtureWorkspace.copyFixtureToWorkDirectory(
@@ -125,13 +133,15 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       s"set Global / localCacheDirectory := file(\"${new File(workingDir, ".sbt-tc-logger-cache").getAbsolutePath}\")"
     }
 
+    val failurePropagationSetup = SbtFailurePropagationExpectation.setupCommand(failurePropagation)
+
     val effectiveSbtCommands: Seq[String] =
       if (commandsAsArguments)
         // SBT 2 must receive a non-interactive command argument. See this commit's message for the transport rationale.
-        plugin.loadCommand(pluginJar) +: (localCacheCommand.toSeq ++ sbtCommands :+ "exit")
+        plugin.loadCommand(pluginJar) +: (localCacheCommand.toSeq ++ failurePropagationSetup.toSeq ++ sbtCommands :+ "exit")
       else
         // SBT 1 fixtures keep options in their stdin script. See this commit's message for the compatibility rationale.
-        sbtOptions ++ (plugin.loadCommand(pluginJar) +: sbtCommands :+ "exit")
+        sbtOptions ++ (plugin.loadCommand(pluginJar) +: (failurePropagationSetup.toSeq ++ sbtCommands :+ "exit"))
 
     val effectiveSbtOptions =
       if (commandsAsArguments)
@@ -165,7 +175,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       assertFalse("Logger emitted TeamCity service messages outside TeamCity", runResult.processOutput.contains("##teamcity["))
     }
 
-    runResult.exitCode
+    runResult
   }
 
   private def environmentVariables(
