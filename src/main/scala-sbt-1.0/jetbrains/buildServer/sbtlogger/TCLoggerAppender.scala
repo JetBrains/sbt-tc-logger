@@ -29,7 +29,7 @@ class TCLoggerAppender(appender: LogAppender, scope: String) extends
 
   def appendMessageContent(level: Level, parameter: AnyRef, flowId: String): Unit = {
     val message = parameter match {
-      case o: ObjectEvent[_] => o.message.toString
+      case o: ObjectEvent[?] => o.message.toString
       case o: StringEvent => o.message
       case _ => parameter.toString
     }

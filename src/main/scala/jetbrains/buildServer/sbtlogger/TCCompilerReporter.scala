@@ -17,7 +17,7 @@
 
 package jetbrains.buildServer.sbtlogger
 import jetbrains.buildServer.messages.serviceMessages.MapSerializerUtil
-import jetbrains.buildServer.sbtlogger.TCCompilerReporter._
+import jetbrains.buildServer.sbtlogger.TCCompilerReporter.*
 import sbt.jetbrains.buildServer.sbtlogger.apiAdapter.{ReporterAdapter, toFilePosition}
 import xsbti.{Position, Problem}
 
@@ -87,7 +87,7 @@ object TCCompilerReporter {
   }
 
   private def inspectionSeverity(severity: xsbti.Severity): String = {
-    import xsbti.Severity._
+    import xsbti.Severity.*
     severity match {
       case Info => "INFO"
       case Warn => "WARNING"
