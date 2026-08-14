@@ -1,8 +1,8 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{IntegrationTestLayout, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
+import jetbrains.buildServer.sbtlogger.utils.{IntegrationTestLayout, SbtExitCodeExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
 import org.jetbrains.sbt.integrationTests.*
-import org.junit.Assert.{assertEquals, assertFalse}
+import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 
 import java.io.File
 
@@ -21,7 +21,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       // SBT 2 may schedule the main and test compilation lifecycles in either order.
       // Verify both lifecycles independently while preserving their own start/finish order.
       outputFiles = Seq("compilation-output.txt", "test-compilation-output.txt", "output.txt"),
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
   /**
@@ -38,8 +38,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
    * machine-specific output.
    *
    * Most legacy fixtures assert output shape even when sbt exits with a non-zero status because the scenario itself may
-   * intentionally compile or test a broken project. For cases that should complete successfully, `expectZeroExitCode`
-   * enables the final exit-code assertion here.
+   * intentionally compile or test a broken project. Each case can explicitly require a zero or non-zero process exit
+   * when the command result itself is part of the regression contract.
    */
   private[sbtlogger] final def runCase(testCase: SbtLoggerOutputTestCase): Unit = {
     val exitCode = runSbtAndTest(
@@ -53,8 +53,11 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       expectNoTeamCityMessages = testCase.expectNoTeamCityMessages
     )
 
-    if (testCase.expectZeroExitCode) {
-      assertEquals(0, exitCode)
+    testCase.expectedExitCode match {
+      case SbtExitCodeExpectation.Any =>
+      case SbtExitCodeExpectation.Zero => assertEquals(0, exitCode)
+      case SbtExitCodeExpectation.NonZero =>
+        assertTrue(s"Expected nested sbt command to fail, but it exited with $exitCode", exitCode != 0)
     }
   }
 

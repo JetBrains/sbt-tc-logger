@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.SbtLoggerOutputTestCase
+import jetbrains.buildServer.sbtlogger.utils.{SbtExitCodeExpectation, SbtLoggerOutputTestCase}
 import org.junit.Test
 
 /** Scenarios supported by SBT 1.9.0 and later, but not by the SBT 1.0.0 baseline runtime. */
@@ -13,7 +13,7 @@ trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
       fixture = "testSupport/IntegrationTest_TestQuick",
       sbtCommands = Seq("it:testQuick"),
       outputFiles = Seq("output.txt"),
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
   // TW-34982 and TW-36108 (GitHub #3)
@@ -27,6 +27,6 @@ trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
       fixtureRootRelativePath = Some("test/testdata/1.9+"),
       sbtCommands = Seq("jacoco"),
       sbtOptions = Seq("--info"), // sbt-jacoco logs its report summary at info level.
-      expectZeroExitCode = true
+      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 }

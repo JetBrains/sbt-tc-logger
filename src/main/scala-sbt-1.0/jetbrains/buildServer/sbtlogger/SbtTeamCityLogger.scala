@@ -61,6 +61,9 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   lazy val startTestCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("start-test-compilation-logger", "runs before compile in test")
   lazy val endCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("end-compilation-logger", "runs after compile")
   lazy val endTestCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("end-test-compilation-logger", "runs after compile in test")
+  // Kept for builds which invoke these public task keys directly. They are no
+  // longer triggered by compilation because that scheduling is not ordered
+  // relative to compiler log events.
   lazy val tcEndCompilation: TaskKey[Unit] = TaskKey[Unit]("tc-end-compilation", "")
   lazy val tcEndTestCompilation: TaskKey[Unit] = TaskKey[Unit]("tc-end-test-compilation", "")
 
@@ -128,14 +131,34 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     startTestCompilationLogger := tcLogAppender.compilationTestBlockStart(getScopeId(streams.value.key.scope.project)),
     endCompilationLogger := tcLogAppender.compilationBlockEnd(getScopeId(streams.value.key.scope.project)),
     endTestCompilationLogger := tcLogAppender.compilationTestBlockEnd(getScopeId(streams.value.key.scope.project)),
+    tcEndCompilation := endCompilationLogger.value,
+    tcEndTestCompilation := endTestCompilationLogger.value,
 
-    compile in Compile := ((compile in Compile) dependsOn startCompilationLogger).value,
+    // A task merely triggered by `compile` is not guaranteed to be scheduled
+    // after the compiler's log events. Compose the underlying tasks directly
+    // so the matching completion message is emitted after compilation has
+    // completed, including after a compilation failure.
+    compile in Compile := Def.taskDyn {
+      val result = ((compile in Compile) dependsOn startCompilationLogger).result.value
+      Def.task {
+        endCompilationLogger.value
+        result match {
+          case Value(value) => value
+          case Inc(cause) => throw cause
+        }
+      }
+    }.value,
 
-    compile in Test := ((compile in Test) dependsOn startTestCompilationLogger).value,
-
-    tcEndCompilation := (endCompilationLogger triggeredBy (compile in Compile)).value,
-
-    tcEndTestCompilation := (endTestCompilationLogger triggeredBy (compile in Test)).value
+    compile in Test := Def.taskDyn {
+      val result = ((compile in Test) dependsOn startTestCompilationLogger).result.value
+      Def.task {
+        endTestCompilationLogger.value
+        result match {
+          case Value(value) => value
+          case Inc(cause) => throw cause
+        }
+      }
+    }.value
   ) ++
     inConfig(Compile)(Seq(reporterSettings(tcLogAppender))) ++
     inConfig(Test)(Seq(reporterSettings(tcLogAppender)))
