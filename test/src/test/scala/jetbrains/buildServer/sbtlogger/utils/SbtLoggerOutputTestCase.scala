@@ -42,8 +42,8 @@ object SbtExitCodeExpectation {
 /** Strict lifecycle requirements for a focused compilation-regression fixture. */
 final case class SbtCompilationLifecycleExpectation(
   expectedClosures: Int,
-  expectedLegacyErrorSummariesBeforeFinish: Option[Int] = None
+  expectedLegacyErrorSummaries: Option[Int] = None
 ) {
   require(expectedClosures > 0, "A lifecycle regression fixture must require at least one closure.")
-  require(expectedLegacyErrorSummariesBeforeFinish.forall(_ >= 0), "The number of expected legacy error summaries cannot be negative.")
+  require(expectedLegacyErrorSummaries.forall(_ >= 0), "The number of expected legacy error summaries cannot be negative.")
 }

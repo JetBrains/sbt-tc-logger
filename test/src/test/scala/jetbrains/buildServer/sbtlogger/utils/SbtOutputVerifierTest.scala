@@ -16,12 +16,12 @@ class SbtOutputVerifierTest {
   def compilationLifecycleRequiresOneOrderedPairForEachFlow(): Unit =
     SbtOutputVerifier.assertCompilationLifecycle(
       """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
-        |##teamcity[message status='ERROR' flowId='main' text='one error found']
         |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
+        |##teamcity[message status='ERROR' flowId='reporter' text='one error found']
         |""".stripMargin,
       SbtCompilationLifecycleExpectation(
         expectedClosures = 1,
-        expectedLegacyErrorSummariesBeforeFinish = Some(1)
+        expectedLegacyErrorSummaries = Some(1)
       )
     )
 
@@ -48,7 +48,7 @@ class SbtOutputVerifierTest {
   }
 
   @Test
-  def compilationLifecycleRequiresLegacySummaryOnTheSameFlow(): Unit = {
+  def compilationLifecycleCountsLegacySummaryOnAnIndependentReporterFlow(): Unit = {
     val error = expectAssertionError {
       SbtOutputVerifier.assertCompilationLifecycle(
         """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
@@ -57,12 +57,12 @@ class SbtOutputVerifierTest {
           |""".stripMargin,
         SbtCompilationLifecycleExpectation(
           expectedClosures = 1,
-          expectedLegacyErrorSummariesBeforeFinish = Some(1)
+          expectedLegacyErrorSummaries = Some(2)
         )
       )
     }
 
-    assertFailureMessageContains(error, "legacy error summary flowId='other'")
+    assertFailureMessageContains(error, "Expected 2 legacy compiler error summaries")
   }
 
   @Test
