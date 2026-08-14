@@ -126,12 +126,13 @@ private[sbtlogger] object SbtOutputVerifier {
         val matchingLifecycles = grouped.collect {
           case ((compiler, flowId), events) if flowId == summary.flowId =>
             (compiler, events.filter(_.started).head, events.filterNot(_.started).head)
-        }
-        Assert.assertEquals(s"Expected one compiler lifecycle for legacy error summary flowId='${summary.flowId}'", 1, matchingLifecycles.size)
-        val (compiler, start, finish) = matchingLifecycles.head
-        Assert.assertTrue(
-          s"Legacy compiler error summary must be between start and finish for compiler='$compiler', flowId='${summary.flowId}'",
+        }.filter { case (_, start, finish) =>
           start.lineIndex < summary.lineIndex && summary.lineIndex < finish.lineIndex
+        }
+        Assert.assertEquals(
+          s"Expected one active compiler lifecycle for legacy error summary flowId='${summary.flowId}'",
+          1,
+          matchingLifecycles.size
         )
       }
     }

@@ -232,17 +232,23 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     expectedClosures: Int,
     expectedLegacyErrorSummaries: Int
   ): Option[SbtCompilationLifecycleExpectation] =
-    Option.when(runtime != SbtTestsRuntime.Sbt2_Latest_Jdk17)(SbtCompilationLifecycleExpectation(
+    Some(SbtCompilationLifecycleExpectation(
       expectedClosures = expectedClosures,
       expectedLegacyErrorSummariesBeforeFinish =
-        Option.when(runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8)(expectedLegacyErrorSummaries)
+        Option.when(
+          runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8 ||
+            runtime == SbtTestsRuntime.Sbt2_Latest_Jdk17
+        )(expectedLegacyErrorSummaries)
     ))
 
   private def testCompilationFailureLifecycle: Option[SbtCompilationLifecycleExpectation] =
-    Option.when(runtime != SbtTestsRuntime.Sbt2_Latest_Jdk17)(SbtCompilationLifecycleExpectation(
+    Some(SbtCompilationLifecycleExpectation(
       expectedClosures = 2,
       expectedLegacyErrorSummariesBeforeFinish =
-        Option.when(runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8)(1)
+        Option.when(
+          runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8 ||
+            runtime == SbtTestsRuntime.Sbt2_Latest_Jdk17
+        )(1)
     ))
 
   private def testCompileCommand: String =

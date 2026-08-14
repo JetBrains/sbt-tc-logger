@@ -38,7 +38,15 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     val extracted = Project.extract(state)
     import extracted.{structure => extractedStructure, *}
     val transformedProjectSettings = extractedStructure.allProjectRefs.flatMap { projectRef =>
-      transformSettings(projectScope(projectRef), projectRef.build, rootProject, SbtTeamCityLogger.projectSettings)
+      transformSettings(projectScope(projectRef), projectRef.build, rootProject, SbtTeamCityLogger.projectSettings) ++
+        Option.when(tcFound) {
+          transformSettings(
+            projectScope(projectRef),
+            projectRef.build,
+            rootProject,
+            compilationLifecycleSettings(getScopeId(projectScope(projectRef).project))
+          )
+        }.toSeq.flatten
     }
     reapply(session.appendRaw(transformedProjectSettings), state)
   }
@@ -106,37 +114,32 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     startTestCompilationLogger := tcLogAppender.compilationTestBlockStart(getScopeId(streams.value.key.scope.project)),
     endCompilationLogger := tcLogAppender.compilationBlockEnd(getScopeId(streams.value.key.scope.project)),
     endTestCompilationLogger := tcLogAppender.compilationTestBlockEnd(getScopeId(streams.value.key.scope.project)),
-    // In SBT 2 a task merely triggered by `compile` is not guaranteed to be
-    // scheduled after the compile task. Compose the underlying tasks directly
-    // instead, preserving the start dependency and always running the matching
-    // completion task, including after a compilation failure.
-    Compile / compile := Def.uncached {
-      Def.taskDyn {
-        val result = (Compile / compile).dependsOn(startCompilationLogger).result.value
-        Def.task {
-          endCompilationLogger.value
-          result match {
-            case Result.Value(value) => value
-            case Result.Inc(cause) => throw cause
-          }
-        }
-      }.value
-    },
-    Test / compile := Def.uncached {
-      Def.taskDyn {
-        val result = (Test / compile).dependsOn(startTestCompilationLogger).result.value
-        Def.task {
-          endTestCompilationLogger.value
-          result match {
-            case Result.Value(value) => value
-            case Result.Inc(cause) => throw cause
-          }
-        }
-      }.value
-    },
   ) ++
     inConfig(Compile)(Seq(reporterSettings(tcLogAppender))) ++
     inConfig(Test)(Seq(reporterSettings(tcLogAppender)))
+
+  /**
+   * Wraps the existing task value instead of resolving the replacement `compile` task dynamically.
+   *
+   * `andFinally` runs immediately after the wrapped task succeeds or fails and keeps that task's original result.
+   */
+  private def compilationLifecycleSettings(scope: String): Seq[Def.Setting[?]] = {
+    // TODO(TW-102637): SBT 1.0.4+ exposes the same `andFinally`/`doFinally` APIs.
+    // Its current Result/Def.taskDyn wrapper correctly closes failed lifecycles, so migrate it to this
+    // non-self-referential composition separately, with the full SBT 1 regression matrix.
+    Seq(
+      (Compile / compile).toSettingKey ~= { original =>
+        original
+          .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.compilationBlockStart(scope)))
+          .andFinally(tcLogAppender.compilationBlockEnd(scope))
+      },
+      (Test / compile).toSettingKey ~= { original =>
+        original
+          .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.compilationTestBlockStart(scope)))
+          .andFinally(tcLogAppender.compilationTestBlockEnd(scope))
+      }
+    )
+  }
 
   lazy val loggerOffSettings: Seq[Def.Setting[?]] = Seq(
     commands += tcLoggerStatusCommand
