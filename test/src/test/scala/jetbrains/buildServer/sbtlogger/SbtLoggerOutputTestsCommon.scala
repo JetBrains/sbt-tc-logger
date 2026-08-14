@@ -58,7 +58,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
-      outputFiles = multiProjectOutputFiles,
       failurePropagation = compilationFailurePropagation,
       compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2)
     ))
@@ -70,8 +69,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
       sbtOptions = Seq("--debug"),
-      outputFiles = multiProjectOutputFiles,
-      failurePropagation = compilationFailurePropagation
+      failurePropagation = compilationFailurePropagation,
+      compilationLifecycle = debugMultiProjectFailureLifecycle
     ))
 
   // Verifies Test / compile closes its lifecycle and rethrows an underlying compiler failure.
@@ -80,7 +79,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/testFailure",
       sbtCommands = Seq(testCompileCommand),
-      outputFiles = testCompilationOutputFiles,
       failurePropagation = compilationFailurePropagation,
       compilationLifecycle = testCompilationFailureLifecycle
     ))
@@ -235,24 +233,25 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     expectedClosures: Int,
     expectedLegacyErrorSummaries: Int
   ): Option[SbtCompilationLifecycleExpectation] =
-    Some(SbtCompilationLifecycleExpectation(
+    Some(SbtCompilationLifecycleExpectation.Complete(
       expectedClosures = expectedClosures,
-      expectedLegacyErrorSummaries =
-        Option.when(
-          runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8 ||
-            runtime == SbtTestsRuntime.Sbt2_Latest_Jdk17
-        )(expectedLegacyErrorSummaries)
+      expectedLegacyErrorSummaries = expectedLegacyErrorSummaryCount.map(_ => expectedLegacyErrorSummaries)
     ))
 
   private def testCompilationFailureLifecycle: Option[SbtCompilationLifecycleExpectation] =
-    Some(SbtCompilationLifecycleExpectation(
+    Some(SbtCompilationLifecycleExpectation.Complete(
       expectedClosures = 2,
-      expectedLegacyErrorSummaries =
-        Option.when(
-          runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8 ||
-            runtime == SbtTestsRuntime.Sbt2_Latest_Jdk17
-        )(1)
+      expectedLegacyErrorSummaries = expectedLegacyErrorSummaryCount.map(_ => 1)
     ))
+
+  private def debugMultiProjectFailureLifecycle: Option[SbtCompilationLifecycleExpectation] =
+    expectedLegacyErrorSummaryCount.map(SbtCompilationLifecycleExpectation.SummaryOnly.apply)
+
+  private def expectedLegacyErrorSummaryCount: Option[Int] =
+    Option.when(
+      runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8 ||
+        runtime == SbtTestsRuntime.Sbt2_Latest_Jdk17
+    )(2)
 
   private def testCompileCommand: String =
     if (runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8) "test:compile"
@@ -270,21 +269,9 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     else SbtFailurePropagationExpectation.ProcessExitNonZero
 
   /**
-   * SBT 1.0 may emit the reporter's `one error found` callback either side of `compilationFinished`. Its reporter and
-   * compiler flows are independent, so assert their ordered pairs in separate files instead of inventing a cross-flow
-   * ordering contract. Newer fixture corpora have a stable order and continue to use their single `output.txt` file.
+   * SBT 1.3+ reports compile errors as inspections and keeps its existing fixture-only contract. SBT 1.0 and SBT 2
+   * report legacy summaries; their aggregate projects run in parallel, so their output fixture intentionally does not
+   * impose a false total order. The lifecycle verifier instead associates each summary with its own complete flow.
+   * In debug mode SBT may leave an empty root lifecycle incomplete, so only legacy-summary ownership is checked.
    */
-  private def testCompilationOutputFiles: Seq[String] =
-    if (runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8) Seq("output.txt", "error-output.txt")
-    else Seq("output.txt")
-
-  /**
-   * SBT 1.3+ reports compile errors as inspections, while SBT 1.0 and SBT 2 report two legacy `one error found`
-   * messages. Those messages have two distinct subproject flows, but their ordering is scheduler-dependent. Keep the
-   * start and summary assertions in separate required files so each file can assert its own ordered, distinct flows.
-   * [[SbtOutputVerifier.assertCompilationLifecycle]] independently verifies all compiler start/finish pairs.
-   */
-  private def multiProjectOutputFiles: Seq[String] =
-    if (runtime.testDataRelativePath == "test/testdata/1.3+") Seq("output.txt")
-    else Seq("output.txt", "error-output.txt")
 }
