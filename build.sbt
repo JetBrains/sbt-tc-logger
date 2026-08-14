@@ -8,6 +8,10 @@ val ScalaVersion_3 = "3.8.4"
 val SbtVersion_1xx = "1.12.0"
 val SbtVersion_2xx = "2.0.0"
 
+ThisBuild / resolvers := Seq(
+  "JetBrains Maven Central" at "https://cache-redirector.jetbrains.com/maven-central"
+)
+
 lazy val logger: Project = (project in file("."))
   .aggregate(
     integrationTests
