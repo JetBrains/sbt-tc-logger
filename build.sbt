@@ -1,11 +1,20 @@
 import sbt.Def
 import sbtassembly.AssemblyPlugin.autoImport.*
 
+// SBT 1.0.4 runs Scala 2.12.4, but compile the SBT 1 artifact with the latest
+// Scala 2.12 compiler. Plugins cross-build on the Scala binary version, and the
+// integration suite loads the assembled artifact in an actual SBT 1.0/JDK 8 runtime.
 val ScalaVersion_212 = "2.12.21"
 val ScalaVersion_3 = "3.8.4"
 
-// Compile plugin artifacts against stable line baselines. Integration fixtures independently render their exact runtime.
-val SbtVersion_1xx = "1.12.0"
+// Compile plugin artifacts against compatibility baselines. Integration fixtures independently render their exact runtime.
+// SBT 1.0.4 is the final 1.0.x patch: compiling against it preserves the SBT 1.0 API baseline and avoids newer-SBT
+// deprecation warnings in the editor.
+// TODO: After publishing a final logger for the older SBT 1.x runtime range, freeze that artifact as we do for SBT 0.13
+// and stop delivering fixes to it in newer TeamCity releases. Then advance this target to a newer SBT 1.x baseline. The
+// TeamCity SBT Runner must bundle the frozen artifact for the older 1.x range and a newer artifact for newer 1.x versions,
+// and warn users when it selects the frozen artifact that it will receive no further improvements.
+val SbtVersion_1xx = "1.0.4"
 val SbtVersion_2xx = "2.0.0"
 
 ThisBuild / resolvers := Seq(
