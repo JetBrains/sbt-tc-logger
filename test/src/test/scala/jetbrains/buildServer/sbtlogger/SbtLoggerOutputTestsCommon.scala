@@ -62,7 +62,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2)
     ))
 
-  // Verifies that multi-project compilation failures remain reported with the SBT debug option.
+  // Verifies that multi-project compilation failures and all compiler lifecycles remain reported with the SBT debug option.
   @Test
   def compilation_MultiProject_FailuresReportedWithDebug(): Unit =
     runCase(SbtLoggerOutputTestCase(
@@ -70,7 +70,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       sbtCommands = Seq("compile"),
       sbtOptions = Seq("--debug"),
       failurePropagation = compilationFailurePropagation,
-      compilationLifecycle = debugMultiProjectFailureLifecycle
+      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2)
     ))
 
   // Verifies Test / compile closes its lifecycle and rethrows an underlying compiler failure.
@@ -243,9 +243,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       expectedClosures = 2,
       expectedLegacyErrorSummaries = expectedLegacyErrorSummaryCount.map(_ => 1)
     ))
-
-  private def debugMultiProjectFailureLifecycle: Option[SbtCompilationLifecycleExpectation] =
-    expectedLegacyErrorSummaryCount.map(SbtCompilationLifecycleExpectation.SummaryOnly.apply)
 
   private def expectedLegacyErrorSummaryCount: Option[Int] =
     Option.when(
