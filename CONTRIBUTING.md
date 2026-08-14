@@ -3,7 +3,7 @@
 ## Prerequisites
 
 Use JDK 17 to run the repository's SBT build and integration-test harness; set `JAVA_HOME` to a JDK 17 installation before invoking `sbt`. \
-The host remains SBT 1.12.12 while it cross-builds the logger against the stable line baselines SBT 1.12.0/Scala 2.12.21 and SBT 2.0.0/Scala 3.8.4. \
+The host remains SBT 1.12.12 while it cross-builds the logger against the compatibility baselines SBT 1.0.4/Scala 2.12.21 and SBT 2.0.0/Scala 3.8.4. \
 Those are plugin compilation targets, not the concrete nested SBT versions exercised by integration tests.
 
 The SBT 1.x logger is compiled with Java 8 release compatibility so it remains loadable by supported SBT 1 runtimes; the SBT 2.x logger and the build itself run on JDK 17. \
