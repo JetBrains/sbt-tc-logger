@@ -17,7 +17,7 @@
 
 package jetbrains.buildServer.sbtlogger
 
-import sbt._
+import sbt.*
 
 
 class TCLogger(appender: LogAppender, scope: String) extends BasicLogger {

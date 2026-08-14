@@ -19,9 +19,9 @@ package jetbrains.buildServer.sbtlogger
 
 import java.io.{PrintWriter, StringWriter}
 
-import sbt._
+import sbt.*
 import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
-import sbt.jetbrains.buildServer.sbtlogger.apiAdapter._
+import sbt.jetbrains.buildServer.sbtlogger.apiAdapter.*
 
 
 class TCReportListener(ap: LogAppender) extends TestReportListener {

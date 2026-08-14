@@ -17,11 +17,11 @@
 
 package jetbrains.buildServer.sbtlogger
 
-import sbt.Keys._
+import sbt.Keys.*
 import sbt.Configurations.IntegrationTest
-import sbt.jetbrains.buildServer.sbtlogger.apiAdapter._
+import sbt.jetbrains.buildServer.sbtlogger.apiAdapter.*
 import sbt.plugins.JvmPlugin
-import sbt.{Def, _}
+import sbt.{Def, *}
 
 import scala.collection.mutable
 
@@ -38,7 +38,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
     // As seen in https://github.com/JetBrains/sbt-structure/blob/a65499070252b31bd4bf7cf79dbc8a1aa4e5830a/extractor/src/main/scala/org/jetbrains/sbt/operations.scala#L13
     val extracted = Project.extract(state)
-    import extracted.{structure => extractedStructure, _}
+    import extracted.{structure as extractedStructure, *}
     val transformedProjectSettings = extractedStructure.allProjectRefs.flatMap { projectRef =>
       transformSettings(projectScope(projectRef), projectRef.build, rootProject, SbtTeamCityLogger.projectSettings)
     }
@@ -47,7 +47,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   }
 
   // copied from sbt.internal.Load
-  private def transformSettings(thisScope: Scope, uri: URI, rootProject: URI => String, settings: Seq[Setting[_]]): Seq[Setting[_]] =
+  private def transformSettings(thisScope: Scope, uri: URI, rootProject: URI => String, settings: Seq[Setting[?]]): Seq[Setting[?]] =
     Project.transform(Scope.resolveScope(thisScope, uri, rootProject), settings)
 
   // copied from sbt.internal.SessionSettings
@@ -111,11 +111,11 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   }
 
 
-  lazy val loggerOnSettings: Seq[Def.Setting[_]] = Seq(
+  lazy val loggerOnSettings: Seq[Def.Setting[?]] = Seq(
     commands += tcLoggerStatusCommand,
     extraLoggers := {
-      val currentFunction: Def.ScopedKey[_] => Seq[ExtraLogger] = extraLoggers.value
-      (key: ScopedKey[_]) => {
+      val currentFunction: Def.ScopedKey[?] => Seq[ExtraLogger] = extraLoggers.value
+      (key: ScopedKey[?]) => {
         val scope: String = getScopeId(key.scope.project)
         val logger: ExtraLogger = extraLogger(tcLoggers, tcLogAppender, scope)
 
@@ -141,7 +141,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     inConfig(Test)(Seq(reporterSettings(tcLogAppender)))
 
 
-  lazy val loggerOffSettings: Seq[Def.Setting[_]] = Seq(
+  lazy val loggerOffSettings: Seq[Def.Setting[?]] = Seq(
     commands += tcLoggerStatusCommand
   )
 

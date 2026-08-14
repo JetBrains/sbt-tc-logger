@@ -39,7 +39,7 @@ object apiAdapter {
     appender
   }
 
-  def reporterSettings(tcLogAppender: TCLogAppender): Def.Setting[_] = {
+  def reporterSettings(tcLogAppender: TCLogAppender): Def.Setting[?] = {
     import sbt.Keys.compile
     Unhide.compilerReporter in compile := {
       val defaultReporter = (Unhide.compilerReporter in compile).value
