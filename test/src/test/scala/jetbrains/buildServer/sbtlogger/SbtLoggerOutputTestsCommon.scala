@@ -48,7 +48,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/failure",
       sbtCommands = Seq("compile"),
       expectedExitCode = SbtExitCodeExpectation.NonZero,
-      compilationLifecycle = Some(compilationFailureLifecycle(1))
+      compilationLifecycle = Some(compilationFailureLifecycle(expectedClosures = 1, expectedLegacyErrorSummaries = 1))
     ))
   }
 
@@ -67,7 +67,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
       expectedExitCode = SbtExitCodeExpectation.NonZero,
-      compilationLifecycle = Some(compilationFailureLifecycle(2))
+      compilationLifecycle = Some(compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2))
     ))
 
   // Verifies that multi-project compilation failures remain reported with the SBT debug option.
@@ -77,8 +77,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
       sbtOptions = Seq("--debug"),
-      expectedExitCode = SbtExitCodeExpectation.NonZero,
-      compilationLifecycle = Some(compilationFailureLifecycle(2))
+      expectedExitCode = SbtExitCodeExpectation.NonZero
     ))
 
   // Verifies Test / compile closes its lifecycle and rethrows an underlying compiler failure.
@@ -244,18 +243,21 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       Set("aarch64", "arm64").contains(osArchitecture)
   }
 
-  private def compilationFailureLifecycle(expectedClosures: Int): SbtCompilationLifecycleExpectation =
+  private def compilationFailureLifecycle(
+    expectedClosures: Int,
+    expectedLegacyErrorSummaries: Int
+  ): SbtCompilationLifecycleExpectation =
     SbtCompilationLifecycleExpectation(
       expectedClosures = expectedClosures,
-      errorSummaryCompilerBeforeFinish =
-        Option.when(runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8)("Scala compiler")
+      expectedLegacyErrorSummariesBeforeFinish =
+        Option.when(runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8)(expectedLegacyErrorSummaries)
     )
 
   private def testCompilationFailureLifecycle: SbtCompilationLifecycleExpectation =
     SbtCompilationLifecycleExpectation(
       expectedClosures = 2,
-      errorSummaryCompilerBeforeFinish =
-        Option.when(runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8)("Scala compiler in Test")
+      expectedLegacyErrorSummariesBeforeFinish =
+        Option.when(runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8)(1)
     )
 
   private def testCompileCommand: String =
