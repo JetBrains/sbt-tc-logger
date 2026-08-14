@@ -4,3 +4,4 @@ package jetbrains.buildServer.sbtlogger
 class SbtLoggerOutputTest_2_Latest_Jdk17
   extends SbtLoggerOutputTestsCommon(SbtTestsRuntime.Sbt2_Latest_Jdk17)
     with SbtLoggerOutputTestsSbt2Plus
+    with SbtLoggerOutputTests_SinceJDK11

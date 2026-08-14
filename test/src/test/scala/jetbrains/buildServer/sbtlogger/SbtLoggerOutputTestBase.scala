@@ -13,6 +13,17 @@ import java.io.File
  */
 abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
 
+  /** Runs the TW-35693 fixture after a runtime-qualified suite has opted into it. */
+  protected final def runScalaTestErrorLikeOutputNotCompilationFailureCase(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testSupport/ScalaTest_ErrorLikeOutputNotCompilationFailure",
+      sbtCommands = Seq("test"),
+      // SBT 2 may schedule the main and test compilation lifecycles in either order.
+      // Verify both lifecycles independently while preserving their own start/finish order.
+      outputFiles = Seq("compilation-output.txt", "test-compilation-output.txt", "output.txt"),
+      expectZeroExitCode = true
+    ))
+
   /**
    * Runs one output fixture test case.
    *
