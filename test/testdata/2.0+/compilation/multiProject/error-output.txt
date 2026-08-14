@@ -1,0 +1,2 @@
+##teamcity\[message status='ERROR' flowId='<flowId1>' text='one error found'\]
+##teamcity\[message status='ERROR' flowId='<flowId2>' text='one error found'\]

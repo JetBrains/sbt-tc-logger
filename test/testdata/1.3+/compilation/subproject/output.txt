@@ -1,2 +1,2 @@
-##teamcity\[compilationStarted compiler='Scala compiler' flowId='.*'\]
-##teamcity\[compilationFinished compiler='Scala compiler' flowId='.*'\]
+##teamcity\[compilationStarted compiler='Scala compiler' flowId='<flowId1>'\]
+##teamcity\[compilationFinished compiler='Scala compiler' flowId='<flowId1>'\]

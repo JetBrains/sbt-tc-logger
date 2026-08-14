@@ -103,6 +103,120 @@ class SbtOutputVerifierTest {
   }
 
   @Test
+  def flowIdPlaceholderRequiresRepeatedTokensToUseTheSameConcreteFlow(): Unit = {
+    val required = patternFile(
+      "required",
+      """##teamcity\[testSuiteStarted name='suite' flowId='<flowId1>'\]""",
+      """##teamcity\[testStarted name='suite.test' captureStandardOutput='true' flowId='<flowId1>'\]""",
+      """##teamcity\[testFinished name='suite.test' duration='.*' flowId='<flowId1>'\]""",
+      """##teamcity\[testSuiteFinished name='suite' flowId='<flowId1>'\]"""
+    )
+
+    SbtOutputVerifier.checkOutputText(
+      """##teamcity[testSuiteStarted name='suite' flowId='thread-A']
+        |##teamcity[testStarted name='suite.test' captureStandardOutput='true' flowId='thread-A']
+        |##teamcity[testFinished name='suite.test' duration='7' flowId='thread-A']
+        |##teamcity[testSuiteFinished name='suite' flowId='thread-A']
+        |""".stripMargin,
+      excludesFile = None,
+      requiredFiles = Seq(required)
+    )
+  }
+
+  @Test
+  def flowIdPlaceholderRejectsADifferentConcreteFlowForARepeatedToken(): Unit = {
+    val required = patternFile(
+      "required",
+      """##teamcity\[testSuiteStarted name='suite' flowId='<flowId1>'\]""",
+      """##teamcity\[testSuiteFinished name='suite' flowId='<flowId1>'\]"""
+    )
+
+    val error = expectAssertionError {
+      SbtOutputVerifier.checkOutputText(
+        """##teamcity[testSuiteStarted name='suite' flowId='first-thread']
+          |##teamcity[testSuiteFinished name='suite' flowId='second-thread']
+          |""".stripMargin,
+        excludesFile = None,
+        requiredFiles = Seq(required)
+      )
+    }
+
+    assertFailureMessageContains(error, "flowId1 = 'first-thread'")
+    assertFailureMessageContains(error, "First missing pattern:")
+  }
+
+  @Test
+  def flowIdPlaceholdersRequireDifferentTokensToUseDifferentConcreteFlows(): Unit = {
+    val required = patternFile(
+      "required",
+      """##teamcity\[testSuiteStarted name='first' flowId='<flowId1>'\]""",
+      """##teamcity\[testSuiteStarted name='second' flowId='<flowId2>'\]"""
+    )
+
+    val error = expectAssertionError {
+      SbtOutputVerifier.checkOutputText(
+        """##teamcity[testSuiteStarted name='first' flowId='shared-thread']
+          |##teamcity[testSuiteStarted name='second' flowId='shared-thread']
+          |""".stripMargin,
+        excludesFile = None,
+        requiredFiles = Seq(required)
+      )
+    }
+
+    assertFailureMessageContains(error, "flowId1 = 'shared-thread'")
+    assertFailureMessageContains(error, "flowId2 cannot bind to 'shared-thread': it is already bound to flowId1")
+  }
+
+  @Test
+  def flowIdPlaceholderBindingsAreScopedToOneRequiredFile(): Unit = {
+    val firstRequired = patternFile("first-required", """##teamcity\[testSuiteStarted name='first' flowId='<flowId1>'\]""")
+    val secondRequired = patternFile("second-required", """##teamcity\[testSuiteStarted name='second' flowId='<flowId1>'\]""")
+
+    SbtOutputVerifier.checkOutputText(
+      """##teamcity[testSuiteStarted name='first' flowId='shared-thread']
+        |##teamcity[testSuiteStarted name='second' flowId='shared-thread']
+        |""".stripMargin,
+      excludesFile = None,
+      requiredFiles = Seq(firstRequired, secondRequired)
+    )
+  }
+
+  @Test
+  def flowIdPlaceholderSearchBacktracksToALaterCompatibleOrderedSubsequence(): Unit = {
+    val required = patternFile(
+      "required",
+      """##teamcity\[testStarted name='suite.test' captureStandardOutput='true' flowId='<flowId7>'\]""",
+      """##teamcity\[testFinished name='suite.test' duration='.*' flowId='<flowId7>'\]"""
+    )
+
+    SbtOutputVerifier.checkOutputText(
+      """##teamcity[testStarted name='suite.test' captureStandardOutput='true' flowId='first-thread']
+        |##teamcity[testStarted name='suite.test' captureStandardOutput='true' flowId='second-thread']
+        |##teamcity[testFinished name='suite.test' duration='1' flowId='second-thread']
+        |""".stripMargin,
+      excludesFile = None,
+      requiredFiles = Seq(required)
+    )
+  }
+
+  @Test
+  def flowIdPlaceholderRecognisesAServiceMessageWithTrailingConsoleOutput(): Unit = {
+    val required = patternFile(
+      "required",
+      """##teamcity\[testStarted name='suite.test' captureStandardOutput='true'.* flowId='<flowId1>'\]""",
+      """##teamcity\[testFinished name='suite.test'.* flowId='<flowId1>'\]"""
+    )
+
+    SbtOutputVerifier.checkOutputText(
+      """##teamcity[testStarted name='suite.test' captureStandardOutput='true' flowId='worker-7'][info] suite started
+        |##teamcity[testFinished name='suite.test' duration='4' flowId='worker-7'][info] suite finished
+        |""".stripMargin,
+      excludesFile = None,
+      requiredFiles = Seq(required)
+    )
+  }
+
+  @Test
   def requiredPatternFailureReportsUsefulMatchContext(): Unit = {
     val required = patternFile("required", "first", "second")
 
