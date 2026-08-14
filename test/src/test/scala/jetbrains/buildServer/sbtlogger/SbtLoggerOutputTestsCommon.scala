@@ -1,7 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
 import jetbrains.buildServer.sbtlogger.utils.{SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtLoggerOutputTestCase}
-import org.junit.Assume.assumeFalse
 import org.junit.Test
 
 /**
@@ -37,20 +36,13 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   // Verifies compiler lifecycle, source-error, and final-failure messages for a failed compilation.
   @Test
-  def compilation_FailureReported(): Unit = {
-    // SBT 1.0.0 cannot start its x86-only JNA socket server on a native Apple Silicon JVM.
-    assumeFalse(
-      "SBT 1.0.0 requires x86_64 Java under Rosetta or an x86 CI agent on Apple Silicon hosts.",
-      runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8 && isNativeAppleSilicon
-    )
-
+  def compilation_FailureReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/failure",
       sbtCommands = Seq("compile"),
       expectedExitCode = SbtExitCodeExpectation.NonZero,
       compilationLifecycle = compilationFailureLifecycle(expectedClosures = 1, expectedLegacyErrorSummaries = 1)
     ))
-  }
 
   // Verifies compiler start and finish messages for a successful Scala compilation.
   @Test
@@ -235,13 +227,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
         "output11.txt"
       )
     ))
-
-  private def isNativeAppleSilicon: Boolean = {
-    val osName = System.getProperty("os.name", "").toLowerCase
-    val osArchitecture = System.getProperty("os.arch", "").toLowerCase
-    osName.contains("mac") &&
-      Set("aarch64", "arm64").contains(osArchitecture)
-  }
 
   private def compilationFailureLifecycle(
     expectedClosures: Int,
