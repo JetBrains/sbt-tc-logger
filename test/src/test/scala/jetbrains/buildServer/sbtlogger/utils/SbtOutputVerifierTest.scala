@@ -21,10 +21,9 @@ class SbtOutputVerifierTest {
         |""".stripMargin,
       SbtCompilationLifecycleExpectation(
         expectedClosures = 1,
-        errorSummaryCompilerBeforeFinish = Some("Scala compiler")
+        expectedLegacyErrorSummariesBeforeFinish = Some(1)
       )
     )
-  }
 
   @Test
   def compilationLifecycleRejectsDuplicateOrUnmatchedFinishes(): Unit = {
@@ -58,12 +57,12 @@ class SbtOutputVerifierTest {
           |""".stripMargin,
         SbtCompilationLifecycleExpectation(
           expectedClosures = 1,
-          errorSummaryCompilerBeforeFinish = Some("Scala compiler")
+          expectedLegacyErrorSummariesBeforeFinish = Some(1)
         )
       )
     }
 
-    Assert.assertTrue(error.getMessage.contains("legacy compiler error summary"))
+    Assert.assertTrue(error.getMessage.contains("Expected 1 legacy compiler error summaries"))
   }
 
   @Test

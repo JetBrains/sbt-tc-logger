@@ -106,16 +106,33 @@ private[sbtlogger] object SbtOutputVerifier {
       val finish = finishes.head
       Assert.assertTrue(s"Compilation finish must follow its start for $label", start.lineIndex < finish.lineIndex)
 
-      if (expectation.errorSummaryCompilerBeforeFinish.contains(compiler)) {
-        val hasErrorSummary = lines.slice(start.lineIndex + 1, finish.lineIndex).exists { line =>
-          parseServiceMessage(line).exists { case (name, attributes) =>
-            name == "message" &&
-              attributes.get("status").contains("ERROR") &&
-              attributes.get("flowId").contains(flowId) &&
-              attributes.get("text").contains("one error found")
-          }
+    }
+
+    val legacyErrorSummaries = lines.zipWithIndex.collect {
+      case (line, lineIndex) if parseServiceMessage(line).exists { case (name, attributes) =>
+        name == "message" &&
+          attributes.get("status").contains("ERROR") &&
+          attributes.get("flowId").isDefined &&
+          attributes.get("text").contains("one error found")
+      } =>
+        val (_, attributes) = parseServiceMessage(line).get
+        CompilationErrorSummary(attributes("flowId"), lineIndex)
+    }
+    expectation.expectedLegacyErrorSummariesBeforeFinish.foreach { expectedCount =>
+      Assert.assertEquals(s"Expected $expectedCount legacy compiler error summaries", expectedCount, legacyErrorSummaries.size)
+    }
+    expectation.expectedLegacyErrorSummariesBeforeFinish.foreach { _ =>
+      legacyErrorSummaries.foreach { summary =>
+        val matchingLifecycles = grouped.collect {
+          case ((compiler, flowId), events) if flowId == summary.flowId =>
+            (compiler, events.filter(_.started).head, events.filterNot(_.started).head)
         }
-        Assert.assertTrue(s"Expected legacy compiler error summary before finish for $label", hasErrorSummary)
+        Assert.assertEquals(s"Expected one compiler lifecycle for legacy error summary flowId='${summary.flowId}'", 1, matchingLifecycles.size)
+        val (compiler, start, finish) = matchingLifecycles.head
+        Assert.assertTrue(
+          s"Legacy compiler error summary must be between start and finish for compiler='$compiler', flowId='${summary.flowId}'",
+          start.lineIndex < summary.lineIndex && summary.lineIndex < finish.lineIndex
+        )
       }
     }
   }
@@ -306,6 +323,7 @@ private[sbtlogger] object SbtOutputVerifier {
   }
 
   private final case class CompilationLifecycleEvent(started: Boolean, compiler: String, flowId: String, lineIndex: Int)
+  private final case class CompilationErrorSummary(flowId: String, lineIndex: Int)
 
   private val ServiceMessagePattern = """##teamcity\[([^ ]+)(?: (.*))?\]""".r
   private val AttributePattern = """([^ =]+)='([^']*)'""".r
