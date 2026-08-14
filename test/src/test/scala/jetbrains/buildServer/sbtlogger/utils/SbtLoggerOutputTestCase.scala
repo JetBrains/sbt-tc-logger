@@ -80,10 +80,29 @@ object SbtFailurePropagationExpectation {
 }
 
 /** Strict lifecycle requirements for a focused compilation-regression fixture. */
-final case class SbtCompilationLifecycleExpectation(
-  expectedClosures: Int,
-  expectedLegacyErrorSummaries: Option[Int] = None
-) {
-  require(expectedClosures > 0, "A lifecycle regression fixture must require at least one closure.")
-  require(expectedLegacyErrorSummaries.forall(_ >= 0), "The number of expected legacy error summaries cannot be negative.")
+sealed trait SbtCompilationLifecycleExpectation {
+  def expectedLegacyErrorSummaries: Option[Int]
+}
+
+object SbtCompilationLifecycleExpectation {
+  /** Requires every observed compiler lifecycle to have one start and one later finish. */
+  final case class Complete(
+    expectedClosures: Int,
+    expectedLegacyErrorSummaries: Option[Int] = None
+  ) extends SbtCompilationLifecycleExpectation {
+    require(expectedClosures > 0, "A lifecycle regression fixture must require at least one closure.")
+    require(expectedLegacyErrorSummaries.forall(_ >= 0), "The number of expected legacy error summaries cannot be negative.")
+  }
+
+  /**
+   * Checks legacy compiler summaries without requiring every observed lifecycle to close.
+   *
+   * SBT debug aggregate output can contain an incomplete empty-root lifecycle. Every summary still has to be owned by
+   * one complete project lifecycle and occur between that lifecycle's start and finish.
+   */
+  final case class SummaryOnly(expectedLegacyErrorSummaryCount: Int) extends SbtCompilationLifecycleExpectation {
+    require(expectedLegacyErrorSummaryCount >= 0, "The number of expected legacy error summaries cannot be negative.")
+
+    override val expectedLegacyErrorSummaries: Option[Int] = Some(expectedLegacyErrorSummaryCount)
+  }
 }

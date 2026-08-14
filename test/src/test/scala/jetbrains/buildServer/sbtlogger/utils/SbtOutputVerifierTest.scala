@@ -13,13 +13,13 @@ import java.io.File
 class SbtOutputVerifierTest {
 
   @Test
-  def compilationLifecycleRequiresOneOrderedPairForEachFlow(): Unit =
+  def compilationLifecycleRequiresEveryLegacySummaryToBeOwnedByOneOrderedPair(): Unit =
     SbtOutputVerifier.assertCompilationLifecycle(
       """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
+        |##teamcity[message status='ERROR' flowId='main' text='one error found']
         |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
-        |##teamcity[message status='ERROR' flowId='reporter' text='one error found']
         |""".stripMargin,
-      SbtCompilationLifecycleExpectation(
+      SbtCompilationLifecycleExpectation.Complete(
         expectedClosures = 1,
         expectedLegacyErrorSummaries = Some(1)
       )
@@ -33,7 +33,7 @@ class SbtOutputVerifierTest {
           |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
           |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
           |""".stripMargin,
-        SbtCompilationLifecycleExpectation(expectedClosures = 1)
+        SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1)
       )
     }
     assertFailureMessageContains(duplicateFinish, "exactly one compilation finish")
@@ -41,29 +41,52 @@ class SbtOutputVerifierTest {
     val unmatchedFinish = expectAssertionError {
       SbtOutputVerifier.assertCompilationLifecycle(
         "##teamcity[compilationFinished compiler='Scala compiler' flowId='main']\n",
-        SbtCompilationLifecycleExpectation(expectedClosures = 1)
+        SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1)
       )
     }
     assertFailureMessageContains(unmatchedFinish, "exactly one compilation start")
   }
 
   @Test
-  def compilationLifecycleCountsLegacySummaryOnAnIndependentReporterFlow(): Unit = {
+  def compilationLifecycleRejectsLegacySummaryOnAnotherFlow(): Unit = {
     val error = expectAssertionError {
       SbtOutputVerifier.assertCompilationLifecycle(
         """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
           |##teamcity[message status='ERROR' flowId='other' text='one error found']
           |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
           |""".stripMargin,
-        SbtCompilationLifecycleExpectation(
-          expectedClosures = 1,
-          expectedLegacyErrorSummaries = Some(2)
-        )
+        SbtCompilationLifecycleExpectation.SummaryOnly(expectedLegacyErrorSummaryCount = 1)
       )
     }
 
-    assertFailureMessageContains(error, "Expected 2 legacy compiler error summaries")
+    assertFailureMessageContains(error, "inside exactly one complete compilation lifecycle")
   }
+
+  @Test
+  def compilationLifecycleRejectsLegacySummaryAfterItsFinish(): Unit = {
+    val error = expectAssertionError {
+      SbtOutputVerifier.assertCompilationLifecycle(
+        """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
+          |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
+          |##teamcity[message status='ERROR' flowId='main' text='one error found']
+          |""".stripMargin,
+        SbtCompilationLifecycleExpectation.SummaryOnly(expectedLegacyErrorSummaryCount = 1)
+      )
+    }
+
+    assertFailureMessageContains(error, "inside exactly one complete compilation lifecycle")
+  }
+
+  @Test
+  def compilationLifecycleSummaryOnlyAllowsAnUnrelatedIncompleteRootLifecycle(): Unit =
+    SbtOutputVerifier.assertCompilationLifecycle(
+      """##teamcity[compilationStarted compiler='Scala compiler' flowId='root']
+        |##teamcity[compilationStarted compiler='Scala compiler' flowId='project']
+        |##teamcity[message status='ERROR' flowId='project' text='one error found']
+        |##teamcity[compilationFinished compiler='Scala compiler' flowId='project']
+        |""".stripMargin,
+      SbtCompilationLifecycleExpectation.SummaryOnly(expectedLegacyErrorSummaryCount = 1)
+    )
 
   @Test
   def checkOutputTextAcceptsRequiredPatternsInOrder(): Unit = {

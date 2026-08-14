@@ -27,25 +27,25 @@ import sbt.internal.util.{ObjectEvent, StringEvent}
 class TCLoggerAppender(appender: LogAppender, scope: String) extends
   AbstractAppender("tc-logger-" + scope, null, PatternLayout.createDefaultLayout(), true) {
 
-  def appendMessageContent(level: Level, parameter: AnyRef, flowId: String): Unit = {
+  private def appendMessageContent(level: Level, parameter: AnyRef): Unit = {
     val message = parameter match {
       case o: ObjectEvent[?] => o.message.toString
       case o: StringEvent => o.message
       case _ => parameter.toString
     }
-    appender.log(level.toString, message, flowId)
+    appendLog(level, message)
   }
 
-  def appendLog(level: Level, message: Any, flowId: String): Unit = {
-    appender.log(level.toString, message.toString, flowId)
+  private def appendLog(level: Level, message: Any): Unit = {
+    appender.log(level.toString, message.toString, scope)
   }
 
   override def append(event: core.LogEvent): Unit = {
     event.getMessage match {
       case o: ObjectMessage =>
-        appendMessageContent(event.getLevel, o.getParameter, event.getThreadId.toString)
-      case o: ReusableObjectMessage => appendMessageContent(event.getLevel, o.getParameter, event.getThreadId.toString)
-      case _ => appendLog(event.getLevel, event.getMessage.getFormattedMessage, event.getThreadId.toString)
+        appendMessageContent(event.getLevel, o.getParameter)
+      case o: ReusableObjectMessage => appendMessageContent(event.getLevel, o.getParameter)
+      case _ => appendLog(event.getLevel, event.getMessage.getFormattedMessage)
     }
   }
 }
