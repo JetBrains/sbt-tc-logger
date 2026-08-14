@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{IntegrationTestLayout, SbtExitCodeExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
+import jetbrains.buildServer.sbtlogger.utils.{IntegrationTestLayout, SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
 import org.jetbrains.sbt.integrationTests.*
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 
@@ -49,6 +49,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       sbtCommands = testCase.sbtCommands,
       testRepo = testCase.fixture,
       outputFiles = testCase.outputFiles,
+      compilationLifecycle = testCase.compilationLifecycle,
       teamCityEnvironment = testCase.teamCityEnvironment,
       expectNoTeamCityMessages = testCase.expectNoTeamCityMessages
     )
@@ -68,6 +69,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     sbtCommands: Seq[String],
     testRepo: String,
     outputFiles: Seq[String],
+    compilationLifecycle: Option[SbtCompilationLifecycleExpectation],
     teamCityEnvironment: Boolean = true,
     expectNoTeamCityMessages: Boolean = false
   ): Int = {
@@ -156,6 +158,9 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     )
 
     SbtOutputVerifier.checkOutputText(runResult.processOutput, excludesFile, requiredFiles)
+    compilationLifecycle.foreach { expectation =>
+      SbtOutputVerifier.assertCompilationLifecycle(runResult.processOutput, expectation)
+    }
     if (expectNoTeamCityMessages) {
       assertFalse("Logger emitted TeamCity service messages outside TeamCity", runResult.processOutput.contains("##teamcity["))
     }

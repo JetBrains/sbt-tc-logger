@@ -1,3 +1,4 @@
 ##teamcity\[compilationStarted compiler='Scala compiler' flowId='.*'\]
 ##teamcity\[inspection SEVERITY='ERROR'.*\]
 ##teamcity\[compilationFinished compiler='Scala compiler' flowId='.*'\]
+\[error\].*Compilation failed

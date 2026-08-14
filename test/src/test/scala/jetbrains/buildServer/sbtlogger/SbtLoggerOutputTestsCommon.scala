@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{SbtExitCodeExpectation, SbtLoggerOutputTestCase}
+import jetbrains.buildServer.sbtlogger.utils.{SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtLoggerOutputTestCase}
 import org.junit.Assume.assumeFalse
 import org.junit.Test
 
@@ -47,7 +47,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/failure",
       sbtCommands = Seq("compile"),
-      expectedExitCode = SbtExitCodeExpectation.NonZero
+      expectedExitCode = SbtExitCodeExpectation.NonZero,
+      compilationLifecycle = Some(compilationFailureLifecycle(1))
     ))
   }
 
@@ -64,7 +65,9 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
   def compilation_MultiProject_FailuresReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/multiProject",
-      sbtCommands = Seq("compile")
+      sbtCommands = Seq("compile"),
+      expectedExitCode = SbtExitCodeExpectation.NonZero,
+      compilationLifecycle = Some(compilationFailureLifecycle(2))
     ))
 
   // Verifies that multi-project compilation failures remain reported with the SBT debug option.
@@ -73,7 +76,19 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
-      sbtOptions = Seq("--debug")
+      sbtOptions = Seq("--debug"),
+      expectedExitCode = SbtExitCodeExpectation.NonZero,
+      compilationLifecycle = Some(compilationFailureLifecycle(2))
+    ))
+
+  // Verifies Test / compile closes its lifecycle and rethrows an underlying compiler failure.
+  @Test
+  def testCompilation_FailureReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/testFailure",
+      sbtCommands = Seq(testCompileCommand),
+      expectedExitCode = SbtExitCodeExpectation.NonZero,
+      compilationLifecycle = Some(testCompilationFailureLifecycle)
     ))
 
   // Verifies that a project without build.sbt compiles successfully and reports its compiler lifecycle.
@@ -228,4 +243,22 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     osName.contains("mac") &&
       Set("aarch64", "arm64").contains(osArchitecture)
   }
+
+  private def compilationFailureLifecycle(expectedClosures: Int): SbtCompilationLifecycleExpectation =
+    SbtCompilationLifecycleExpectation(
+      expectedClosures = expectedClosures,
+      errorSummaryCompilerBeforeFinish =
+        Option.when(runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8)("Scala compiler")
+    )
+
+  private def testCompilationFailureLifecycle: SbtCompilationLifecycleExpectation =
+    SbtCompilationLifecycleExpectation(
+      expectedClosures = 2,
+      errorSummaryCompilerBeforeFinish =
+        Option.when(runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8)("Scala compiler in Test")
+    )
+
+  private def testCompileCommand: String =
+    if (runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8) "test:compile"
+    else "Test / compile"
 }
