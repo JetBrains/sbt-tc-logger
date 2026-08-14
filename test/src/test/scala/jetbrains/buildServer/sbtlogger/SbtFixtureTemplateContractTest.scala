@@ -33,6 +33,39 @@ class SbtFixtureTemplateContractTest {
     )
   }
 
+  @Test
+  def scalaTestPassAndFailureFixturesAssertSeparateSuites(): Unit = {
+    val root = IntegrationTestLayout.repoRoot().toPath
+
+    SbtTestsRuntime.All.map(_.testDataRelativePath).distinct.foreach { testDataRoot =>
+      val fixture = root.resolve(testDataRoot).resolve("testSupport/ScalaTest_PassAndFailure")
+      val exampleOutput = Files.readString(fixture.resolve("output.txt"))
+      val listOutput = Files.readString(fixture.resolve("output1.txt"))
+
+      Assert.assertTrue(
+        s"$testDataRoot ScalaTest output.txt must assert ExampleSpec test events.",
+        exampleOutput.contains("testStarted name='ExampleSpec.")
+      )
+      Assert.assertFalse(
+        s"$testDataRoot ScalaTest output.txt must not assert ListFlatSpec test events.",
+        exampleOutput.contains("testStarted name='ListFlatSpec.")
+      )
+      Assert.assertTrue(
+        s"$testDataRoot ScalaTest output1.txt must assert ListFlatSpec test events.",
+        listOutput.contains("testStarted name='ListFlatSpec.")
+      )
+      Assert.assertFalse(
+        s"$testDataRoot ScalaTest output1.txt must not assert ExampleSpec test events.",
+        listOutput.contains("testStarted name='ExampleSpec.")
+      )
+      Assert.assertNotEquals(
+        s"$testDataRoot ScalaTest expected-output fixtures must not be duplicates.",
+        exampleOutput,
+        listOutput
+      )
+    }
+  }
+
   private def buildPropertiesFiles(testDataRoot: Path): Seq[Path] = {
     val files = Files.walk(testDataRoot)
     try {
