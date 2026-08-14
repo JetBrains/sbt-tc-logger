@@ -10,6 +10,7 @@ package jetbrains.buildServer.sbtlogger.utils
  * @param sbtOptions         launcher command-line options passed before the command transport.
  * @param outputFiles        expected output regex files to check; defaults to `output.txt` when empty.
  * @param expectedExitCode   expected result of the nested sbt process.
+ * @param compilationLifecycle optional strict lifecycle contract for compilation TeamCity messages.
  * @param teamCityEnvironment whether the nested process receives `TEAMCITY_VERSION`; when false, an inherited value is
  *                            removed before the process starts.
  * @param expectNoTeamCityMessages asserts the logger remains completely inactive when TeamCity is absent.
@@ -21,6 +22,7 @@ final case class SbtLoggerOutputTestCase(
   sbtOptions: Seq[String] = Seq("--error"),
   outputFiles: Seq[String] = Seq.empty,
   expectedExitCode: SbtExitCodeExpectation = SbtExitCodeExpectation.Any,
+  compilationLifecycle: Option[SbtCompilationLifecycleExpectation] = None,
   teamCityEnvironment: Boolean = true,
   expectNoTeamCityMessages: Boolean = false
 )
@@ -35,4 +37,12 @@ object SbtExitCodeExpectation {
   case object Zero extends SbtExitCodeExpectation
   /** The command must fail, proving a captured compilation failure was rethrown. */
   case object NonZero extends SbtExitCodeExpectation
+}
+
+/** Strict lifecycle requirements for a focused compilation-regression fixture. */
+final case class SbtCompilationLifecycleExpectation(
+  expectedClosures: Int,
+  errorSummaryCompilerBeforeFinish: Option[String] = None
+) {
+  require(expectedClosures > 0, "A lifecycle regression fixture must require at least one closure.")
 }

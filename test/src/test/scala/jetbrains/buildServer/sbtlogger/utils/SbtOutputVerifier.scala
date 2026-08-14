@@ -73,6 +73,54 @@ private[sbtlogger] object SbtOutputVerifier {
   }
 
   /**
+   * Verifies complete, non-duplicated compiler lifecycles for focused regression fixtures.
+   *
+   * Unlike the regex fixture matcher, this keeps the actual TeamCity `compiler` and `flowId` attributes together.
+   * It therefore rejects an unmatched or duplicate close even when a permissive `flowId='.*'` regex would match it.
+   */
+  def assertCompilationLifecycle(output: String, expectation: SbtCompilationLifecycleExpectation): Unit = {
+    val lines = output.linesIterator.toVector
+    val lifecycles = lines.zipWithIndex.flatMap { case (line, index) =>
+      parseServiceMessage(line).collect {
+        case ("compilationStarted", attributes) if attributes.contains("compiler") && attributes.contains("flowId") =>
+          CompilationLifecycleEvent(started = true, attributes("compiler"), attributes("flowId"), index)
+        case ("compilationFinished", attributes) if attributes.contains("compiler") && attributes.contains("flowId") =>
+          CompilationLifecycleEvent(started = false, attributes("compiler"), attributes("flowId"), index)
+      }
+    }
+    val grouped = lifecycles.groupBy(event => (event.compiler, event.flowId))
+
+    Assert.assertEquals(
+      s"Expected ${expectation.expectedClosures} compilation lifecycle closures, found ${grouped.size}: ${grouped.keys.mkString(", ")}",
+      expectation.expectedClosures,
+      grouped.size
+    )
+
+    grouped.foreach { case ((compiler, flowId), events) =>
+      val starts = events.filter(_.started)
+      val finishes = events.filterNot(_.started)
+      val label = s"compiler='$compiler', flowId='$flowId'"
+      Assert.assertEquals(s"Expected exactly one compilation start for $label", 1, starts.size)
+      Assert.assertEquals(s"Expected exactly one compilation finish for $label", 1, finishes.size)
+      val start = starts.head
+      val finish = finishes.head
+      Assert.assertTrue(s"Compilation finish must follow its start for $label", start.lineIndex < finish.lineIndex)
+
+      if (expectation.errorSummaryCompilerBeforeFinish.contains(compiler)) {
+        val hasErrorSummary = lines.slice(start.lineIndex + 1, finish.lineIndex).exists { line =>
+          parseServiceMessage(line).exists { case (name, attributes) =>
+            name == "message" &&
+              attributes.get("status").contains("ERROR") &&
+              attributes.get("flowId").contains(flowId) &&
+              attributes.get("text").contains("one error found")
+          }
+        }
+        Assert.assertTrue(s"Expected legacy compiler error summary before finish for $label", hasErrorSummary)
+      }
+    }
+  }
+
+  /**
    * Applies the verifier contract to already-split output lines.
    *
    * Excludes are checked first so forbidden output is reported even when no required file is supplied. Required files are
@@ -93,6 +141,14 @@ private[sbtlogger] object SbtOutputVerifier {
       val requiredPatterns = ExpectedPatternGroup(requiredFile, compilePatterns(requiredFile))
       assertRequiredPatternsMatched(matchRequiredPatterns(allLines, requiredPatterns))
     }
+  }
+
+  private def parseServiceMessage(line: String): Option[(String, Map[String, String])] = line match {
+    case ServiceMessagePattern(name, rawAttributes) =>
+      Some(name -> AttributePattern.findAllMatchIn(rawAttributes).map { attribute =>
+        attribute.group(1) -> attribute.group(2)
+      }.toMap)
+    case _ => None
   }
 
   /**
@@ -248,6 +304,11 @@ private[sbtlogger] object SbtOutputVerifier {
     def diagnosticText: String =
       s"${normalisedAbsolutePath(file)}:$lineNumber: $text"
   }
+
+  private final case class CompilationLifecycleEvent(started: Boolean, compiler: String, flowId: String, lineIndex: Int)
+
+  private val ServiceMessagePattern = """##teamcity\[([^ ]+)(?: (.*))?\]""".r
+  private val AttributePattern = """([^ =]+)='([^']*)'""".r
 
   private final case class ExpectedPatternGroup(file: File, patterns: Seq[ExpectedPattern])
 

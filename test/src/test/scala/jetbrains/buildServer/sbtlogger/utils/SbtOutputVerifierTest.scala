@@ -13,6 +13,60 @@ import java.io.File
 class SbtOutputVerifierTest {
 
   @Test
+  def compilationLifecycleRequiresOneOrderedPairForEachFlow(): Unit =
+    SbtOutputVerifier.assertCompilationLifecycle(
+      """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
+        |##teamcity[message status='ERROR' flowId='main' text='one error found']
+        |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
+        |""".stripMargin,
+      SbtCompilationLifecycleExpectation(
+        expectedClosures = 1,
+        errorSummaryCompilerBeforeFinish = Some("Scala compiler")
+      )
+    )
+  }
+
+  @Test
+  def compilationLifecycleRejectsDuplicateOrUnmatchedFinishes(): Unit = {
+    val duplicateFinish = expectAssertionError {
+      SbtOutputVerifier.assertCompilationLifecycle(
+        """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
+          |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
+          |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
+          |""".stripMargin,
+        SbtCompilationLifecycleExpectation(expectedClosures = 1)
+      )
+    }
+    Assert.assertTrue(duplicateFinish.getMessage.contains("exactly one compilation finish"))
+
+    val unmatchedFinish = expectAssertionError {
+      SbtOutputVerifier.assertCompilationLifecycle(
+        "##teamcity[compilationFinished compiler='Scala compiler' flowId='main']\n",
+        SbtCompilationLifecycleExpectation(expectedClosures = 1)
+      )
+    }
+    Assert.assertTrue(unmatchedFinish.getMessage.contains("exactly one compilation start"))
+  }
+
+  @Test
+  def compilationLifecycleRequiresLegacySummaryOnTheSameFlow(): Unit = {
+    val error = expectAssertionError {
+      SbtOutputVerifier.assertCompilationLifecycle(
+        """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
+          |##teamcity[message status='ERROR' flowId='other' text='one error found']
+          |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
+          |""".stripMargin,
+        SbtCompilationLifecycleExpectation(
+          expectedClosures = 1,
+          errorSummaryCompilerBeforeFinish = Some("Scala compiler")
+        )
+      )
+    }
+
+    Assert.assertTrue(error.getMessage.contains("legacy compiler error summary"))
+  }
+
+  @Test
   def checkOutputTextAcceptsRequiredPatternsInOrder(): Unit = {
     val required = patternFile("required", "first", "second")
 
