@@ -1,2 +1,0 @@
-##teamcity\[testStarted name='tests.ParallelTest.should Write Passing Tests'.* flowId='<flowId1>'\]
-##teamcity\[testFinished name='tests.ParallelTest.should Write Passing Tests'.* flowId='<flowId1>'\]

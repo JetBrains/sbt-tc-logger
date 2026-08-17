@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.IntegrationTestLayout
+import jetbrains.buildServer.sbtlogger.utils.{IntegrationTestLayout, SbtOutputExpectations}
 import org.jetbrains.sbt.integrationTests.SbtFixtureWorkspace
 import org.junit.{Assert, Test}
 
@@ -33,39 +33,6 @@ class SbtFixtureTemplateContractTest {
     )
   }
 
-  @Test
-  def scalaTestPassAndFailureFixturesAssertSeparateSuites(): Unit = {
-    val root = IntegrationTestLayout.repoRoot().toPath
-
-    SbtTestsRuntime.All.map(_.testDataRelativePath).distinct.foreach { testDataRoot =>
-      val fixture = root.resolve(testDataRoot).resolve("testSupport/ScalaTest_PassAndFailure")
-      val exampleOutput = Files.readString(fixture.resolve("output.txt"))
-      val listOutput = Files.readString(fixture.resolve("output1.txt"))
-
-      Assert.assertTrue(
-        s"$testDataRoot ScalaTest output.txt must assert ExampleSpec test events.",
-        exampleOutput.contains("testStarted name='ExampleSpec.")
-      )
-      Assert.assertFalse(
-        s"$testDataRoot ScalaTest output.txt must not assert ListFlatSpec test events.",
-        exampleOutput.contains("testStarted name='ListFlatSpec.")
-      )
-      Assert.assertTrue(
-        s"$testDataRoot ScalaTest output1.txt must assert ListFlatSpec test events.",
-        listOutput.contains("testStarted name='ListFlatSpec.")
-      )
-      Assert.assertFalse(
-        s"$testDataRoot ScalaTest output1.txt must not assert ExampleSpec test events.",
-        listOutput.contains("testStarted name='ExampleSpec.")
-      )
-      Assert.assertNotEquals(
-        s"$testDataRoot ScalaTest expected-output fixtures must not be duplicates.",
-        exampleOutput,
-        listOutput
-      )
-    }
-  }
-
   /**
    * Required expected-output fixtures are regexes, but flow IDs are protocol relationships rather than arbitrary text.
    * Keep that relationship explicit with a file-local symbolic token. `excludes.txt` deliberately remains a plain regex
@@ -91,6 +58,32 @@ class SbtFixtureTemplateContractTest {
          |${violations.mkString(System.lineSeparator())}
          |""".stripMargin,
       violations.isEmpty
+    )
+  }
+
+  @Test
+  def scalaTestPassAndFailureUsesOneSharedFlowScope(): Unit = {
+    val scopes = SbtOutputExpectations.scalaTestPassAndFailure.scopes
+
+    Assert.assertEquals(1, scopes.size)
+    Assert.assertEquals("scala-test-run", scopes.head.name)
+    Assert.assertEquals(
+      Seq("example-spec" -> "output.txt", "list-flat-spec" -> "output1.txt"),
+      scopes.head.groups.map(group => group.name -> group.fileName)
+    )
+  }
+
+  @Test
+  def scalaTestParallelEventsUsesThreeIndependentFlowScopes(): Unit = {
+    val scopes = SbtOutputExpectations.scalaTestParallelEvents.scopes
+
+    Assert.assertEquals(
+      Seq(
+        "direct-non-parallel" -> Seq("output.txt", "output1.txt"),
+        "direct-parallel" -> Seq("output2.txt", "output4.txt"),
+        "non-parallel-suite" -> Seq("output5.txt", "output8.txt", "output9.txt", "output11.txt")
+      ),
+      scopes.map(scope => scope.name -> scope.groups.map(_.fileName))
     )
   }
 

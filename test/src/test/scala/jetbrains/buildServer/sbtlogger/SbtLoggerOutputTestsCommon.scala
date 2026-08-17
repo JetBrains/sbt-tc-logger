@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase}
+import jetbrains.buildServer.sbtlogger.utils.{ExpectationSet, SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtOutputExpectations}
 import org.junit.Test
 
 /**
@@ -20,7 +20,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/failure",
       sbtCommands = Seq("sbt-teamcity-logger"),
-      outputFiles = Seq("plugin_status_output.txt")
+      expectations = ExpectationSet.singleFile("plugin_status_output.txt")
     ))
 
   // Verifies that the plugin disables itself and emits no service messages outside TeamCity.
@@ -29,7 +29,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/failure",
       sbtCommands = Seq("sbt-teamcity-logger"),
-      outputFiles = Seq("plugin_status_non_teamcity_output.txt"),
+      expectations = ExpectationSet.singleFile("plugin_status_non_teamcity_output.txt"),
       teamCityEnvironment = false,
       expectNoTeamCityMessages = true
     ))
@@ -58,6 +58,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
+      // The fixture asserts its own ordered subsequence; its scheduler-dependent three-flow topology is checked by the lifecycle contract.
+      expectations = SbtOutputExpectations.multiProjectCompilation,
       failurePropagation = compilationFailurePropagation,
       compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2)
     ))
@@ -69,6 +71,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/multiProject",
       sbtCommands = Seq("compile"),
       sbtOptions = Seq("--debug"),
+      expectations = SbtOutputExpectations.multiProjectCompilation,
       failurePropagation = compilationFailurePropagation,
       compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2)
     ))
@@ -98,7 +101,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "testSupport/JUnit_PassAndFailure",
       sbtCommands = Seq("test"),
-      outputFiles = Seq("output.txt"),
       expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
@@ -110,7 +112,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "testSupport/JUnit_PassAndFailure",
       sbtCommands = Seq("testQuick"),
-      outputFiles = Seq("output.txt"),
       expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
@@ -153,7 +154,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "testSupport/ScalaTest_PassAndFailure",
       sbtCommands = Seq("test"),
-      outputFiles = Seq("output.txt", "output1.txt"),
+      expectations = SbtOutputExpectations.scalaTestPassAndFailure,
       expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
@@ -164,7 +165,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "projectExecution/javaSources",
       sbtCommands = Seq("clean", "compile", "run"),
       sbtOptions = Seq("--debug"),
-      outputFiles = Seq("output.txt")
     ))
 
   // Verifies that framework-skipped Specs2 examples are reported as ignored tests.
@@ -192,8 +192,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
   def testReporting_ScalaTest_LongNamesNotDuplicated(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "testSupport/ScalaTest_LongNamesNotDuplicated",
-      sbtCommands = Seq("testOnly"),
-      outputFiles = Seq("output.txt")
+      sbtCommands = Seq("testOnly")
     ))
 
   // Verifies that Specs2 examples invoked through testOnly are reported.
@@ -202,7 +201,6 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "testSupport/Specs2_TestOnlyExamples",
       sbtCommands = Seq("testOnly"),
-      outputFiles = Seq("output.txt"),
       expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
@@ -213,20 +211,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "testSupport/ScalaTest_ParallelEvents",
       sbtCommands = Seq("test"),
       sbtOptions = Seq("--info"),
-      outputFiles = Seq(
-        "output.txt",
-        "output1.txt",
-        "output2.txt",
-        "output3.txt",
-        "output4.txt",
-        "output5.txt",
-        "output7.txt",
-        "output6.txt",
-        "output8.txt",
-        "output9.txt",
-        "output10.txt",
-        "output11.txt"
-      )
+      expectations = SbtOutputExpectations.scalaTestParallelEvents
     ))
 
   private def compilationFailureLifecycle(

@@ -10,7 +10,7 @@ import org.junit.Assert.{assertEquals, assertTrue}
  *                                whose support starts later than the runtime's baseline fixture corpus.
  * @param sbtCommands        sbt commands sent through the nested process command transport.
  * @param sbtOptions         launcher command-line options passed before the command transport.
- * @param outputFiles        expected output regex files to check; defaults to `output.txt` when empty.
+ * @param expectations       named expected-output groups and their flow-ownership scopes; defaults to `output.txt`.
  * @param expectedExitCode   expected result of the nested sbt process.
  * @param failurePropagation expected evidence that a deliberately failed task propagated its failure through sbt.
  * @param compilationLifecycle optional strict lifecycle contract for compilation TeamCity messages.
@@ -23,13 +23,75 @@ final case class SbtLoggerOutputTestCase(
   fixtureRootRelativePath: Option[String] = None,
   sbtCommands: Seq[String],
   sbtOptions: Seq[String] = Seq("--error"),
-  outputFiles: Seq[String] = Seq.empty,
+  expectations: ExpectationSet = ExpectationSet.default,
   expectedExitCode: SbtExitCodeExpectation = SbtExitCodeExpectation.Any,
   failurePropagation: SbtFailurePropagationExpectation = SbtFailurePropagationExpectation.NotRequired,
   compilationLifecycle: Option[SbtCompilationLifecycleExpectation] = None,
   teamCityEnvironment: Boolean = true,
   expectNoTeamCityMessages: Boolean = false
 )
+
+/** The complete expected-output contract selected by one [[SbtLoggerOutputTestCase]]. */
+final case class ExpectationSet(scopes: Seq[FlowScope])
+
+/** A collection of groups allowed to match the same concrete TeamCity flow IDs. */
+final case class FlowScope(name: String, groups: Seq[AssertionGroup])
+
+/** One ordered regex subsequence read from an existing expected-output fixture file. */
+final case class AssertionGroup(
+  name: String,
+  fileName: String,
+  minimumOccurrences: Int = 1
+)
+
+object ExpectationSet {
+  val default: ExpectationSet = singleFile("output.txt")
+
+  def singleFile(fileName: String): ExpectationSet =
+    oneScope(groupName(fileName), AssertionGroup(groupName(fileName), fileName))
+
+  def independentFiles(fileNames: String*): ExpectationSet =
+    ExpectationSet(fileNames.map(singleFile).flatMap(_.scopes))
+
+  def oneScope(name: String, groups: AssertionGroup*): ExpectationSet =
+    ExpectationSet(Seq(FlowScope(name, groups)))
+
+  private def groupName(fileName: String): String =
+    fileName.stripSuffix(".txt").replaceAll("[^A-Za-z0-9]+", "-")
+}
+
+/** Named multi-group fixture mappings used by the runtime integration suites. */
+private[sbtlogger] object SbtOutputExpectations {
+  val multiProjectCompilation: ExpectationSet =
+    ExpectationSet.oneScope(
+      "multi-project-compilation",
+      AssertionGroup("multi-project-events", "output.txt")
+    )
+
+  val scalaTestPassAndFailure: ExpectationSet =
+    ExpectationSet.oneScope(
+      "scala-test-run",
+      AssertionGroup("example-spec", "output.txt"),
+      AssertionGroup("list-flat-spec", "output1.txt")
+    )
+
+  val scalaTestParallelEvents: ExpectationSet = ExpectationSet(Seq(
+    FlowScope("direct-non-parallel", Seq(
+      AssertionGroup("direct-non-parallel-passing", "output.txt"),
+      AssertionGroup("direct-non-parallel-failing", "output1.txt")
+    )),
+    FlowScope("direct-parallel", Seq(
+      AssertionGroup("direct-parallel-passing", "output2.txt"),
+      AssertionGroup("direct-parallel-failing", "output4.txt")
+    )),
+    FlowScope("non-parallel-suite", Seq(
+      AssertionGroup("suite-parallel-failing", "output5.txt"),
+      AssertionGroup("suite-non-parallel-failing", "output8.txt"),
+      AssertionGroup("suite-non-parallel-passing", "output9.txt"),
+      AssertionGroup("suite-parallel-passing", "output11.txt")
+    ))
+  ))
+}
 
 /** Exit-code contract for a fixture-backed nested sbt invocation. */
 sealed trait SbtExitCodeExpectation
