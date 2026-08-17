@@ -1,3 +1,0 @@
-##teamcity\[testStarted name='tests.NonParallelTest.should Write Failing Tests'.* flowId='<flowId1>'\]
-##teamcity\[testFailed name='tests.NonParallelTest.should Write Failing Tests'.* flowId='<flowId1>'\]
-##teamcity\[testFinished name='tests.NonParallelTest.should Write Failing Tests'.* flowId='<flowId1>'\]

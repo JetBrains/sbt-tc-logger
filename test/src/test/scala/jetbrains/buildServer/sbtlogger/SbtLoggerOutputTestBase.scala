@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{IntegrationTestLayout, SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
+import jetbrains.buildServer.sbtlogger.utils.{AssertionGroup, ExpectationSet, FlowScope, IntegrationTestLayout, SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
 import org.jetbrains.sbt.integrationTests.*
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 
@@ -19,8 +19,13 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       fixture = "testSupport/ScalaTest_ErrorLikeOutputNotCompilationFailure",
       sbtCommands = Seq("test"),
       // SBT 2 may schedule the main and test compilation lifecycles in either order.
-      // Verify both lifecycles independently while preserving their own start/finish order.
-      outputFiles = Seq("compilation-output.txt", "test-compilation-output.txt", "output.txt"),
+      expectations = ExpectationSet(Seq(
+        FlowScope("compilation", Seq(
+          AssertionGroup("main-compilation", "compilation-output.txt"),
+          AssertionGroup("test-compilation", "test-compilation-output.txt")
+        )),
+        FlowScope("test-events", Seq(AssertionGroup("test-events", "output.txt")))
+      )),
       expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
@@ -49,7 +54,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       sbtCommands = testCase.sbtCommands,
       failurePropagation = testCase.failurePropagation,
       testRepo = testCase.fixture,
-      outputFiles = testCase.outputFiles,
+      expectations = testCase.expectations,
       compilationLifecycle = testCase.compilationLifecycle,
       teamCityEnvironment = testCase.teamCityEnvironment,
       expectNoTeamCityMessages = testCase.expectNoTeamCityMessages
@@ -76,7 +81,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     sbtCommands: Seq[String],
     failurePropagation: SbtFailurePropagationExpectation,
     testRepo: String,
-    outputFiles: Seq[String],
+    expectations: ExpectationSet,
     compilationLifecycle: Option[SbtCompilationLifecycleExpectation],
     teamCityEnvironment: Boolean = true,
     expectNoTeamCityMessages: Boolean = false
@@ -110,13 +115,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val excludes = new File(sourceWorkingDir, "excludes.txt")
     val excludesFile = Option.when(excludes.exists())(excludes)
 
-    val effectiveOutputFiles =
-      if (outputFiles.isEmpty) Seq("output.txt")
-      else outputFiles
-
-    val requiredFiles = effectiveOutputFiles.map { outputFile =>
-      new File(sourceWorkingDir, outputFile)
-    }
+    SbtOutputVerifier.validateExpectationSet(expectations, sourceWorkingDir)
 
     // Recent SBT versions use a Unix-domain socket for their server. Keep it in a short directory to avoid exceeding
     // the platform's socket-path limit when the test harness isolates its global base under the repository.
@@ -153,7 +152,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       environmentVariablesToRemove = environmentVariablesToRemove
     )
 
-    SbtOutputVerifier.checkOutputText(runResult.processOutput, excludesFile, requiredFiles)
+    SbtOutputVerifier.checkOutputText(runResult.processOutput, excludesFile, expectations, sourceWorkingDir)
     compilationLifecycle.foreach { expectation =>
       SbtOutputVerifier.assertCompilationLifecycle(runResult.processOutput, expectation)
     }

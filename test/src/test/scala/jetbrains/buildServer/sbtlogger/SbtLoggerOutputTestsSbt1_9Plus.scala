@@ -12,7 +12,6 @@ trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
     runCase(SbtLoggerOutputTestCase(
       fixture = "testSupport/IntegrationTest_TestQuick",
       sbtCommands = Seq("it:testQuick"),
-      outputFiles = Seq("output.txt"),
       expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 
