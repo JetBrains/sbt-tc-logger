@@ -50,9 +50,6 @@ object ExpectationSet {
   def singleFile(fileName: String): ExpectationSet =
     oneScope(groupName(fileName), AssertionGroup(groupName(fileName), fileName))
 
-  def independentFiles(fileNames: String*): ExpectationSet =
-    ExpectationSet(fileNames.map(singleFile).flatMap(_.scopes))
-
   def oneScope(name: String, groups: AssertionGroup*): ExpectationSet =
     ExpectationSet(Seq(FlowScope(name, groups)))
 
