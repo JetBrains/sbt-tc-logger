@@ -56,7 +56,7 @@ class SbtOutputVerifierTest {
           |##teamcity[message status='ERROR' flowId='other' text='one error found']
           |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
           |""".stripMargin,
-        SbtCompilationLifecycleExpectation.SummaryOnly(expectedLegacyErrorSummaryCount = 1)
+        SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1, expectedLegacyErrorSummaries = Some(1))
       )
     }
 
@@ -71,23 +71,12 @@ class SbtOutputVerifierTest {
           |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
           |##teamcity[message status='ERROR' flowId='main' text='one error found']
           |""".stripMargin,
-        SbtCompilationLifecycleExpectation.SummaryOnly(expectedLegacyErrorSummaryCount = 1)
+        SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1, expectedLegacyErrorSummaries = Some(1))
       )
     }
 
     assertFailureMessageContains(error, "inside exactly one complete compilation lifecycle")
   }
-
-  @Test
-  def compilationLifecycleSummaryOnlyAllowsAnUnrelatedIncompleteRootLifecycle(): Unit =
-    SbtOutputVerifier.assertCompilationLifecycle(
-      """##teamcity[compilationStarted compiler='Scala compiler' flowId='root']
-        |##teamcity[compilationStarted compiler='Scala compiler' flowId='project']
-        |##teamcity[message status='ERROR' flowId='project' text='one error found']
-        |##teamcity[compilationFinished compiler='Scala compiler' flowId='project']
-        |""".stripMargin,
-      SbtCompilationLifecycleExpectation.SummaryOnly(expectedLegacyErrorSummaryCount = 1)
-    )
 
   @Test
   def checkOutputTextAcceptsRequiredPatternsInOrder(): Unit = {
