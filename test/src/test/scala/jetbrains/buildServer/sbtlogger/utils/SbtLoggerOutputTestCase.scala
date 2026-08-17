@@ -156,15 +156,4 @@ object SbtCompilationLifecycleExpectation {
     require(expectedLegacyErrorSummaries.forall(_ >= 0), "The number of expected legacy error summaries cannot be negative.")
   }
 
-  /**
-   * Checks legacy compiler summaries without requiring every observed lifecycle to close.
-   *
-   * SBT debug aggregate output can contain an incomplete empty-root lifecycle. Every summary still has to be owned by
-   * one complete project lifecycle and occur between that lifecycle's start and finish.
-   */
-  final case class SummaryOnly(expectedLegacyErrorSummaryCount: Int) extends SbtCompilationLifecycleExpectation {
-    require(expectedLegacyErrorSummaryCount >= 0, "The number of expected legacy error summaries cannot be negative.")
-
-    override val expectedLegacyErrorSummaries: Option[Int] = Some(expectedLegacyErrorSummaryCount)
-  }
 }

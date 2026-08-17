@@ -45,7 +45,6 @@ private[sbtlogger] object SbtOutputVerifier {
       case SbtCompilationLifecycleExpectation.Complete(expectedClosures, _) =>
         Assert.assertEquals(s"Expected $expectedClosures compilation lifecycle closures, found ${grouped.size}: ${grouped.keys.mkString(", ")}", expectedClosures, grouped.size)
         grouped.foreach { case ((compiler, flowId), events) => assertCompleteLifecycle(compiler, flowId, events) }
-      case _: SbtCompilationLifecycleExpectation.SummaryOnly =>
     }
     val summaries = lines.zipWithIndex.flatMap { case (line, index) =>
       parseServiceMessage(line).collect {
