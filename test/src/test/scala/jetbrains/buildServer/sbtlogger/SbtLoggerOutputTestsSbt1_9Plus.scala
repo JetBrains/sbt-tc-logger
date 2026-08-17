@@ -3,7 +3,7 @@ package jetbrains.buildServer.sbtlogger
 import jetbrains.buildServer.sbtlogger.utils.{SbtExitCodeExpectation, SbtLoggerOutputTestCase}
 import org.junit.Test
 
-/** Scenarios supported by SBT 1.9.0 and later, but not by the SBT 1.0.0 baseline runtime. */
+/** Scenarios supported by SBT 1.9.0 and later, but not by the SBT 1.0 baseline runtime. */
 trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
 
   // TW-53224 - SBT 1 addresses the IntegrationTest configuration with the historic `it:` command syntax.
