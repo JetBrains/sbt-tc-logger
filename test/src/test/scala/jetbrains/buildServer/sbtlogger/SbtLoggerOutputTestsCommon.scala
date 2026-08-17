@@ -231,12 +231,12 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   private def expectedLegacyErrorSummaryCount: Option[Int] =
     Option.when(
-      runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8 ||
-        runtime == SbtTestsRuntime.Sbt2_Latest_Jdk17
+      runtime == SbtTestsRuntime.Sbt1_0_Jdk8 ||
+        runtime == SbtTestsRuntime.Sbt2_0_Jdk17
     )(2)
 
   private def testCompileCommand: String =
-    if (runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8) "test:compile"
+    if (runtime == SbtTestsRuntime.Sbt1_0_Jdk8) "test:compile"
     else "Test / compile"
 
   /**
@@ -247,7 +247,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
    * process status.
    */
   private def compilationFailurePropagation: SbtFailurePropagationExpectation =
-    if (runtime == SbtTestsRuntime.Sbt_1_0_0_Jdk8) SbtFailurePropagationExpectation.SbtOnFailureHandler
+    if (runtime == SbtTestsRuntime.Sbt1_0_Jdk8) SbtFailurePropagationExpectation.SbtOnFailureHandler
     else SbtFailurePropagationExpectation.ProcessExitNonZero
 
   /**

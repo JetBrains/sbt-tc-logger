@@ -43,7 +43,8 @@ enum SbtTestJdk(val id: String, val majorVersion: Int) {
  * [[SbtTestsRuntime.sbtVersion]] only in the isolated copied workspace.
  */
 object SbtTestsRuntime {
-  private[sbtlogger] val LatestSbt1Version = "1.12.15"
+  private[sbtlogger] val LatestSbt1_0Version = "1.0.4"
+  private[sbtlogger] val LatestSbt1_12Version = "1.12.15"
   private[sbtlogger] val LatestSbt2Version = "2.0.6"
 
   private enum SbtLine(
@@ -52,7 +53,7 @@ object SbtTestsRuntime {
     ) {
     case Sbt1 extends SbtLine(
       sbtBinaryVersion = "1.0",
-      launcherVersion = LatestSbt1Version
+      launcherVersion = LatestSbt1_12Version
     )
     case Sbt2 extends SbtLine(
       sbtBinaryVersion = "2", // SBT 2 publishes plugins under sbt-2, rather than sbt-2.0.
@@ -96,21 +97,21 @@ object SbtTestsRuntime {
   //  - https://www.scala-sbt.org/download/
   //  - https://github.com/sbt/sbt/releases
   // This is deliberately a compatibility matrix, not a full SBT × JDK cross-product. The legacy baseline proves
-  // SBT 1.0/JDK 8 support; the current SBT 1 suite exercises both selected JDKs; and SBT 2 exercises JDK 17.
+  // SBT 1.0/JDK 8 support; the current SBT 1.12 suite exercises both selected JDKs; and SBT 2 exercises JDK 17.
   // Running all combinations adds time and maintenance cost without materially improving coverage.
-  val Sbt_1_0_0_Jdk8: SbtTestsRuntime =
-    forSbtVersion("1.0.0", SbtTestJdk.Jdk8, "test/testdata/1.0")
-  val Sbt1_Latest_Jdk8: SbtTestsRuntime =
-    forSbtVersion(LatestSbt1Version, SbtTestJdk.Jdk8, "test/testdata/1.3+")
-  val Sbt1_Latest_Jdk17: SbtTestsRuntime =
-    forSbtVersion(LatestSbt1Version, SbtTestJdk.Jdk17, "test/testdata/1.3+")
-  val Sbt2_Latest_Jdk17: SbtTestsRuntime =
+  val Sbt1_0_Jdk8: SbtTestsRuntime =
+    forSbtVersion(LatestSbt1_0Version, SbtTestJdk.Jdk8, "test/testdata/1.0")
+  val Sbt1_12_Jdk8: SbtTestsRuntime =
+    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk8, "test/testdata/1.3+")
+  val Sbt1_12_Jdk17: SbtTestsRuntime =
+    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk17, "test/testdata/1.3+")
+  val Sbt2_0_Jdk17: SbtTestsRuntime =
     forSbtVersion(LatestSbt2Version, SbtTestJdk.Jdk17, "test/testdata/2.0+")
 
   val All: Seq[SbtTestsRuntime] = Seq(
-    Sbt_1_0_0_Jdk8,
-    Sbt1_Latest_Jdk8,
-    Sbt1_Latest_Jdk17,
-    Sbt2_Latest_Jdk17
+    Sbt1_0_Jdk8,
+    Sbt1_12_Jdk8,
+    Sbt1_12_Jdk17,
+    Sbt2_0_Jdk17
   )
 }

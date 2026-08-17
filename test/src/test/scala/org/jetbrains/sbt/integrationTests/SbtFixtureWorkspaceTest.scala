@@ -67,7 +67,7 @@ class SbtFixtureWorkspaceTest {
       Assert.assertTrue(s"Expected to create temporary fixture source directory at $source", source.mkdirs())
 
       val error = expectIllegalStateException {
-        SbtFixtureWorkspace.copyFixtureToWorkDirectory(root, "1.0.0", "fixture", source, "1.0.0")
+        SbtFixtureWorkspace.copyFixtureToWorkDirectory(root, "1.0.4", "fixture", source, "1.0.4")
       }
 
       assertExceptionMessageContains(error, "file is missing")
@@ -76,10 +76,10 @@ class SbtFixtureWorkspaceTest {
   @Test
   def copiedFixtureRejectsAConcreteSbtVersion(): Unit =
     withTemporaryDirectory { root =>
-      val source = fixture(root, "sbt.version=1.0.0\n")
+      val source = fixture(root, "sbt.version=1.0.4\n")
 
       val error = expectIllegalStateException {
-        SbtFixtureWorkspace.copyFixtureToWorkDirectory(root, "1.0.0", "fixture", source, "1.0.0")
+        SbtFixtureWorkspace.copyFixtureToWorkDirectory(root, "1.0.4", "fixture", source, "1.0.4")
       }
 
       assertExceptionMessageContains(error, "expected sbt.version=@SBT_VERSION@")
@@ -91,7 +91,7 @@ class SbtFixtureWorkspaceTest {
       val source = fixture(root, "sbt.version=@SBT_VERSION@\nsbt.version=@SBT_VERSION@\n")
 
       val error = expectIllegalStateException {
-        SbtFixtureWorkspace.copyFixtureToWorkDirectory(root, "1.0.0", "fixture", source, "1.0.0")
+        SbtFixtureWorkspace.copyFixtureToWorkDirectory(root, "1.0.4", "fixture", source, "1.0.4")
       }
 
       assertExceptionMessageContains(error, "found 2")

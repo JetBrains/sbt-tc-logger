@@ -168,7 +168,7 @@ lazy val junitTestFrameworkDependencies: Seq[ModuleID] = Seq(
   "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
 )
 
-addCommandAlias("testSbt100Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_0_0_Jdk8")
-addCommandAlias("testSbt1LatestJdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_Latest_Jdk8")
-addCommandAlias("testSbt1LatestJdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_Latest_Jdk17")
-addCommandAlias("testSbt2LatestJdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_2_Latest_Jdk17")
+addCommandAlias("testSbt1_0_Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_0_Jdk8")
+addCommandAlias("testSbt1_12_Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_12_Jdk8")
+addCommandAlias("testSbt1_12_Jdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_12_Jdk17")
+addCommandAlias("testSbt2_0_Jdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_2_0_Jdk17")

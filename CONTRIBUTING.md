@@ -44,28 +44,26 @@ Then run the tests:
 
 Useful targeted commands:
 
-`sbt testSbt100Jdk8`
+`sbt testSbt1_0_Jdk8`
 
-`sbt testSbt1LatestJdk8`
+`sbt testSbt1_12_Jdk8`
 
-`sbt testSbt1LatestJdk17`
+`sbt testSbt1_12_Jdk17`
 
-`sbt testSbt2LatestJdk17`
-
-`sbt testAllSbtVersions`
+`sbt testSbt2_0_Jdk17`
 
 The integration matrix is intentionally limited rather than a full SBT × JDK cross-product:
 
 | JUnit class | Nested SBT | JDK | Fixture roots |
 | --- | --- | --- | --- |
-| `SbtLoggerOutputTest_1_0_0_Jdk8` | 1.0.0 | 8 | `1.0` |
-| `SbtLoggerOutputTest_1_Latest_Jdk8` | 1.12.15 | 8 | `1.3+`, `1.9+` |
-| `SbtLoggerOutputTest_1_Latest_Jdk17` | 1.12.15 | 17 | `1.3+`, `1.9+` |
-| `SbtLoggerOutputTest_2_Latest_Jdk17` | 2.0.6 | 17 | `2.0+` |
+| `SbtLoggerOutputTest_1_0_Jdk8` | 1.0.4 | 8 | `1.0` |
+| `SbtLoggerOutputTest_1_12_Jdk8` | 1.12.15 | 8 | `1.3+`, `1.9+` |
+| `SbtLoggerOutputTest_1_12_Jdk17` | 1.12.15 | 17 | `1.3+`, `1.9+` |
+| `SbtLoggerOutputTest_2_0_Jdk17` | 2.0.6 | 17 | `2.0+` |
 
 This balance makes the legacy baseline, current SBT 1 on both supported JDKs, and current SBT 2 meaningful and visible while avoiding the runtime and maintenance cost of combinations that do not add useful compatibility evidence. Future JDK changes intentionally rename the affected concrete class and alias.
 
-`testSbt100`, `testSbt1Latest`, `testSbt2Latest`, and `testSbt200` remain compatibility aliases; use the JDK-qualified aliases when selecting a concrete matrix entry. The JaCoCo scenario runs on the current SBT 1 classes through `1.9+` and on SBT 2 through `2.0+`; `publishTest` remains dormant.
+The aliases select concrete SBT/JDK matrix entries. The JaCoCo scenario runs on the SBT 1.12 classes through `1.9+` and on SBT 2.0 through `2.0+`; `publishTest` remains dormant.
 
 The TeamCity job must require both `env.JDK_1_8_0` and `env.JDK_17_0` before it is scheduled. This matches the explicit matrix and prevents a Java-8 entry from reaching the harness on an incompatible agent.
 
