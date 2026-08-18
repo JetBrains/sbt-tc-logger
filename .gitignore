@@ -1,4 +1,5 @@
 target/
+demo-projects-for-tc/
 .DS_Store
 .idea/
 *.iml

@@ -19,17 +19,33 @@ package jetbrains.buildServer.sbtlogger
 
 trait LogAppender {
 
+  /**
+   * Whether a logger event should become a TeamCity message.  Appender adapters
+   * consult this before opening a phase lifecycle, so a deliberately suppressed
+   * SBT summary cannot reopen a compiler block after it has finished.
+   */
+  def shouldLog(message: String): Boolean = true
+
   def log(level: sbt.Level.Value, message: => String, flowId: String): Unit
 
   def log(level: String, message: => String, flowId: String): Unit
 
-  def compilationBlockStart(flowId: String): Unit
+  def dependencyBlockStart(flowId: String, projectName: Option[String], inTest: Boolean): Unit
 
-  def compilationBlockEnd(flowId: String): Unit
+  def dependencyBlockEnd(flowId: String): Unit
 
-  def compilationTestBlockStart(flowId: String): Unit
+  /** Instruments SBT's unconfigured `update` task without duplicating its configuration-scoped delegate. */
+  def directDependencyBlockStart(flowId: String, projectName: Option[String]): Unit
 
-  def compilationTestBlockEnd(flowId: String): Unit
+  def directDependencyBlockEnd(flowId: String): Unit
+
+  def compilationBlockStart(flowId: String, projectName: Option[String]): Unit
+
+  def compilationBlockEnd(flowId: String, projectName: Option[String]): Unit
+
+  def compilationTestBlockStart(flowId: String, projectName: Option[String]): Unit
+
+  def compilationTestBlockEnd(flowId: String, projectName: Option[String]): Unit
 
   def testSuiteStart(name: String, flowId: String): Unit
 

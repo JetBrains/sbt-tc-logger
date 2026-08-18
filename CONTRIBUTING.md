@@ -3,7 +3,7 @@
 ## Prerequisites
 
 Use JDK 17 to run the repository's SBT build and integration-test harness; set `JAVA_HOME` to a JDK 17 installation before invoking `sbt`. \
-The host remains SBT 1.12.12 while it cross-builds the logger against the compatibility baselines SBT 1.0.4/Scala 2.12.21 and SBT 2.0.0/Scala 3.8.4. \
+The host remains SBT 1.12.12 while it cross-builds the logger against the compatibility baselines SBT 1.4.0/Scala 2.12.21 and SBT 2.0.0/Scala 3.8.4. \
 Those are plugin compilation targets, not the concrete nested SBT versions exercised by integration tests.
 
 The SBT 1.x logger is compiled with Java 8 release compatibility so it remains loadable by supported SBT 1 runtimes; the SBT 2.x logger and the build itself run on JDK 17. \
@@ -39,12 +39,12 @@ Then run the tests:
 2. `sbt test` enters the Scala/JUnit harness in the `integrationTests` project.
 3. Each JUnit test copies its fixture under `target/integration-tests/work/<runtime>/`, renders its `sbt.version=@SBT_VERSION@` template with that runtime's concrete version, then downloads or reuses the current launcher for the selected SBT line under `target/integration-tests/sbt-launcher`.
 4. The nested sbt command file first runs `apply -cp <logger jar> jetbrains.buildServer.sbtlogger.SbtTeamCityLogger`.
-5. Fixture-root names express their minimum SBT version: `testdata/1.0` is the legacy SBT 1.0 corpus, `testdata/1.3+` is the Scala-2.13 modern SBT 1 corpus, `testdata/1.9+` is the JaCoCo extension, and `testdata/2.0+` is the SBT 2 corpus. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
+5. Fixture-root names express their minimum SBT version: `testdata/1.4+` is the modern SBT 1 corpus, `testdata/1.9+` is the JaCoCo extension, and `testdata/2.0+` is the SBT 2 corpus. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
 6. The harness compares nested sbt output with the source fixture's `output.txt` regexes and checks `excludes.txt` when present.
 
 Useful targeted commands:
 
-`sbt testSbt1_0_Jdk8`
+`sbt testSbt1_4_Jdk8`
 
 `sbt testSbt1_12_Jdk8`
 
@@ -56,12 +56,12 @@ The integration matrix is intentionally limited rather than a full SBT × JDK cr
 
 | JUnit class | Nested SBT | JDK | Fixture roots |
 | --- | --- | --- | --- |
-| `SbtLoggerOutputTest_1_0_Jdk8` | 1.0.4 | 8 | `1.0` |
-| `SbtLoggerOutputTest_1_12_Jdk8` | 1.12.15 | 8 | `1.3+`, `1.9+` |
-| `SbtLoggerOutputTest_1_12_Jdk17` | 1.12.15 | 17 | `1.3+`, `1.9+` |
+| `SbtLoggerOutputTest_1_4_Jdk8` | 1.4.5 | 8 | `1.4+` |
+| `SbtLoggerOutputTest_1_12_Jdk8` | 1.12.15 | 8 | `1.4+`, `1.9+` |
+| `SbtLoggerOutputTest_1_12_Jdk17` | 1.12.15 | 17 | `1.4+`, `1.9+` |
 | `SbtLoggerOutputTest_2_0_Jdk17` | 2.0.6 | 17 | `2.0+` |
 
-This balance makes the legacy baseline, current SBT 1 on both supported JDKs, and current SBT 2 meaningful and visible while avoiding the runtime and maintenance cost of combinations that do not add useful compatibility evidence. Future JDK changes intentionally rename the affected concrete class and alias.
+This balance makes the supported SBT 1.4 baseline, current SBT 1 on both supported JDKs, and current SBT 2 meaningful and visible while avoiding the runtime and maintenance cost of combinations that do not add useful compatibility evidence. Future JDK changes intentionally rename the affected concrete class and alias.
 
 The aliases select concrete SBT/JDK matrix entries. The JaCoCo scenario runs on the SBT 1.12 classes through `1.9+` and on SBT 2.0 through `2.0+`; `publishTest` remains dormant.
 

@@ -27,28 +27,6 @@ class SbtFailurePropagationExpectationTest {
     }
   }
 
-  @Test
-  def sbtOnFailureHandlerInstallsAndRequiresExactlyOneMarker(): Unit = {
-    Assert.assertEquals(
-      Some("onFailure eval println(\"SBT_TC_LOGGER_FAILURE_PROPAGATION_ON_FAILURE\")"),
-      SbtFailurePropagationExpectation.setupCommand(SbtFailurePropagationExpectation.SbtOnFailureHandler)
-    )
-
-    SbtFailurePropagationExpectation.assertObserved(
-      SbtFailurePropagationExpectation.SbtOnFailureHandler,
-      exitCode = 0,
-      processOutput = "[info] SBT_TC_LOGGER_FAILURE_PROPAGATION_ON_FAILURE\n"
-    )
-
-    expectAssertionError {
-      SbtFailurePropagationExpectation.assertObserved(
-        SbtFailurePropagationExpectation.SbtOnFailureHandler,
-        exitCode = 0,
-        processOutput = "SBT_TC_LOGGER_FAILURE_PROPAGATION_ON_FAILURE\nSBT_TC_LOGGER_FAILURE_PROPAGATION_ON_FAILURE\n"
-      )
-    }
-  }
-
   private def expectAssertionError(block: => Unit): Unit = {
     try {
       block

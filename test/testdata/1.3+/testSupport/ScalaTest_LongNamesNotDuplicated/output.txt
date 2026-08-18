@@ -1,6 +1,0 @@
-##teamcity\[testSuiteStarted name='com.jetbrains.teamcity.specs.some_name.some_group.MyTestModeSpec.* flowId='<flowId1>'\]
-##teamcity\[testStarted name='com.jetbrains.teamcity.specs.some_name.some_group.MyTestModeSpec.Feature: Some Advanced Mode Scenario: XYZ-1: Lorem ipsum dolor sit amet.* flowId='<flowId1>'\]
-##teamcity\[testFinished name='com.jetbrains.teamcity.specs.some_name.some_group.MyTestModeSpec.Feature: Some Advanced Mode Scenario: XYZ-1: Lorem ipsum dolor sit amet.* flowId='<flowId1>'\]
-##teamcity\[testStarted name='com.jetbrains.teamcity.specs.some_name.some_group.MyTestModeSpec.Feature: Some Advanced Mode Scenario: XYZ-2: Lorem Ipsum is simply dummy text.* flowId='<flowId1>'\]
-##teamcity\[testFinished name='com.jetbrains.teamcity.specs.some_name.some_group.MyTestModeSpec.Feature: Some Advanced Mode Scenario: XYZ-2: Lorem Ipsum is simply dummy text.* flowId='<flowId1>'\]
-##teamcity\[testSuiteFinished name='com.jetbrains.teamcity.specs.some_name.some_group.MyTestModeSpec.* flowId='<flowId1>'\]

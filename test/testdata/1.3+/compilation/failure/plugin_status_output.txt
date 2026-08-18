@@ -1,2 +1,0 @@
-Plugin sbt-teamcity-logger was loaded.
-TeamCity version=\'9.0.TEST\'

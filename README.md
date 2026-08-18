@@ -12,14 +12,15 @@ You don't need this plugin if you use [TeamCity SBT runner](https://www.jetbrain
 
 The plugin reports the following events so TeamCity can display structured SBT build results instead of only plain console output:
 
-- `message` — SBT log output, with error, warning, or normal severity; cancellation notices are reported this way too.
-- `compilationStarted` and `compilationFinished` — the start and end of Scala compilation for main and test sources.
+- `message` — each SBT logger event exactly once, with its original `[debug]`, `[info]`, `[warn]`, or `[error]` prefix and TeamCity severity.
+- `blockOpened` and `blockClosed` — dependency-resolution phases, displayed as `Dependency resolution [project]` (and the Test equivalent).
+- `compilationStarted` and `compilationFinished` — the start and end of actual Scala/Java compilation for main and test sources, displayed as `Scala compiler [project]`.
 - `inspectionType` and `inspection` — compiler problems, including their severity, source file, and line, so TeamCity can show them as build inspections.
 - `testSuiteStarted` and `testSuiteFinished` — the lifecycle and outcome of each test suite, including suite-level errors.
 - `testStarted` and `testFinished` — the lifecycle, duration, and captured standard output of each test.
 - `testFailed` and `testIgnored` — failed tests with exception details, and skipped, ignored, pending, or cancelled tests.
 
-Messages include flow IDs where needed, allowing TeamCity to associate output and test events correctly during parallel execution.
+Messages include phase- and configuration-specific flow IDs, allowing TeamCity to associate output and test events correctly during parallel execution. Dependency resolution deliberately does not live inside a compiler block: TeamCity treats errors inside a `compilationStarted`/`compilationFinished` pair as compiler errors.
 
 ## Installation
 
@@ -34,7 +35,7 @@ addSbtPlugin("org.jetbrains.teamcity.plugins.sbt" % "sbt-teamcity-logger" % "<lo
 
 ## SBT Versions Support
 
-**SBT 1.x and SBT 2.x** use the `addSbtPlugin` installation shown above. \
+**SBT 1.4+ and SBT 2.x** use the `addSbtPlugin` installation shown above. \
 SBT selects the compatible published coordinate automatically: `_2.12_1.0` for SBT 1.x \
 and `_sbt2_3` for SBT 2.x.
 
@@ -79,6 +80,10 @@ New releases start the documented CalVer sequence at `2026.0.0`; do not infer a 
 
 This plugin starts to work for builds running on TeamCity automatically and doesn't affect SBT output for other cases.
 To be sure that plugin was installed correctly you can use `sbt-teamcity-logger`. Plugin status will be displayed.
+
+By default the plugin replaces SBT's task-console renderer so TeamCity receives one structured representation of each SBT logger event. SBT's backing logs (for example, `last`) remain available. `println`, external-process output, and build-load output produced before the plugin is applied are not SBT logger events and remain raw by design.
+
+If a build intentionally owns a custom `logManager`, start SBT with `-Dteamcity.sbt.logger.preserveConsole=true`. This preserves that manager instead of replacing it. Existing compiler/test diagnostics remain structured, but ordinary task log messages are then left to the custom manager rather than mirrored as TeamCity `message` events.
 
 ## Development, Testing, and Contributing
 

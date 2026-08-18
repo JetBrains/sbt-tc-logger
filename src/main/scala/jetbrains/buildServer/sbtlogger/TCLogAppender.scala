@@ -19,28 +19,42 @@ package jetbrains.buildServer.sbtlogger
 
 import jetbrains.buildServer.messages.serviceMessages.MapSerializerUtil
 
+import java.util.concurrent.ConcurrentHashMap
+
 class TCLogAppender extends LogAppender {
 
   val CompilerName = "Scala compiler"
 
+  private val activeDependencyFlows = ConcurrentHashMap.newKeySet[String]()
+  private val directDependencyFlows = ConcurrentHashMap.newKeySet[String]()
+  private val activeCompilationFlows = ConcurrentHashMap.newKeySet[String]()
+
+  override def shouldLog(message: String): Boolean = !isRedundantCompilationFailureSummary(message)
+
   def log(level: sbt.Level.Value, message: => String, flowId: String): Unit = {
+    val text = message
     val status = discoverStatus(level)
 
-    if (sbt.Level.Error.equals(level)){
-      processSpecialErrorsMessage(message, flowId)
-    }
+    if (shouldLog(text)) {
+      if (sbt.Level.Error.equals(level)){
+        processSpecialErrorsMessage(text, flowId)
+      }
 
-    printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
+      printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> withLevelPrefix(level.toString, text))
+    }
   }
 
   def log(level: String, message: => String, flowId: String): Unit = {
+    val text = message
     val status = discoverStatus(level)
 
-    if ("ERROR".equals(status)){
-      processSpecialErrorsMessage(message, flowId)
-    }
+    if (shouldLog(text)) {
+      if ("ERROR".equals(status)){
+        processSpecialErrorsMessage(text, flowId)
+      }
 
-    printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> message)
+      printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> withLevelPrefix(level, text))
+    }
   }
 
 
@@ -71,20 +85,85 @@ class TCLogAppender extends LogAppender {
     }
   }
 
-  def compilationBlockStart(flowId: String): Unit = {
-    printServerMessage("compilationStarted", "compiler" -> CompilerName, "flowId" -> flowId)
+  /**
+   * SBT emits this generic summary after the compiler lifecycle has closed. The
+   * structured reporter has already sent the actual source diagnostics, so a
+   * TeamCity message here would only duplicate—and mis-scope—the failure.
+   */
+  private def isRedundantCompilationFailureSummary(message: String): Boolean =
+    message.endsWith("Compilation failed")
+
+  def dependencyBlockStart(flowId: String, projectName: Option[String], inTest: Boolean): Unit = {
+    if (activeDependencyFlows.add(flowId)) {
+      printServerMessage("blockOpened", "name" -> dependencyName(projectName, inTest), "flowId" -> flowId)
+    }
   }
 
-  def compilationBlockEnd(flowId: String): Unit = {
-    printServerMessage("compilationFinished", "compiler" -> CompilerName, "flowId" ->  flowId)
+  def dependencyBlockEnd(flowId: String): Unit = {
+    if (activeDependencyFlows.remove(flowId)) {
+      printServerMessage("blockClosed", "name" -> "Dependency resolution", "flowId" -> flowId)
+    }
   }
 
-  def compilationTestBlockStart(flowId: String): Unit = {
-    printServerMessage("compilationStarted", "compiler" -> s"$CompilerName in Test", "flowId" -> flowId)
+  /**
+   * `update` delegates from configuration-scoped tasks to the unconfigured
+   * resolver task.  A direct `update` needs its own block, but an update reached
+   * from Compile or Test must not open a second, overlapping resolver block.
+   */
+  def directDependencyBlockStart(flowId: String, projectName: Option[String]): Unit = {
+    val projectPrefix = flowId.take(flowId.indexOf(':') + 1)
+    val iterator = activeDependencyFlows.iterator()
+    var hasProjectResolverActivity = false
+    while (iterator.hasNext && !hasProjectResolverActivity) {
+      hasProjectResolverActivity = iterator.next().startsWith(projectPrefix)
+    }
+    if (!hasProjectResolverActivity) {
+      dependencyBlockStart(flowId, projectName, inTest = false)
+      directDependencyFlows.add(flowId)
+    }
   }
 
-  def compilationTestBlockEnd(flowId: String): Unit = {
-    printServerMessage("compilationFinished", "compiler" -> s"$CompilerName in Test", "flowId" -> flowId)
+  def directDependencyBlockEnd(flowId: String): Unit = {
+    if (directDependencyFlows.remove(flowId)) dependencyBlockEnd(flowId)
+  }
+
+  def compilationBlockStart(flowId: String, projectName: Option[String]): Unit = {
+    if (activeCompilationFlows.add(flowId)) {
+      printServerMessage("compilationStarted", "compiler" -> compilerName(projectName), "flowId" -> flowId)
+    }
+  }
+
+  def compilationBlockEnd(flowId: String, projectName: Option[String]): Unit = {
+    if (activeCompilationFlows.remove(flowId)) {
+      printServerMessage("compilationFinished", "compiler" -> compilerName(projectName), "flowId" ->  flowId)
+    }
+  }
+
+  def compilationTestBlockStart(flowId: String, projectName: Option[String]): Unit = {
+    if (activeCompilationFlows.add(flowId)) {
+      printServerMessage("compilationStarted", "compiler" -> compilerName(projectName, inTest = true), "flowId" -> flowId)
+    }
+  }
+
+  def compilationTestBlockEnd(flowId: String, projectName: Option[String]): Unit = {
+    if (activeCompilationFlows.remove(flowId)) {
+      printServerMessage("compilationFinished", "compiler" -> compilerName(projectName, inTest = true), "flowId" -> flowId)
+    }
+  }
+
+  private def compilerName(projectName: Option[String], inTest: Boolean = false): String = {
+    val configurationName = if (inTest) s"$CompilerName in Test" else CompilerName
+    projectName.fold(configurationName)(name => s"$configurationName [$name]")
+  }
+
+  private def dependencyName(projectName: Option[String], inTest: Boolean): String = {
+    val phaseName = if (inTest) "Dependency resolution in Test" else "Dependency resolution"
+    projectName.fold(phaseName)(name => s"$phaseName [$name]")
+  }
+
+  private def withLevelPrefix(level: String, text: String): String = {
+    val prefix = s"[${level.toLowerCase}] "
+    text.split("\\r?\\n", -1).map(prefix + _).mkString("\n")
   }
 
 

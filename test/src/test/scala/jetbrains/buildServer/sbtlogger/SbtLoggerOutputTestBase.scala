@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{AssertionGroup, ExpectationSet, FlowScope, IntegrationTestLayout, SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
+import jetbrains.buildServer.sbtlogger.utils.{AssertionGroup, ExpectationSet, FlowScope, IntegrationTestLayout, SbtCompilationLifecycleExpectation, SbtDependencyLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
 import org.jetbrains.sbt.integrationTests.*
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 
@@ -55,7 +55,9 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       failurePropagation = testCase.failurePropagation,
       testRepo = testCase.fixture,
       expectations = testCase.expectations,
+      verifyOutput = testCase.verifyOutput,
       compilationLifecycle = testCase.compilationLifecycle,
+      dependencyLifecycle = testCase.dependencyLifecycle,
       teamCityEnvironment = testCase.teamCityEnvironment,
       expectNoTeamCityMessages = testCase.expectNoTeamCityMessages
     )
@@ -82,7 +84,9 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     failurePropagation: SbtFailurePropagationExpectation,
     testRepo: String,
     expectations: ExpectationSet,
+    verifyOutput: Boolean,
     compilationLifecycle: Option[SbtCompilationLifecycleExpectation],
+    dependencyLifecycle: Option[SbtDependencyLifecycleExpectation],
     teamCityEnvironment: Boolean = true,
     expectNoTeamCityMessages: Boolean = false
   ): SbtProcessRunner.ProcessRunResult = {
@@ -115,7 +119,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val excludes = new File(sourceWorkingDir, "excludes.txt")
     val excludesFile = Option.when(excludes.exists())(excludes)
 
-    SbtOutputVerifier.validateExpectationSet(expectations, sourceWorkingDir)
+    if (verifyOutput) SbtOutputVerifier.validateExpectationSet(expectations, sourceWorkingDir)
 
     // Recent SBT versions use a Unix-domain socket for their server. Keep it in a short directory to avoid exceeding
     // the platform's socket-path limit when the test harness isolates its global base under the repository.
@@ -152,9 +156,12 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       environmentVariablesToRemove = environmentVariablesToRemove
     )
 
-    SbtOutputVerifier.checkOutputText(runResult.processOutput, excludesFile, expectations, sourceWorkingDir)
+    if (verifyOutput) SbtOutputVerifier.checkOutputText(runResult.processOutput, excludesFile, expectations, sourceWorkingDir)
     compilationLifecycle.foreach { expectation =>
       SbtOutputVerifier.assertCompilationLifecycle(runResult.processOutput, expectation)
+    }
+    dependencyLifecycle.foreach { expectation =>
+      SbtOutputVerifier.assertDependencyLifecycle(runResult.processOutput, expectation)
     }
     if (expectNoTeamCityMessages) {
       assertFalse("Logger emitted TeamCity service messages outside TeamCity", runResult.processOutput.contains("##teamcity["))

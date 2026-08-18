@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{ExpectationSet, SbtCompilationLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtOutputExpectations}
+import jetbrains.buildServer.sbtlogger.utils.{ExpectationSet, SbtCompilationLifecycleExpectation, SbtDependencyLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtOutputExpectations}
 import org.junit.Test
 
 /**
@@ -34,6 +34,31 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       expectNoTeamCityMessages = true
     ))
 
+  // Outside TeamCity the plugin must leave normal task logging untouched.
+  @Test
+  def taskLogging_CompileStaysInactiveOutsideTeamCity(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/success",
+      sbtCommands = Seq("clean", "compile"),
+      sbtOptions = Seq("--info"),
+      verifyOutput = false,
+      expectedExitCode = SbtExitCodeExpectation.Zero,
+      teamCityEnvironment = false,
+      expectNoTeamCityMessages = true
+    ))
+
+  // Outside TeamCity SBT's original test-result logger must still make failed tests fail the process.
+  @Test
+  def testReporting_FailedTestsStillFailOutsideTeamCity(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testSupport/JUnit_PassAndFailure",
+      sbtCommands = Seq("test"),
+      verifyOutput = false,
+      expectedExitCode = SbtExitCodeExpectation.NonZero,
+      teamCityEnvironment = false,
+      expectNoTeamCityMessages = true
+    ))
+
   // Verifies compiler lifecycle, source-error, and final-failure messages for a failed compilation.
   @Test
   def compilation_FailureReported(): Unit =
@@ -41,7 +66,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "compilation/failure",
       sbtCommands = Seq("compile"),
       failurePropagation = compilationFailurePropagation,
-      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 1, expectedLegacyErrorSummaries = 1)
+      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 1)
     ))
 
   // Verifies compiler start and finish messages for a successful Scala compilation.
@@ -50,6 +75,72 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/success",
       sbtCommands = Seq("compile")
+    ))
+
+  // `update` is independently invokable: it gets a resolver block, never a fake compiler lifecycle.
+  @Test
+  def dependencyResolution_DirectUpdateReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/success",
+      sbtCommands = Seq("clean", "update"),
+      sbtOptions = Seq("--info"),
+      expectations = ExpectationSet.singleFile("direct-update-output.txt"),
+      dependencyLifecycle = Some(SbtDependencyLifecycleExpectation.Complete(expectedClosures = 1)),
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
+    ))
+
+  // `compileInputs` prepares compilation inputs but must not open the compiler block itself.
+  @Test
+  def compilation_DirectCompileInputsDoesNotInventCompilerLifecycle(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/success",
+      sbtCommands = Seq("clean", "compileInputs"),
+      sbtOptions = Seq("--info"),
+      verifyOutput = false,
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
+    ))
+
+  // Resolver failures close only their dependency block and remain independent from compiler error reporting.
+  @Test
+  def dependencyResolution_UpdateFailureClosesItsBlock(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "dependencyResolution/updateFailure",
+      sbtCommands = Seq("update"),
+      sbtOptions = Seq("--info"),
+      failurePropagation = SbtFailurePropagationExpectation.ProcessExitNonZero,
+      dependencyLifecycle = Some(SbtDependencyLifecycleExpectation.Complete(expectedClosures = 1)),
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
+    ))
+
+  // Ordinary logger levels are emitted exactly once through the TeamCity screen appender.
+  @Test
+  def taskLogging_GenericLevelsAreSingleStructuredMessages(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "logging/genericLevels",
+      sbtCommands = Seq("genericLevels"),
+      sbtOptions = Seq("--debug")
+    ))
+
+  // The replacement policy is strict by default: a build's custom manager does not leak duplicate console messages.
+  @Test
+  def taskLogging_CustomLogManagerIsReplacedByDefault(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "logging/customLogManager",
+      sbtCommands = Seq("customManagerLog"),
+      sbtOptions = Seq("--info"),
+      expectations = ExpectationSet.singleFile("strict-output.txt")
+    ))
+
+  // The documented JVM property is the only fallback: it preserves the custom manager and deliberately stops
+  // mirroring ordinary task logger messages into TeamCity.
+  @Test
+  def taskLogging_CustomLogManagerCanBePreservedExplicitly(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "logging/customLogManager",
+      sbtCommands = Seq("customManagerLog"),
+      sbtOptions = Seq("--info", "-Dteamcity.sbt.logger.preserveConsole=true"),
+      verifyOutput = false,
+      expectNoTeamCityMessages = true
     ))
 
   // Verifies that compilation failures from both aggregated subprojects are reported.
@@ -61,7 +152,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       // The fixture asserts its own ordered subsequence; its scheduler-dependent three-flow topology is checked by the lifecycle contract.
       expectations = SbtOutputExpectations.multiProjectCompilation,
       failurePropagation = compilationFailurePropagation,
-      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2)
+      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3)
     ))
 
   // Verifies that multi-project compilation failures and all compiler lifecycles remain reported with the SBT debug option.
@@ -73,7 +164,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       sbtOptions = Seq("--debug"),
       expectations = SbtOutputExpectations.multiProjectCompilation,
       failurePropagation = compilationFailurePropagation,
-      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3, expectedLegacyErrorSummaries = 2)
+      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3)
     ))
 
   // Verifies Test / compile closes its lifecycle and rethrows an underlying compiler failure.
@@ -165,6 +256,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       fixture = "projectExecution/javaSources",
       sbtCommands = Seq("clean", "compile", "run"),
       sbtOptions = Seq("--debug"),
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Complete(expectedClosures = 2)),
     ))
 
   // Verifies that framework-skipped Specs2 examples are reported as ignored tests.
@@ -214,46 +306,19 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       expectations = SbtOutputExpectations.scalaTestParallelEvents
     ))
 
-  private def compilationFailureLifecycle(
-    expectedClosures: Int,
-    expectedLegacyErrorSummaries: Int
-  ): Option[SbtCompilationLifecycleExpectation] =
-    Some(SbtCompilationLifecycleExpectation.Complete(
-      expectedClosures = expectedClosures,
-      expectedLegacyErrorSummaries = expectedLegacyErrorSummaryCount.map(_ => expectedLegacyErrorSummaries)
-    ))
+  private def compilationFailureLifecycle(expectedClosures: Int): Option[SbtCompilationLifecycleExpectation] =
+    Some(SbtCompilationLifecycleExpectation.Complete(expectedClosures))
 
   private def testCompilationFailureLifecycle: Option[SbtCompilationLifecycleExpectation] =
-    Some(SbtCompilationLifecycleExpectation.Complete(
-      expectedClosures = 2,
-      expectedLegacyErrorSummaries = expectedLegacyErrorSummaryCount.map(_ => 1)
-    ))
+    Some(SbtCompilationLifecycleExpectation.Complete(expectedClosures = 2))
 
-  private def expectedLegacyErrorSummaryCount: Option[Int] =
-    Option.when(
-      runtime == SbtTestsRuntime.Sbt1_0_Jdk8 ||
-        runtime == SbtTestsRuntime.Sbt2_0_Jdk17
-    )(2)
+  private def testCompileCommand: String = "Test / compile"
 
-  private def testCompileCommand: String =
-    if (runtime == SbtTestsRuntime.Sbt1_0_Jdk8) "test:compile"
-    else "Test / compile"
-
-  /**
-   * SBT 1.0 must receive commands through its interactive standard-input script: passing its options at the launcher
-   * level makes the logger fixture miss service messages. Its launcher returns zero after a failed compile task even
-   * without an explicit `exit`, so process status cannot prove the logger rethrew the failure. The SBT 1.0 case instead
-   * runs an `onFailure` handler that prints a unique marker, while newer runtimes prove propagation through a non-zero
-   * process status.
-   */
   private def compilationFailurePropagation: SbtFailurePropagationExpectation =
-    if (runtime == SbtTestsRuntime.Sbt1_0_Jdk8) SbtFailurePropagationExpectation.SbtOnFailureHandler
-    else SbtFailurePropagationExpectation.ProcessExitNonZero
+    SbtFailurePropagationExpectation.ProcessExitNonZero
 
   /**
-   * SBT 1.3+ reports compile errors as inspections and keeps its existing fixture-only contract. SBT 1.0 and SBT 2
-   * report legacy summaries; their aggregate projects run in parallel, so their output fixture intentionally does not
-   * impose a false total order. The lifecycle verifier instead associates each summary with its own complete flow.
-   * In debug mode SBT may leave an empty root lifecycle incomplete, so only legacy-summary ownership is checked.
+   * Aggregate projects may run in parallel, so their output fixture intentionally does not impose a false total order.
+   * The lifecycle verifier instead associates each summary with its own complete flow.
    */
 }

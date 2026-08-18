@@ -1,20 +1,14 @@
 import sbt.Def
 import sbtassembly.AssemblyPlugin.autoImport.*
 
-// SBT 1.0.4 runs Scala 2.12.4, but compile the SBT 1 artifact with the latest
-// Scala 2.12 compiler. Plugins cross-build on the Scala binary version, and the
-// integration suite loads the assembled artifact in an actual SBT 1.0/JDK 8 runtime.
+// Compile the SBT 1.4+ artifact with the latest Scala 2.12 compiler. Plugins cross-build on the Scala binary
+// version, while the integration suite proves the 1.4/JDK 8 minimum and a current SBT 1.12 runtime.
 val ScalaVersion_212 = "2.12.21"
 val ScalaVersion_3 = "3.8.4"
 
-// Compile plugin artifacts against compatibility baselines. Integration fixtures independently render their exact runtime.
-// SBT 1.0.4 is the final 1.0.x patch: compiling against it preserves the SBT 1.0 API baseline and avoids newer-SBT
-// deprecation warnings in the editor.
-// TODO: After publishing a final logger for the older SBT 1.x runtime range, freeze that artifact as we do for SBT 0.13
-// and stop delivering fixes to it in newer TeamCity releases. Then advance this target to a newer SBT 1.x baseline. The
-// TeamCity SBT Runner must bundle the frozen artifact for the older 1.x range and a newer artifact for newer 1.x versions,
-// and warn users when it selects the frozen artifact that it will receive no further improvements.
-val SbtVersion_1xx = "1.0.4"
+// SBT 1.4 introduced the native appender API used by the TeamCity logger. Older SBT 1.x releases remain on the
+// previously published logger artifact; this artifact intentionally supports SBT 1.4+ only.
+val SbtVersion_1xx = "1.4.0"
 val SbtVersion_2xx = "2.0.0"
 
 ThisBuild / resolvers := Seq(
@@ -129,11 +123,18 @@ lazy val integrationTestArtifactPreparationSettings: Seq[Def.Setting[_]] = Seq(
     // resolves this same path, so tests never depend on `packageBin`'s versioned output layout or filename.
     val sbtPluginBinaryVersion = (pluginCrossBuild / sbtBinaryVersion).value
     val stagedJar = target.value / "integration-tests" / "artifacts" / s"sbt-$sbtPluginBinaryVersion.jar"
+    val log = streams.value.log
 
     IO.createDirectory(stagedJar.getParentFile)
-    IO.copyFile(packagedJar, stagedJar, preserveLastModified = true)
+    val requiresStaging = !stagedJar.isFile ||
+      java.nio.file.Files.mismatch(packagedJar.toPath, stagedJar.toPath) != -1L
 
-    streams.value.log.info(s"Staged integration-test logger JAR: ${stagedJar.getAbsolutePath}")
+    if (requiresStaging) {
+      IO.copyFile(packagedJar, stagedJar, preserveLastModified = true)
+      log.info(s"Staged integration-test logger JAR: ${stagedJar.getAbsolutePath}")
+    } else {
+      log.info(s"Integration-test logger JAR is up-to-date: ${stagedJar.getAbsolutePath}")
+    }
     stagedJar
   },
   prepareIntegrationTestArtifacts / aggregate := false,
@@ -168,7 +169,7 @@ lazy val junitTestFrameworkDependencies: Seq[ModuleID] = Seq(
   "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
 )
 
-addCommandAlias("testSbt1_0_Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_0_Jdk8")
+addCommandAlias("testSbt1_4_Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_4_Jdk8")
 addCommandAlias("testSbt1_12_Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_12_Jdk8")
 addCommandAlias("testSbt1_12_Jdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_1_12_Jdk17")
 addCommandAlias("testSbt2_0_Jdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutputTest_2_0_Jdk17")

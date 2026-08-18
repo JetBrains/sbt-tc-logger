@@ -17,19 +17,14 @@
 package sbt.jetbrains.buildServer.sbtlogger
 
 import jetbrains.buildServer.sbtlogger.TCCompilerReporter.FilePosition
-import jetbrains.buildServer.sbtlogger.{TCCompilerReporter, TCLogAppender, TCLogger}
-import sbt.internal.AppenderSupplier
-import sbt.internal.util.Appender
+import jetbrains.buildServer.sbtlogger.{TCCompilerReporter, TCLogAppender}
 import sbt.{Def, Reference, Scope, Select, Zero}
 import xsbti.Problem
-
-import scala.collection.mutable
 
 /** SBT 2 compatibility boundary for the shared TeamCity logger implementation. */
 object apiAdapter {
 
   type SessionSettings = sbt.internal.SessionSettings
-  type ExtraLogger = Appender
 
   val silentTestResultLogger: sbt.TestResultLogger = new sbt.TestResultLogger {
     def run(log: sbt.util.Logger, results: sbt.Tests.Output, taskName: String): Unit = ()
@@ -37,18 +32,11 @@ object apiAdapter {
 
   def projectScope(project: Reference): Scope = Scope(Select(project), Zero, Zero, Zero)
 
-  def extraLogger(tcLoggers: mutable.Map[String, TCLogger],
-                  tcLogAppender: TCLogAppender,
-                  scope: String): ExtraLogger = {
-    val appender = new TCLoggerAppender(tcLogAppender, scope)
-    appender
-  }
-
-  def reporterSettings(tcLogAppender: TCLogAppender): Def.Setting[?] = {
+  def reporterSettings(tcLogAppender: TCLogAppender, flowId: String, ensureCompilationStarted: () => Unit): Def.Setting[?] = {
     import sbt.Keys.compile
     compile / Unhide.compilerReporter := Def.uncached {
       val defaultReporter = (compile / Unhide.compilerReporter).value
-      new TCCompilerReporter(defaultReporter)
+      new TCCompilerReporter(defaultReporter, tcLogAppender, flowId, ensureCompilationStarted)
     }
   }
 
