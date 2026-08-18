@@ -1,190 +1,236 @@
 /*
- * Copyright 2013-2021 JetBrains s.r.o.
+ * Copyright 2013-2026 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- *
  * You may obtain a copy of the License at
- * http://www.apache.org/licenses/LICENSE-2.0.
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
- * either express or implied.
  *
- * See the License for the specific language governing permissions
- * and limitations under the License.
+ * http://www.apache.org/licenses/LICENSE-2.0.
  */
 
 package jetbrains.buildServer.sbtlogger
 
-import sbt.Keys.*
 import sbt.Configurations.IntegrationTest
-import sbt.jetbrains.buildServer.sbtlogger.apiAdapter.*
+import sbt.Keys._
+import sbt.internal.LogManager
+import sbt.jetbrains.buildServer.sbtlogger.TCLoggerAppender
+import sbt.jetbrains.buildServer.sbtlogger.apiAdapter._
 import sbt.plugins.JvmPlugin
-import sbt.{Def, *}
+import sbt.{Def, _}
 
-import scala.collection.mutable
-
+/** Native SBT 1.4+ implementation of the TeamCity logger. */
 object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   override def requires: Plugins = JvmPlugin
   override def trigger: PluginTrigger = allRequirements
 
+  private val PreserveConsoleProperty = "teamcity.sbt.logger.preserveConsole"
+  private val ResolverTaskNames = Set(
+    "update",
+    "updateClassifiers",
+    "updateSbtClassifiers",
+    "csrConfiguration",
+    "projectDescriptors",
+    "moduleSettings",
+    "csrProject",
+    "ivyConfiguration",
+    "ivySbt"
+  )
+  private val CompilerTaskNames = Set("compileIncremental")
+
   def apply(state: State): State = {
     val sbtLoggerVersion = System.getProperty(TC_LOGGER_PROPERTY_NAME)
-    if (sbtLoggerVersion == "reloaded") {
-      return state
-    }
+    if (sbtLoggerVersion == "reloaded") return state
 
-    // As seen in https://github.com/JetBrains/sbt-structure/blob/a65499070252b31bd4bf7cf79dbc8a1aa4e5830a/extractor/src/main/scala/org/jetbrains/sbt/operations.scala#L13
     val extracted = Project.extract(state)
-    import extracted.{structure as extractedStructure, *}
+    import extracted.{structure => extractedStructure, _}
     val transformedProjectSettings = extractedStructure.allProjectRefs.flatMap { projectRef =>
-      transformSettings(projectScope(projectRef), projectRef.build, rootProject, SbtTeamCityLogger.projectSettings)
+      val project = projectScope(projectRef)
+      transformSettings(project, projectRef.build, rootProject, SbtTeamCityLogger.projectSettings) ++
+        (if (tcFound) transformSettings(project, projectRef.build, rootProject, lifecycleSettings(getScopeId(project.project), projectRef.project)) else Nil)
     }
-    val transformedSession = session.appendRaw(transformedProjectSettings)
-    reapply(transformedSession, state)
+    reapply(session.appendRaw(transformedProjectSettings), state)
   }
 
-  // copied from sbt.internal.Load
-  private def transformSettings(thisScope: Scope, uri: URI, rootProject: URI => String, settings: Seq[Setting[?]]): Seq[Setting[?]] =
+  private def transformSettings(thisScope: Scope, uri: URI, rootProject: URI => String, settings: Seq[Setting[_]]): Seq[Setting[_]] =
     Project.transform(Scope.resolveScope(thisScope, uri, rootProject), settings)
 
-  // copied from sbt.internal.SessionSettings
-  private def reapply(session: SessionSettings, s: State): State =
-    BuiltinCommands.reapply(session, Project.structure(s), s)
+  private def reapply(session: SessionSettings, state: State): State =
+    BuiltinCommands.reapply(session, Project.structure(state), state)
 
   lazy val tcLogAppender = new TCLogAppender()
-  lazy val tcLoggers: mutable.Map[String, TCLogger] = collection.mutable.Map[String, TCLogger]()
   lazy val tcTestListener = new TCReportListener(tcLogAppender)
-  lazy val startCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("start-compilation-logger", "runs before compile")
-  lazy val startTestCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("start-test-compilation-logger", "runs before compile in test")
-  lazy val endCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("end-compilation-logger", "runs after compile")
-  lazy val endTestCompilationLogger: TaskKey[Unit] = TaskKey[Unit]("end-test-compilation-logger", "runs after compile in test")
-  // Kept for builds which invoke these public task keys directly. They are no
-  // longer triggered by compilation because that scheduling is not ordered
-  // relative to compiler log events.
-  lazy val tcEndCompilation: TaskKey[Unit] = TaskKey[Unit]("tc-end-compilation", "")
-  lazy val tcEndTestCompilation: TaskKey[Unit] = TaskKey[Unit]("tc-end-test-compilation", "")
 
   val tcVersion: Option[String] = sys.env.get("TEAMCITY_VERSION")
   val tcFound: Boolean = tcVersion.isDefined
+  val preserveConsole: Boolean = java.lang.Boolean.getBoolean(PreserveConsoleProperty)
 
   val TC_LOGGER_PROPERTY_NAME = "TEAMCITY_SBT_LOGGER_VERSION"
 
   val tcLoggerVersion: String = System.getProperty(TC_LOGGER_PROPERTY_NAME)
-  if (tcLoggerVersion == null) {
-    System.setProperty(TC_LOGGER_PROPERTY_NAME, "loaded")
-  } else if (tcLoggerVersion == "loaded") {
-    System.setProperty(TC_LOGGER_PROPERTY_NAME, "reloaded")
-  }
+  if (tcLoggerVersion == null) System.setProperty(TC_LOGGER_PROPERTY_NAME, "loaded")
+  else if (tcLoggerVersion == "loaded") System.setProperty(TC_LOGGER_PROPERTY_NAME, "reloaded")
 
-  var testResultLoggerFound = true
-
-  try {
-    val _: Def.Initialize[sbt.TestResultLogger] = Def.setting {
-      (testResultLogger in Test).value
-    }
+  private val testResultLoggerFound = try {
+    val _: Def.Initialize[sbt.TestResultLogger] = Def.setting((testResultLogger in Test).value)
+    true
   } catch {
-    case _: java.lang.NoSuchMethodError =>
-      testResultLoggerFound = false
+    case _: java.lang.NoSuchMethodError => false
   }
 
-  //noinspection TypeAnnotation,ConvertExpressionToSAM
-  override lazy val projectSettings = if (tcFound && testResultLoggerFound)
-    loggerOnSettings ++ Seq(
-      testResultLogger in(Test, test) := silentTestResultLogger,
-      // `testQuick` has its own task scope, so it does not inherit the handler
-      // installed for `test`. Reuse it so test failures are represented solely
-      // by TeamCity service messages instead of an SBT exit-code failure.
-      testResultLogger in(Test, testQuick) := (testResultLogger in(Test, test)).value,
-      // SBT 1's built-in IntegrationTest configuration does not delegate its
-      // quick-test result logger to Test, even though its command is `it:testQuick`.
-      testResultLogger in(IntegrationTest, testQuick) := silentTestResultLogger
-    )
-  else if (tcFound) loggerOnSettings
-  else loggerOffSettings
+  override lazy val projectSettings =
+    if (tcFound) {
+      val testSettings = if (testResultLoggerFound) Seq(
+        testResultLogger in (Test, test) := silentTestResultLogger,
+        testResultLogger in (Test, testQuick) := (testResultLogger in (Test, test)).value,
+        testResultLogger in (IntegrationTest, testQuick) := silentTestResultLogger
+      ) else Nil
 
-  /**
-   * Suppresses SBT's aggregate test result because [[TCReportListener]] has
-   * already emitted the individual TeamCity test outcomes.
-   */
+      loggerOnSettings ++ testSettings
+    } else loggerOffSettings
+
   private lazy val silentTestResultLogger: TestResultLogger = new TestResultLogger {
     def run(log: Logger, results: Tests.Output, taskName: String): Unit = ()
   }
 
-
-  lazy val loggerOnSettings: Seq[Def.Setting[?]] = Seq(
-    commands += tcLoggerStatusCommand,
-    extraLoggers := {
-      val currentFunction: Def.ScopedKey[?] => Seq[ExtraLogger] = extraLoggers.value
-      (key: ScopedKey[?]) => {
-        val scope: String = getScopeId(key.scope.project)
-        val logger: ExtraLogger = extraLogger(tcLoggers, tcLogAppender, scope)
-
-        logger +: currentFunction(key)
+  private lazy val loggerOnSettings: Seq[Def.Setting[_]] = {
+    val ordinaryTaskLogging = if (preserveConsole) Nil else Seq(
+      logManager := {
+        val configuredExtraAppenders = extraAppenders.value
+        LogManager.withLoggers(
+          // MainAppender applies the effective task log level only to a ConsoleAppender screen. TCLoggerAppender
+          // subclasses it so client-mode task events are delivered once without a visible SBT console line.
+          screen = (key, _) => new TCLoggerAppender(tcLogAppender, flowIdFor(key), compilerActivity(key)),
+          relay = _ => TCLoggerAppender.muted("relay"),
+          extra = configuredExtraAppenders
+        )
       }
+    )
+
+    Seq(
+      commands += tcLoggerStatusCommand,
+      testListeners += tcTestListener
+    ) ++ ordinaryTaskLogging
+  }
+
+  private lazy val loggerOffSettings: Seq[Def.Setting[_]] = Seq(
+    commands += tcLoggerStatusCommand
+  )
+
+  /** compileIncremental and compiler diagnostics run after compileInputs, so they form the compiler activity gate. */
+  private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[_]] = Seq(
+    update.toSettingKey ~= { original =>
+      original
+        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.directDependencyBlockStart(
+          dependencyFlowId(scope, "global"),
+          Some(projectName)
+        )))
+        .andFinally(tcLogAppender.directDependencyBlockEnd(dependencyFlowId(scope, "global")))
     },
-    testListeners += tcTestListener,
-
-    startCompilationLogger := tcLogAppender.compilationBlockStart(getScopeId(streams.value.key.scope.project)),
-    startTestCompilationLogger := tcLogAppender.compilationTestBlockStart(getScopeId(streams.value.key.scope.project)),
-    endCompilationLogger := tcLogAppender.compilationBlockEnd(getScopeId(streams.value.key.scope.project)),
-    endTestCompilationLogger := tcLogAppender.compilationTestBlockEnd(getScopeId(streams.value.key.scope.project)),
-    tcEndCompilation := endCompilationLogger.value,
-    tcEndTestCompilation := endTestCompilationLogger.value,
-
-    // A task merely triggered by `compile` is not guaranteed to be scheduled
-    // after the compiler's log events. Compose the underlying tasks directly
-    // so the matching completion message is emitted after compilation has
-    // completed, including after a compilation failure.
-    compile in Compile := Def.taskDyn {
-      val result = ((compile in Compile) dependsOn startCompilationLogger).result.value
+    (update in Compile).toSettingKey ~= { original =>
+      original
+        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.dependencyBlockStart(
+          dependencyFlowId(scope, Compile.name),
+          Some(projectName),
+          inTest = false
+        )))
+        .andFinally(tcLogAppender.dependencyBlockEnd(dependencyFlowId(scope, Compile.name)))
+    },
+    (update in Test).toSettingKey ~= { original =>
+      original
+        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.dependencyBlockStart(
+          dependencyFlowId(scope, Test.name),
+          Some(projectName),
+          inTest = true
+        )))
+        .andFinally(tcLogAppender.dependencyBlockEnd(dependencyFlowId(scope, Test.name)))
+    },
+    compileIncremental in Compile := Def.taskDyn {
+      val _ = (compileInputs in (Compile, compile)).value
+      tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))
+      val result = (compileIncremental in Compile).result.value
       Def.task {
-        endCompilationLogger.value
+        tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName))
         result match {
           case Value(value) => value
           case Inc(cause) => throw cause
         }
       }
     }.value,
-
-    compile in Test := Def.taskDyn {
-      val result = ((compile in Test) dependsOn startTestCompilationLogger).result.value
+    compileIncremental in Test := Def.taskDyn {
+      val _ = (compileInputs in (Test, compile)).value
+      tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))
+      val result = (compileIncremental in Test).result.value
       Def.task {
-        endTestCompilationLogger.value
+        tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName))
         result match {
           case Value(value) => value
           case Inc(cause) => throw cause
         }
       }
-    }.value
+    }.value,
+    (compile in Compile).toSettingKey ~= { original =>
+      original.andFinally(tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName)))
+    },
+    (compile in Test).toSettingKey ~= { original =>
+      original.andFinally(tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName)))
+    }
   ) ++
-    inConfig(Compile)(Seq(reporterSettings(tcLogAppender))) ++
-    inConfig(Test)(Seq(reporterSettings(tcLogAppender)))
+    inConfig(Compile)(Seq(reporterSettings(
+      tcLogAppender,
+      compilerFlowId(scope, Compile.name),
+      () => tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))
+    ))) ++
+    inConfig(Test)(Seq(reporterSettings(
+      tcLogAppender,
+      compilerFlowId(scope, Test.name),
+      () => tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))
+    )))
 
-
-  lazy val loggerOffSettings: Seq[Def.Setting[?]] = Seq(
-    commands += tcLoggerStatusCommand
-  )
-
-  def tcLoggerStatusCommand: Command = Command.command("sbt-teamcity-logger") {
-    state => doCommand(state)
-  }
-
-  private def doCommand(state: State): State = {
+  def tcLoggerStatusCommand: Command = Command.command("sbt-teamcity-logger") { state =>
     println("Plugin sbt-teamcity-logger was loaded.")
-    val tcv = tcVersion.getOrElse("undefined")
-    if (tcFound) {
-      println(s"TeamCity version='$tcv'")
-    } else {
-      println(s"TeamCity was not discovered. Logger was switched off.")
+    tcVersion match {
+      case Some(version) => println(s"TeamCity version='$version'")
+      case None => println("TeamCity was not discovered. Logger was switched off.")
     }
     state
   }
 
-  private def getScopeId(scope: ScopeAxis[sbt.Reference]):String = {
-     "" + scope.hashCode()
+  private def getScopeId(scope: ScopeAxis[Reference]): String = scope.hashCode().toString
+
+  private def flowIdFor(key: ScopedKey[_]): String = {
+    val scope = key.scope
+    val project = getScopeId(scope.project)
+    val configuration = scope.config.toOption.map(_.name).getOrElse("global")
+    val task = scope.task.toOption.map(_.label).getOrElse("general")
+    val phase = phaseForTask(task)
+    s"$project:$configuration:$phase"
   }
+
+  private def compilerActivity(key: ScopedKey[_]): () => Unit = {
+    val task = key.scope.task.toOption.map(_.label).getOrElse("general")
+    if (!CompilerTaskNames.contains(task)) () => ()
+    else {
+      val scope = key.scope
+      val project = getScopeId(scope.project)
+      val configuration = scope.config.toOption.map(_.name).getOrElse("global")
+      val projectName = scope.project.toOption.collect { case project: ProjectRef => project.project }
+      if (configuration == Test.name)
+        () => tcLogAppender.compilationTestBlockStart(compilerFlowId(project, configuration), projectName)
+      else
+        () => tcLogAppender.compilationBlockStart(compilerFlowId(project, configuration), projectName)
+    }
+  }
+
+  private def phaseForTask(task: String): String =
+    if (ResolverTaskNames.contains(task)) "dependency"
+    else if (CompilerTaskNames.contains(task)) "compiler"
+    else s"general:$task"
+
+  private def dependencyFlowId(project: String, configuration: String): String =
+    s"$project:$configuration:dependency"
+
+  private def compilerFlowId(project: String, configuration: String): String =
+    s"$project:$configuration:compiler"
 
 }

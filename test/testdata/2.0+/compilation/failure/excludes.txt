@@ -1,0 +1,4 @@
+sbt\.Defaults\$\$anon
+\[error\].*BrokenHelloWorld\.scala:4:.*[Ii]nvalid literal number
+one error found
+##teamcity\[message status='ERROR'.*Compilation failed

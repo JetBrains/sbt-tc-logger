@@ -14,19 +14,6 @@ import java.nio.file.Files
 class SbtOutputVerifierTest {
 
   @Test
-  def compilationLifecycleRequiresEveryLegacySummaryToBeOwnedByOneOrderedPair(): Unit =
-    SbtOutputVerifier.assertCompilationLifecycle(
-      """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
-        |##teamcity[message status='ERROR' flowId='main' text='one error found']
-        |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
-        |""".stripMargin,
-      SbtCompilationLifecycleExpectation.Complete(
-        expectedClosures = 1,
-        expectedLegacyErrorSummaries = Some(1)
-      )
-    )
-
-  @Test
   def compilationLifecycleRejectsDuplicateOrUnmatchedFinishes(): Unit = {
     val duplicateFinish = expectAssertionError {
       SbtOutputVerifier.assertCompilationLifecycle(
@@ -37,7 +24,7 @@ class SbtOutputVerifierTest {
         SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1)
       )
     }
-    assertFailureMessageContains(duplicateFinish, "exactly one compilation finish")
+    assertFailureMessageContains(duplicateFinish, "Compilation finish has no matching start")
 
     val unmatchedFinish = expectAssertionError {
       SbtOutputVerifier.assertCompilationLifecycle(
@@ -45,38 +32,19 @@ class SbtOutputVerifierTest {
         SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1)
       )
     }
-    assertFailureMessageContains(unmatchedFinish, "exactly one compilation start")
+    assertFailureMessageContains(unmatchedFinish, "Compilation finish has no matching start")
   }
 
   @Test
-  def compilationLifecycleRejectsLegacySummaryOnAnotherFlow(): Unit = {
-    val error = expectAssertionError {
-      SbtOutputVerifier.assertCompilationLifecycle(
-        """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
-          |##teamcity[message status='ERROR' flowId='other' text='one error found']
-          |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
-          |""".stripMargin,
-        SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1, expectedLegacyErrorSummaries = Some(1))
-      )
-    }
-
-    assertFailureMessageContains(error, "inside exactly one complete compilation lifecycle")
-  }
-
-  @Test
-  def compilationLifecycleRejectsLegacySummaryAfterItsFinish(): Unit = {
-    val error = expectAssertionError {
-      SbtOutputVerifier.assertCompilationLifecycle(
-        """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
-          |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
-          |##teamcity[message status='ERROR' flowId='main' text='one error found']
-          |""".stripMargin,
-        SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1, expectedLegacyErrorSummaries = Some(1))
-      )
-    }
-
-    assertFailureMessageContains(error, "inside exactly one complete compilation lifecycle")
-  }
+  def compilationLifecycleAcceptsSequentialInvocationsOnOneFlow(): Unit =
+    SbtOutputVerifier.assertCompilationLifecycle(
+      """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
+        |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
+        |##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
+        |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
+        |""".stripMargin,
+      SbtCompilationLifecycleExpectation.Complete(expectedClosures = 2)
+    )
 
   @Test
   def checkOutputTextAcceptsRequiredPatternsInOrder(): Unit = {

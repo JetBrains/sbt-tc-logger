@@ -42,20 +42,50 @@ private[sbtlogger] object SbtOutputVerifier {
     }
     val grouped = lifecycles.groupBy(event => (event.compiler, event.flowId))
     expectation match {
-      case SbtCompilationLifecycleExpectation.Complete(expectedClosures, _) =>
-        Assert.assertEquals(s"Expected $expectedClosures compilation lifecycle closures, found ${grouped.size}: ${grouped.keys.mkString(", ")}", expectedClosures, grouped.size)
-        grouped.foreach { case ((compiler, flowId), events) => assertCompleteLifecycle(compiler, flowId, events) }
+      case SbtCompilationLifecycleExpectation.Absent =>
+        Assert.assertTrue(s"Expected no compiler lifecycle, found ${grouped.keys.mkString(", ")}", grouped.isEmpty)
+      case SbtCompilationLifecycleExpectation.Complete(expectedClosures) =>
+        val intervals = grouped.toVector.flatMap { case ((compiler, flowId), events) =>
+          assertCompleteLifecycles(compiler, flowId, events)
+        }
+        Assert.assertEquals(
+          s"Expected $expectedClosures compilation lifecycle closures, found ${intervals.size}: ${grouped.keys.mkString(", ")}",
+          expectedClosures,
+          intervals.size
+        )
     }
-    val summaries = lines.zipWithIndex.flatMap { case (line, index) =>
+  }
+
+  def assertDependencyLifecycle(output: String, expectation: SbtDependencyLifecycleExpectation): Unit = {
+    val lines = output.linesIterator.toVector
+    val lifecycles = lines.zipWithIndex.flatMap { case (line, index) =>
       parseServiceMessage(line).collect {
-        case ("message", attributes) if attributes.get("status").contains("ERROR") && attributes.get("text").contains("one error found") =>
-          LegacyErrorSummary(attributes.get("flowId"), index)
+        case ("blockOpened", attributes) if attributes.get("name").exists(_.startsWith("Dependency resolution")) && attributes.contains("flowId") =>
+          DependencyLifecycleEvent(opened = true, attributes("flowId"), index)
+        case ("blockClosed", attributes) if attributes.get("name").contains("Dependency resolution") && attributes.contains("flowId") =>
+          DependencyLifecycleEvent(opened = false, attributes("flowId"), index)
       }
     }
-    expectation.expectedLegacyErrorSummaries.foreach { expectedCount =>
-      Assert.assertEquals(s"Expected $expectedCount legacy compiler error summaries", expectedCount, summaries.size)
-      summaries.foreach(summary => assertLegacyErrorSummaryIsOwned(summary, grouped))
+    val grouped = lifecycles.groupBy(_.flowId)
+    expectation match {
+      case SbtDependencyLifecycleExpectation.Complete(expectedClosures) =>
+        Assert.assertEquals(
+          s"Expected $expectedClosures dependency lifecycle closures, found ${grouped.size}: ${grouped.keys.mkString(", ")}",
+          expectedClosures,
+          grouped.size
+        )
+        grouped.foreach { case (flowId, events) => assertCompleteDependencyLifecycle(flowId, events) }
     }
+
+    val compilerFlows = lines.flatMap { line =>
+      parseServiceMessage(line).collect {
+        case ("compilationStarted", attributes) if attributes.contains("flowId") => attributes("flowId")
+      }
+    }.toSet
+    Assert.assertTrue(
+      s"Dependency and compiler activities must use distinct TeamCity flows, but both used: ${grouped.keySet.intersect(compilerFlows).mkString(", ")}",
+      grouped.keySet.intersect(compilerFlows).isEmpty
+    )
   }
 
   private def checkOutputLines(lines: Seq[String], excludesFile: Option[File], expectations: ExpectationSet, fixtureDirectory: File): Unit = {
@@ -284,24 +314,36 @@ private[sbtlogger] object SbtOutputVerifier {
       message.group(1) -> AttributePattern.findAllMatchIn(Option(message.group(2)).getOrElse("")).map(attribute => attribute.group(1) -> attribute.group(2)).toMap
     }
 
-  private def assertCompleteLifecycle(compiler: String, flowId: String, events: Seq[CompilationLifecycleEvent]): Unit = {
-    val starts = events.filter(_.started)
-    val finishes = events.filterNot(_.started)
+  private def assertCompleteLifecycles(
+    compiler: String,
+    flowId: String,
+    events: Seq[CompilationLifecycleEvent]
+  ): Vector[CompilationLifecycleInterval] = {
     val label = s"compiler='$compiler', flowId='$flowId'"
-    Assert.assertEquals(s"Expected exactly one compilation start for $label", 1, starts.size)
-    Assert.assertEquals(s"Expected exactly one compilation finish for $label", 1, finishes.size)
-    Assert.assertTrue(s"Compilation finish must follow its start for $label", starts.head.lineIndex < finishes.head.lineIndex)
+    var open: Option[CompilationLifecycleEvent] = None
+    val intervals = Vector.newBuilder[CompilationLifecycleInterval]
+
+    events.sortBy(_.lineIndex).foreach { event =>
+      if (event.started) {
+        Assert.assertTrue(s"Compilation lifecycle started before the previous lifecycle finished for $label", open.isEmpty)
+        open = Some(event)
+      } else {
+        Assert.assertTrue(s"Compilation finish has no matching start for $label", open.nonEmpty)
+        intervals += CompilationLifecycleInterval(compiler, flowId, open.get.lineIndex, event.lineIndex)
+        open = None
+      }
+    }
+
+    Assert.assertTrue(s"Compilation lifecycle has no matching finish for $label", open.isEmpty)
+    intervals.result()
   }
 
-  private def assertLegacyErrorSummaryIsOwned(summary: LegacyErrorSummary, grouped: Map[(String, String), Seq[CompilationLifecycleEvent]]): Unit = {
-    val flowId = summary.flowId.getOrElse("<missing>")
-    val owners = grouped.collect {
-      case ((compiler, lifecycleFlowId), events) if lifecycleFlowId == flowId =>
-        val starts = events.filter(_.started)
-        val finishes = events.filterNot(_.started)
-        Option.when(starts.size == 1 && finishes.size == 1 && starts.head.lineIndex < summary.lineIndex && summary.lineIndex < finishes.head.lineIndex)(compiler)
-    }.flatten
-    Assert.assertEquals(s"Expected legacy compiler error summary at line ${summary.lineIndex + 1} on flowId='$flowId' to be inside exactly one complete compilation lifecycle, but found ${owners.size}: ${owners.mkString(", ")}", 1, owners.size)
+  private def assertCompleteDependencyLifecycle(flowId: String, events: Seq[DependencyLifecycleEvent]): Unit = {
+    val opens = events.filter(_.opened)
+    val closes = events.filterNot(_.opened)
+    Assert.assertEquals(s"Expected exactly one dependency-block opener for flowId='$flowId'", 1, opens.size)
+    Assert.assertEquals(s"Expected exactly one dependency-block closer for flowId='$flowId'", 1, closes.size)
+    Assert.assertTrue(s"Dependency-block closer must follow its opener for flowId='$flowId'", opens.head.lineIndex < closes.head.lineIndex)
   }
 
   private val ServiceMessagePattern = """##teamcity\[([^ ]+)(?: (.*))?\]""".r
@@ -346,7 +388,8 @@ private[sbtlogger] object SbtOutputVerifier {
     def diagnosticText: String = s"${normalisedAbsolutePath(file)}:$lineNumber: $text"
   }
   private final case class CompilationLifecycleEvent(started: Boolean, compiler: String, flowId: String, lineIndex: Int)
-  private final case class LegacyErrorSummary(flowId: Option[String], lineIndex: Int)
+  private final case class CompilationLifecycleInterval(compiler: String, flowId: String, startLineIndex: Int, finishLineIndex: Int)
+  private final case class DependencyLifecycleEvent(opened: Boolean, flowId: String, lineIndex: Int)
   private final case class ForbiddenMatch(pattern: ExpectedPattern, outputLine: String) { def diagnosticText: String = s"${pattern.diagnosticText}${System.lineSeparator()}  matched output: $outputLine" }
   private final case class OutputMatch(pattern: ExpectedPattern, outputLineNumber: Int, outputLine: String) { def diagnosticText: String = s"${pattern.diagnosticText}${System.lineSeparator()}  matched output line $outputLineNumber: $outputLine" }
   private sealed trait RequiredPatternMatch

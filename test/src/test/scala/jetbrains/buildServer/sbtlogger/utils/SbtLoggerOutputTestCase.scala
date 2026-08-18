@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger.utils
 
-import org.junit.Assert.{assertEquals, assertTrue}
+import org.junit.Assert.assertTrue
 
 /**
  * Describes one fixture-backed logger-output scenario.
@@ -11,9 +11,11 @@ import org.junit.Assert.{assertEquals, assertTrue}
  * @param sbtCommands        sbt commands sent through the nested process command transport.
  * @param sbtOptions         launcher command-line options passed before the command transport.
  * @param expectations       named expected-output groups and their flow-ownership scopes; defaults to `output.txt`.
+ * @param verifyOutput       whether fixture regex expectations are checked; lifecycle-only cases may have no stable SBT output.
  * @param expectedExitCode   expected result of the nested sbt process.
  * @param failurePropagation expected evidence that a deliberately failed task propagated its failure through sbt.
  * @param compilationLifecycle optional strict lifecycle contract for compilation TeamCity messages.
+ * @param dependencyLifecycle optional strict lifecycle contract for dependency-resolution TeamCity blocks.
  * @param teamCityEnvironment whether the nested process receives `TEAMCITY_VERSION`; when false, an inherited value is
  *                            removed before the process starts.
  * @param expectNoTeamCityMessages asserts the logger remains completely inactive when TeamCity is absent.
@@ -24,9 +26,11 @@ final case class SbtLoggerOutputTestCase(
   sbtCommands: Seq[String],
   sbtOptions: Seq[String] = Seq("--error"),
   expectations: ExpectationSet = ExpectationSet.default,
+  verifyOutput: Boolean = true,
   expectedExitCode: SbtExitCodeExpectation = SbtExitCodeExpectation.Any,
   failurePropagation: SbtFailurePropagationExpectation = SbtFailurePropagationExpectation.NotRequired,
   compilationLifecycle: Option[SbtCompilationLifecycleExpectation] = None,
+  dependencyLifecycle: Option[SbtDependencyLifecycleExpectation] = None,
   teamCityEnvironment: Boolean = true,
   expectNoTeamCityMessages: Boolean = false
 )
@@ -110,15 +114,7 @@ object SbtFailurePropagationExpectation {
   case object NotRequired extends SbtFailurePropagationExpectation
   /** Modern sbt runtimes expose propagated task failures through their process status. */
   case object ProcessExitNonZero extends SbtFailurePropagationExpectation
-  /** SBT 1.0 invokes this command only when the task failure reaches its `onFailure` handler. */
-  case object SbtOnFailureHandler extends SbtFailurePropagationExpectation
-
-  private val OnFailureHandlerMarker = "SBT_TC_LOGGER_FAILURE_PROPAGATION_ON_FAILURE"
-
-  def setupCommand(expectation: SbtFailurePropagationExpectation): Option[String] = expectation match {
-    case SbtOnFailureHandler => Some(s"onFailure eval println(\"$OnFailureHandlerMarker\")")
-    case _ => None
-  }
+  def setupCommand(expectation: SbtFailurePropagationExpectation): Option[String] = None
 
   def assertObserved(
     expectation: SbtFailurePropagationExpectation,
@@ -128,29 +124,29 @@ object SbtFailurePropagationExpectation {
     case NotRequired =>
     case ProcessExitNonZero =>
       assertTrue(s"Expected nested sbt command to fail, but it exited with $exitCode", exitCode != 0)
-    case SbtOnFailureHandler =>
-      val markerOccurrences = processOutput.linesIterator.count(_.contains(OnFailureHandlerMarker))
-      assertEquals(
-        s"Expected the SBT 1.0 onFailure handler marker exactly once, but found $markerOccurrences occurrences.",
-        1,
-        markerOccurrences
-      )
   }
 }
 
 /** Strict lifecycle requirements for a focused compilation-regression fixture. */
-sealed trait SbtCompilationLifecycleExpectation {
-  def expectedLegacyErrorSummaries: Option[Int]
-}
+sealed trait SbtCompilationLifecycleExpectation
 
 object SbtCompilationLifecycleExpectation {
-  /** Requires every observed compiler lifecycle to have one start and one later finish. */
-  final case class Complete(
-    expectedClosures: Int,
-    expectedLegacyErrorSummaries: Option[Int] = None
-  ) extends SbtCompilationLifecycleExpectation {
+  /** Requires that a preparation-only task did not invent a compiler lifecycle. */
+  case object Absent extends SbtCompilationLifecycleExpectation
+
+  /** Requires exactly this many non-overlapping compiler lifecycle pairs; a flow may be reused sequentially. */
+  final case class Complete(expectedClosures: Int) extends SbtCompilationLifecycleExpectation {
     require(expectedClosures > 0, "A lifecycle regression fixture must require at least one closure.")
-    require(expectedLegacyErrorSummaries.forall(_ >= 0), "The number of expected legacy error summaries cannot be negative.")
   }
 
+}
+
+/** Strict lifecycle requirements for a focused dependency-resolution regression fixture. */
+sealed trait SbtDependencyLifecycleExpectation
+
+object SbtDependencyLifecycleExpectation {
+  /** Requires every observed dependency block to have one opener, one later closer, and no compiler-flow reuse. */
+  final case class Complete(expectedClosures: Int) extends SbtDependencyLifecycleExpectation {
+    require(expectedClosures > 0, "A dependency-lifecycle regression fixture must require at least one closure.")
+  }
 }

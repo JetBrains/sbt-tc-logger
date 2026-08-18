@@ -16,26 +16,54 @@
 
 package sbt.jetbrains.buildServer.sbtlogger
 
-import sbt.internal.util.{Appender, ConsoleAppender, ObjectEvent, SuppressedTraceContext}
-import sbt.util.Level
+import sbt.internal.util.{Appender, ConsoleAppender, ObjectEvent}
+import sbt.util.{Level, LogExchange, ShowLines}
 import jetbrains.buildServer.sbtlogger.LogAppender
 
 import scala.Option
 
 /** SBT 2 appender boundary used by the shared TeamCity logger. */
-class TCLoggerAppender(appender: LogAppender, scope: String) extends Appender {
-  private val delegate = ConsoleAppender(s"tc-logger-$scope")
-
-  override def name: String = delegate.name
-  override def properties: ConsoleAppender.Properties = delegate.properties
-  override def suppressedMessage: SuppressedTraceContext => Option[String] = delegate.suppressedMessage
-  override def close(): Unit = ()
+class TCLoggerAppender(appender: LogAppender, scope: String, onActivity: () => Unit)
+  extends ConsoleAppender(s"tc-logger-$scope", TCLoggerAppender.properties, ConsoleAppender.noSuppressedMessage) {
 
   override def appendLog(level: Level.Value, message: => String): Unit = {
-    appender.log(level, message, scope)
+    val text = message
+    if appender.shouldLog(text) then
+      onActivity()
+      appender.log(level, text, scope)
   }
 
   override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
-    appender.log(level, event.message.toString, scope)
+    val objectEvent = event
+    val text = renderObjectEvent(objectEvent)
+    if appender.shouldLog(text) then
+      onActivity()
+      appender.log(level, text, scope)
   }
+
+  /**
+   * SBT 2 transports a number of log events as typed objects rather than as strings.
+   * The console appender uses the event content-type to find its [[sbt.util.ShowLines]] renderer.
+   * Calling `toString` on the payload loses that renderer and produces implementation identities such as
+   * `sbt.Defaults$$anon$3@42e5f4b` for compiler problems.
+   */
+  private def renderObjectEvent(event: ObjectEvent[?]): String = {
+    val shownLines = LogExchange.stringCodec(event.contentType)
+    shownLines match {
+      // The registered renderer is associated with the event's string content type,
+      // so its value type is only known dynamically at this boundary.
+      case Some(renderer) =>
+        renderer.asInstanceOf[ShowLines[Any]].showLines(event.message).mkString("\n")
+      case None =>
+        event.message.toString
+    }
+  }
+}
+
+object TCLoggerAppender {
+  private def properties: ConsoleAppender.Properties =
+    ConsoleAppender("tc-logger-properties", sbt.internal.util.ConsoleOut.NullConsoleOut).properties
+
+  def muted(kind: String): Appender =
+    ConsoleAppender(s"teamcity-muted-$kind-${System.nanoTime()}", sbt.internal.util.ConsoleOut.NullConsoleOut)
 }

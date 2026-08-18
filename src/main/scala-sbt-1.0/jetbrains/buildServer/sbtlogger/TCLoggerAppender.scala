@@ -15,37 +15,46 @@
  * and limitations under the License.
  */
 
-package jetbrains.buildServer.sbtlogger
+package sbt.jetbrains.buildServer.sbtlogger
 
-import org.apache.logging.log4j.{Level, core}
-import org.apache.logging.log4j.core.appender.AbstractAppender
-import org.apache.logging.log4j.core.layout.PatternLayout
-import org.apache.logging.log4j.message.{ObjectMessage, ReusableObjectMessage}
-import sbt.internal.util.{ObjectEvent, StringEvent}
+import jetbrains.buildServer.sbtlogger.LogAppender
+import sbt.internal.util.{Appender, ConsoleAppender, ObjectEvent}
+import sbt.util.{Level, LogExchange, ShowLines}
 
+/** Native SBT 1.4+ appender boundary used by the shared TeamCity logger. */
+class TCLoggerAppender(appender: LogAppender, flowId: String, onActivity: () => Unit)
+  extends ConsoleAppender(s"tc-logger-$flowId", TCLoggerAppender.properties, ConsoleAppender.noSuppressedMessage) {
 
-class TCLoggerAppender(appender: LogAppender, scope: String) extends
-  AbstractAppender("tc-logger-" + scope, null, PatternLayout.createDefaultLayout(), true) {
-
-  private def appendMessageContent(level: Level, parameter: AnyRef): Unit = {
-    val message = parameter match {
-      case o: ObjectEvent[?] => o.message.toString
-      case o: StringEvent => o.message
-      case _ => parameter.toString
-    }
-    appendLog(level, message)
-  }
-
-  private def appendLog(level: Level, message: Any): Unit = {
-    appender.log(level.toString, message.toString, scope)
-  }
-
-  override def append(event: core.LogEvent): Unit = {
-    event.getMessage match {
-      case o: ObjectMessage =>
-        appendMessageContent(event.getLevel, o.getParameter)
-      case o: ReusableObjectMessage => appendMessageContent(event.getLevel, o.getParameter)
-      case _ => appendLog(event.getLevel, event.getMessage.getFormattedMessage)
+  override def appendLog(level: Level.Value, message: => String): Unit = {
+    val text = message
+    if (appender.shouldLog(text)) {
+      onActivity()
+      appender.log(level, text, flowId)
     }
   }
+
+  override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
+    val objectEvent = event
+    val text = renderObjectEvent(objectEvent)
+    if (appender.shouldLog(text)) {
+      onActivity()
+      appender.log(level, text, flowId)
+    }
+  }
+
+  private def renderObjectEvent(event: ObjectEvent[?]): String = {
+    LogExchange.stringCodec(event.contentType) match {
+      case Some(renderer) =>
+        renderer.asInstanceOf[ShowLines[Any]].showLines(event.message).mkString("\n")
+      case None => event.message.toString
+    }
+  }
+}
+
+object TCLoggerAppender {
+  private def properties: ConsoleAppender.Properties =
+    ConsoleAppender("tc-logger-properties", sbt.internal.util.ConsoleOut.NullConsoleOut).properties
+
+  def muted(kind: String): Appender =
+    ConsoleAppender(s"teamcity-muted-$kind-${System.nanoTime()}", sbt.internal.util.ConsoleOut.NullConsoleOut)
 }

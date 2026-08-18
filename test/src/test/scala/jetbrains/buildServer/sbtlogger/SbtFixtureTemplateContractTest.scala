@@ -115,6 +115,8 @@ class SbtFixtureTemplateContractTest {
     Set(
       "compilationStarted",
       "compilationFinished",
+      "blockOpened",
+      "blockClosed",
       "message",
       "testSuiteStarted",
       "testSuiteFinished",

@@ -21,23 +21,68 @@ import jetbrains.buildServer.sbtlogger.TCCompilerReporter.*
 import sbt.jetbrains.buildServer.sbtlogger.apiAdapter.{ReporterAdapter, toFilePosition}
 import xsbti.{Position, Problem}
 
-class TCCompilerReporter(delegate: xsbti.Reporter) extends ReporterAdapter(delegate) {
+import scala.collection.mutable
 
-  println(SbtCompileProblemInspectionTypeMessage.toMessageString)
+/**
+ * Reports compiler diagnostics through the active TeamCity compilation flow.
+ *
+ * The default SBT reporter writes the same diagnostic directly to the console.
+ * That output has no TeamCity flow ID, so it is rendered outside the compiler
+ * node and duplicates the structured message.  Keeping the problem state here
+ * lets Zinc observe errors and warnings normally while leaving TeamCity with one
+ * complete, correctly scoped diagnostic.
+ */
+class TCCompilerReporter(
+  delegate: xsbti.Reporter,
+  appender: TCLogAppender,
+  flowId: String,
+  ensureCompilationStarted: () => Unit
+) extends ReporterAdapter(delegate) {
 
-  override def reset(): Unit = delegate.reset()
-  override def hasErrors: Boolean = delegate.hasErrors
-  override def hasWarnings: Boolean = delegate.hasWarnings
-  override def printSummary(): Unit = delegate.printSummary()
-  override def problems(): Array[Problem] = delegate.problems()
-  override def comment(pos: Position, msg: String): Unit = delegate.comment(pos,msg)
+  private val reportedProblems = mutable.ArrayBuffer.empty[Problem]
+  private var inspectionTypeDeclared = false
 
-  override def log(problem: Problem): Unit = {
-    logInspection(problem)
-    delegateLog(problem)
+  override def reset(): Unit = synchronized {
+    reportedProblems.clear()
+    delegate.reset()
   }
 
-  def logInspection(problem: Problem): Unit = {
+  override def hasErrors: Boolean = synchronized {
+    reportedProblems.exists(_.severity() == xsbti.Severity.Error)
+  }
+
+  override def hasWarnings: Boolean = synchronized {
+    reportedProblems.exists(_.severity() == xsbti.Severity.Warn)
+  }
+
+  // SBT invokes this after compilation.  The structured diagnostics above are
+  // more useful than its generic "one error found" summary.
+  override def printSummary(): Unit = ()
+
+  override def problems(): Array[Problem] = synchronized {
+    reportedProblems.toArray
+  }
+
+  override def comment(pos: Position, msg: String): Unit = ()
+
+  override def log(problem: Problem): Unit = {
+    ensureCompilationStarted()
+    declareInspectionType()
+    synchronized {
+      reportedProblems += problem
+    }
+    logInspection(problem)
+    appender.log(logLevel(problem.severity()), formatProblem(problem), flowId)
+  }
+
+  private def declareInspectionType(): Unit = synchronized {
+    if (!inspectionTypeDeclared) {
+      println(SbtCompileProblemInspectionTypeMessage.toMessageString)
+      inspectionTypeDeclared = true
+    }
+  }
+
+  private def logInspection(problem: Problem): Unit = {
     inspectionMessage(problem).foreach { msg =>
       println(msg.toMessageString)
     }
@@ -56,6 +101,29 @@ object TCCompilerReporter {
 
       s"##teamcity[$name $attributeString]"
     }
+  }
+
+  private def logLevel(severity: xsbti.Severity): String = {
+    import xsbti.Severity.*
+    severity match {
+      case Info => "INFO"
+      case Warn => "WARN"
+      case Error => "ERROR"
+    }
+  }
+
+  private def formatProblem(problem: Problem): String = {
+    val position = problem.position()
+    val sourceLocation = toFilePosition(position).map { filePosition =>
+      s"${filePosition.sourcePath}:${filePosition.line}: ${problem.message()}"
+    }.getOrElse(problem.message())
+    val sourceLine = Option(position.lineContent()).filter(_.nonEmpty)
+    val pointer =
+      if (position.pointerSpace().isPresent) Some(position.pointerSpace().get() + "^")
+      else if (position.pointer().isPresent) Some((" " * position.pointer().get()) + "^")
+      else None
+
+    (Seq(sourceLocation) ++ sourceLine ++ pointer).mkString("\n")
   }
 
   def inspectionMessage(problem: Problem): Option[ServerMessage] = {

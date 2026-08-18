@@ -36,14 +36,14 @@ enum SbtTestJdk(val id: String, val majorVersion: Int) {
 /**
  * Runtime catalog for all SBT versions that the integration-test harness exercises.
  *
- * Fixture-root names express their minimum supported SBT version: `testdata/1.0` is the legacy SBT 1.0 corpus,
- * `testdata/1.3+` is the modern SBT 1 corpus, and `testdata/2.0+` is the SBT 2 corpus. A scenario whose support begins
+ * Fixture-root names express their minimum supported SBT version. `testdata/1.4+` is the modern SBT 1 corpus and
+ * `testdata/2.0+` is the SBT 2 corpus. A scenario whose support begins
  * later can select a dedicated root such as `testdata/1.9+`. Every fixture contains
  * [[org.jetbrains.sbt.integrationTests.SbtFixtureWorkspace.SbtVersionTemplate]], which is rendered with
  * [[SbtTestsRuntime.sbtVersion]] only in the isolated copied workspace.
  */
 object SbtTestsRuntime {
-  private[sbtlogger] val LatestSbt1_0Version = "1.0.4"
+  private[sbtlogger] val MinimumSbt1Version = "1.4.5"
   private[sbtlogger] val LatestSbt1_12Version = "1.12.15"
   private[sbtlogger] val LatestSbt2Version = "2.0.6"
 
@@ -96,20 +96,21 @@ object SbtTestsRuntime {
   // See the latest versions here:
   //  - https://www.scala-sbt.org/download/
   //  - https://github.com/sbt/sbt/releases
-  // This is deliberately a compatibility matrix, not a full SBT × JDK cross-product. The legacy baseline proves
-  // SBT 1.0/JDK 8 support; the current SBT 1.12 suite exercises both selected JDKs; and SBT 2 exercises JDK 17.
+  // This is deliberately a compatibility matrix, not a full SBT × JDK cross-product. The supported 1.4/JDK 8
+  // baseline proves the native-appender minimum; the current SBT 1.12 suite exercises both selected JDKs; and SBT 2
+  // exercises JDK 17.
   // Running all combinations adds time and maintenance cost without materially improving coverage.
-  val Sbt1_0_Jdk8: SbtTestsRuntime =
-    forSbtVersion(LatestSbt1_0Version, SbtTestJdk.Jdk8, "test/testdata/1.0")
+  val Sbt1_4_Jdk8: SbtTestsRuntime =
+    forSbtVersion(MinimumSbt1Version, SbtTestJdk.Jdk8, "test/testdata/1.4+")
   val Sbt1_12_Jdk8: SbtTestsRuntime =
-    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk8, "test/testdata/1.3+")
+    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk8, "test/testdata/1.4+")
   val Sbt1_12_Jdk17: SbtTestsRuntime =
-    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk17, "test/testdata/1.3+")
+    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk17, "test/testdata/1.4+")
   val Sbt2_0_Jdk17: SbtTestsRuntime =
     forSbtVersion(LatestSbt2Version, SbtTestJdk.Jdk17, "test/testdata/2.0+")
 
   val All: Seq[SbtTestsRuntime] = Seq(
-    Sbt1_0_Jdk8,
+    Sbt1_4_Jdk8,
     Sbt1_12_Jdk8,
     Sbt1_12_Jdk17,
     Sbt2_0_Jdk17

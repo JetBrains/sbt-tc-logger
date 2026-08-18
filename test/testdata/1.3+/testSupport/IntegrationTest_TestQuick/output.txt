@@ -1,7 +1,0 @@
-##teamcity\[testSuiteStarted name='thisis.a.test.IntegrationATest' flowId='<flowId1>'\]
-##teamcity\[testStarted name='thisis.a.test.IntegrationATest.testFails' captureStandardOutput='true' flowId='<flowId1>'\]
-##teamcity\[testFailed name='thisis.a.test.IntegrationATest.testFails' details='.*' flowId='<flowId1>'\]
-##teamcity\[testFinished name='thisis.a.test.IntegrationATest.testFails' duration='.*' flowId='<flowId1>'\]
-##teamcity\[testStarted name='thisis.a.test.IntegrationATest.testPasses' captureStandardOutput='true' flowId='<flowId1>'\]
-##teamcity\[testFinished name='thisis.a.test.IntegrationATest.testPasses' duration='.*' flowId='<flowId1>'\]
-##teamcity\[testSuiteFinished name='thisis.a.test.IntegrationATest' flowId='<flowId1>'\]

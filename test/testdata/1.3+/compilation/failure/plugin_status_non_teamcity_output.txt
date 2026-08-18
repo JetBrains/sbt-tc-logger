@@ -1,2 +1,0 @@
-Plugin sbt-teamcity-logger was loaded.
-TeamCity was not discovered\. Logger was switched off\.

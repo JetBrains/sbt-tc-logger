@@ -8,13 +8,13 @@ import java.io.File
 class SbtTestsRuntimeTest {
 
   @Test
-  def forSbtVersionDerivesExplicitSbt1AndJdkMetadata(): Unit = {
+  def forSbtVersionDerivesExplicitSbt14AndJdkMetadata(): Unit = {
     assertRuntime(
-      SbtTestsRuntime.forSbtVersion("1.0.4", SbtTestJdk.Jdk8, "test/testdata/1.0"),
-      id = "1.0.4-jdk8",
-      sbtVersion = "1.0.4",
+      SbtTestsRuntime.forSbtVersion("1.4.5", SbtTestJdk.Jdk8, "test/testdata/1.4+"),
+      id = "1.4.5-jdk8",
+      sbtVersion = "1.4.5",
       jdk = SbtTestJdk.Jdk8,
-      testDataRelativePath = "test/testdata/1.0",
+      testDataRelativePath = "test/testdata/1.4+",
       sbtBinaryVersion = "1.0",
       launcherVersion = "1.12.15"
     )
@@ -35,7 +35,7 @@ class SbtTestsRuntimeTest {
 
   @Test
   def forSbtVersionAcceptsPrereleaseVersions(): Unit = {
-    Assert.assertEquals("1.12.15", SbtTestsRuntime.forSbtVersion("1.13.0-RC1", SbtTestJdk.Jdk17, "test/testdata/1.3+").launcherVersion)
+    Assert.assertEquals("1.12.15", SbtTestsRuntime.forSbtVersion("1.13.0-RC1", SbtTestJdk.Jdk17, "test/testdata/1.4+").launcherVersion)
     Assert.assertEquals("2.0.6", SbtTestsRuntime.forSbtVersion("2.1.0-M2", SbtTestJdk.Jdk17, "test/testdata/2.0+").launcherVersion)
   }
 
@@ -43,9 +43,9 @@ class SbtTestsRuntimeTest {
   def catalogCoversTheSelectedRuntimeMatrix(): Unit = {
     Assert.assertEquals(
       Seq(
-        ("1.0.4-jdk8", "1.0.4", SbtTestJdk.Jdk8, "test/testdata/1.0"),
-        ("1.12.15-jdk8", "1.12.15", SbtTestJdk.Jdk8, "test/testdata/1.3+"),
-        ("1.12.15-jdk17", "1.12.15", SbtTestJdk.Jdk17, "test/testdata/1.3+"),
+        ("1.4.5-jdk8", "1.4.5", SbtTestJdk.Jdk8, "test/testdata/1.4+"),
+        ("1.12.15-jdk8", "1.12.15", SbtTestJdk.Jdk8, "test/testdata/1.4+"),
+        ("1.12.15-jdk17", "1.12.15", SbtTestJdk.Jdk17, "test/testdata/1.4+"),
         ("2.0.6-jdk17", "2.0.6", SbtTestJdk.Jdk17, "test/testdata/2.0+")
       ),
       SbtTestsRuntime.All.map(runtime => (runtime.id, runtime.sbtVersion, runtime.jdk, runtime.testDataRelativePath))

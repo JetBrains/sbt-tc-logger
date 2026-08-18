@@ -18,32 +18,21 @@
 package sbt.jetbrains.buildServer.sbtlogger
 
 import jetbrains.buildServer.sbtlogger.TCCompilerReporter.FilePosition
-import jetbrains.buildServer.sbtlogger.{TCCompilerReporter, TCLogAppender, TCLogger, TCLoggerAppender}
+import jetbrains.buildServer.sbtlogger.{TCCompilerReporter, TCLogAppender}
 import sbt.{Def, Reference, Scope, Select, Zero}
 import xsbti.Problem
-
-import scala.collection.mutable
 
 object apiAdapter {
 
   type SessionSettings = sbt.internal.SessionSettings
-  type ExtraLogger = org.apache.logging.log4j.core.Appender
 
   def projectScope(project: Reference): Scope = Scope(Select(project), Zero, Zero, Zero)
 
-  def extraLogger(tcLoggers: mutable.Map[String, TCLogger],
-                  tcLogAppender: TCLogAppender,
-                  scope: String): ExtraLogger = {
-    val appender = new TCLoggerAppender(tcLogAppender, scope)
-    appender.start()
-    appender
-  }
-
-  def reporterSettings(tcLogAppender: TCLogAppender): Def.Setting[?] = {
+  def reporterSettings(tcLogAppender: TCLogAppender, flowId: String, ensureCompilationStarted: () => Unit): Def.Setting[?] = {
     import sbt.Keys.compile
     Unhide.compilerReporter in compile := {
       val defaultReporter = (Unhide.compilerReporter in compile).value
-      new TCCompilerReporter(defaultReporter)
+      new TCCompilerReporter(defaultReporter, tcLogAppender, flowId, ensureCompilationStarted)
     }
   }
 

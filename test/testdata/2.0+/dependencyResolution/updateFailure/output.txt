@@ -1,0 +1,3 @@
+##teamcity\[blockOpened name='Dependency resolution \|\[[^|]+\|\]' flowId='<flowId1>'\]
+##teamcity\[blockClosed name='Dependency resolution' flowId='<flowId1>'\]
+##teamcity\[message status='ERROR' flowId='<flowId1>' text='\|\[error\|\].*deliberately-missing-update-dependency.*'\]
