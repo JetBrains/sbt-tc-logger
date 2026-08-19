@@ -88,7 +88,9 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
   def compilation_SuccessReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/success",
-      sbtCommands = Seq("compile")
+      sbtCommands = Seq("clean", "compile"),
+      sbtOptions = Seq("--info"),
+      isolateSbtServer = true
     ))
 
   // Dependency-resolution presentation is opt-in. A regular `update` must not leave an empty TeamCity block.

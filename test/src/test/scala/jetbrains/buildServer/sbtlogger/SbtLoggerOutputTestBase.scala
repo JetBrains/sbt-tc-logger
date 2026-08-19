@@ -5,7 +5,6 @@ import org.jetbrains.sbt.integrationTests.*
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 
 import java.io.File
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Base runner for sbt TeamCity logger output integration tests.
@@ -149,16 +148,19 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
   ): SbtProcessRunner.ProcessRunResult = {
     val root = IntegrationTestLayout.repoRoot()
     val sourceWorkingDir = SbtFixtureWorkspace.sourceFixtureDirectory(root, fixtureRootRelativePath, testRepo)
+    val isolatedSessionId = Option.when(isolateSbtServer)(s"detail-${java.util.UUID.randomUUID()}")
+    // SBT 2 task-cache keys include the fixture's work directory. An isolated server must use an isolated
+    // work directory too, otherwise a prior run of the same fixture can satisfy `compile` without invoking Zinc.
+    val workspaceId = isolatedSessionId.fold(testRepo)(sessionId => s"$testRepo-$sessionId")
     val workingDir = SbtFixtureWorkspace.copyFixtureToWorkDirectory(
       root,
       runtime.id,
-      testRepo,
+      workspaceId,
       sourceWorkingDir,
       runtime.sbtVersion
     )
     val plugin = SbtLoggerPlugin.UnderTest
     val pluginJar = plugin.packagedJar(root, runtime.sbtBinaryVersion)
-    val isolatedSessionId = Option.when(isolateSbtServer)(s"detail-${SbtLoggerOutputTestBase.isolatedSbtSessionCounter.incrementAndGet()}")
     val sbtGlobalBase = isolatedSessionId match {
       case Some(sessionId) => SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion, sessionId)
       case None => SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion)
@@ -268,8 +270,4 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     else
       newPathEntry
   }
-}
-
-private object SbtLoggerOutputTestBase {
-  val isolatedSbtSessionCounter = new AtomicInteger
 }
