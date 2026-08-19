@@ -3,14 +3,19 @@ package jetbrains.buildServer.sbtlogger
 import jetbrains.buildServer.sbtlogger.utils.{AssertionGroup, ExpectationSet, FlowScope, IntegrationTestLayout, SbtCompilationLifecycleExpectation, SbtDependencyLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, TeamCityOutputNormaliser}
 import org.jetbrains.sbt.integrationTests.*
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
+import org.junit.experimental.categories.Category
 
 import java.io.File
+
+/** Marks suites that launch a nested SBT runtime and therefore belong to the dedicated compatibility matrix. */
+trait SbtRuntimeMatrix
 
 /**
  * Base runner for sbt TeamCity logger output integration tests.
  *
  * @param runtime sbt runtime used by every case in this suite instance.
  */
+@Category(Array(classOf[SbtRuntimeMatrix]))
 abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
 
   protected final def detailedDependencyResolution_CoursierOutcomesReported(): Unit = {

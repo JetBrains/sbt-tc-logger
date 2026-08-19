@@ -175,3 +175,5 @@ addCommandAlias("testSbt1_4_Jdk8", ";project integrationTests;testOnly jetbrains
 addCommandAlias("testSbt1_12_Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_12_Jdk8")
 addCommandAlias("testSbt1_12_Jdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_12_Jdk17 jetbrains.buildServer.sbtlogger.SbtDetailedDependencyResolution_TestSbt1_12_Jdk17")
 addCommandAlias("testSbt2_0_Jdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt2_0_Jdk17 jetbrains.buildServer.sbtlogger.SbtDetailedDependencyResolution_TestSbt2_0_Jdk17")
+// JUnit's category filter keeps every non-matrix integration test in the shared auxiliary bucket.
+addCommandAlias("testOther", ";project integrationTests;testOnly -- --exclude-categories=jetbrains.buildServer.sbtlogger.SbtRuntimeMatrix")
