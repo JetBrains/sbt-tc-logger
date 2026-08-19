@@ -1,2 +1,6 @@
-Plugin sbt-teamcity-logger was loaded.
-TeamCity version=\'9.0.TEST\'
+^TeamCity sbt logger$
+^  Version: (?!unknown$).+$
+^  TeamCity: 9\.0\.TEST$
+^  Status: active$
+^  Preserve SBT console: false \(default\)$
+^  Detailed dependency resolution: false \(default\)$

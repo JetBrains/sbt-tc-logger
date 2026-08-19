@@ -220,13 +220,28 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     )))
 
   def tcLoggerStatusCommand: Command = Command.command("sbt-teamcity-logger") { state =>
-    println("Plugin sbt-teamcity-logger was loaded.")
+    println("TeamCity sbt logger")
+    println(s"  Version: $loggerVersion")
     tcVersion match {
-      case Some(version) => println(s"TeamCity version='$version'")
-      case None => println("TeamCity was not discovered. Logger was switched off.")
+      case Some(version) =>
+        println(s"  TeamCity: $version")
+        println("  Status: active")
+      case None =>
+        println("  TeamCity: not detected")
+        println("  Status: inactive")
     }
+    println(s"  Preserve SBT console: ${booleanSetting(PreserveConsoleProperty, preserveConsole)}")
+    println(s"  Detailed dependency resolution: ${booleanSetting(DetailedDependencyResolutionProperty, detailedDependencyResolution)}")
     state
   }
+
+  private def loggerVersion: String =
+    Option(getClass.getPackage)
+      .flatMap(loggerPackage => Option(loggerPackage.getImplementationVersion))
+      .getOrElse("unknown")
+
+  private def booleanSetting(property: String, value: Boolean): String =
+    s"$value${if (System.getProperty(property) == null) " (default)" else ""}"
 
   private def getScopeId(scope: ScopeAxis[Reference]): String = scope.hashCode().toString
 
