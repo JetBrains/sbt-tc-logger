@@ -143,6 +143,29 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       expectNoTeamCityMessages = true
     ))
 
+  // Observer mode must keep the default compiler reporter while still publishing inspections, without compiler blocks.
+  @Test
+  def compilation_MinimalModePreservesDefaultOutputAndReportsInspections(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "logging/preserveConsole",
+      sbtCommands = Seq("compile"),
+      sbtOptions = Seq("-Dteamcity.sbt.logger.preserveConsole=true"),
+      failurePropagation = compilationFailurePropagation,
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
+    ))
+
+  // The default test-result logger is retained in observer mode, while the TeamCity test listener remains active.
+  @Test
+  def testReporting_MinimalModePreservesDefaultResultLoggerAndReportsEvents(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "testSupport/JUnit_PassAndFailure",
+      sbtCommands = Seq("test"),
+      sbtOptions = Seq("-Dteamcity.sbt.logger.preserveConsole=true"),
+      expectations = ExpectationSet.singleFile("minimal-output.txt"),
+      expectedExitCode = SbtExitCodeExpectation.NonZero,
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
+    ))
+
   // Verifies that compilation failures from both aggregated subprojects are reported.
   @Test
   def compilation_MultiProject_FailuresReported(): Unit =
