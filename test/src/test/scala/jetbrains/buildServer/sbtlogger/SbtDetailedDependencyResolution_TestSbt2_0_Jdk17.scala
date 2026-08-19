@@ -2,8 +2,8 @@ package jetbrains.buildServer.sbtlogger
 
 import org.junit.Test
 
-/** Focused opt-in Coursier reporting contract for the latest sbt 1.x line. */
-class SbtDetailedDependencyResolutionTest_1_12_Jdk17 extends SbtLoggerOutputTestBase(SbtTestsRuntime.Sbt1_12_Jdk17) {
+/** Focused opt-in Coursier reporting contract for sbt 2.x. */
+class SbtDetailedDependencyResolution_TestSbt2_0_Jdk17 extends SbtLoggerOutputTestBase(SbtTestsRuntime.Sbt2_0_Jdk17) {
   @Test
   def outcomesReported(): Unit = detailedDependencyResolution_CoursierOutcomesReported()
 
