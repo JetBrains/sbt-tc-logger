@@ -22,24 +22,20 @@ import sbt.internal.util.{Appender, ConsoleAppender, ObjectEvent}
 import sbt.util.{Level, LogExchange, ShowLines}
 
 /** Native SBT 1.4+ appender boundary used by the shared TeamCity logger. */
-class TCLoggerAppender(appender: LogAppender, flowId: String, onActivity: () => Unit)
+class TCLoggerAppender(appender: LogAppender, flowId: String, isCompilerTask: Boolean)
   extends ConsoleAppender(s"tc-logger-$flowId", TCLoggerAppender.properties, ConsoleAppender.noSuppressedMessage) {
 
   override def appendLog(level: Level.Value, message: => String): Unit = {
     val text = message
-    if (appender.shouldLog(text)) {
-      onActivity()
-      appender.log(level, text, flowId)
-    }
+    if (isCompilerTask) appender.logCompilerTask(level, text, flowId)
+    else appender.log(level, text, flowId)
   }
 
   override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
     val objectEvent = event
     val text = renderObjectEvent(objectEvent)
-    if (appender.shouldLog(text)) {
-      onActivity()
-      appender.log(level, text, flowId)
-    }
+    if (isCompilerTask) appender.logCompilerTask(level, text, flowId)
+    else appender.log(level, text, flowId)
   }
 
   private def renderObjectEvent(event: ObjectEvent[?]): String = {

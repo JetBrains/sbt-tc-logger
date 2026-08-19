@@ -1,3 +1,1 @@
 \[error\].*BrokenHelloWorld\.scala:4:.*[Ii]nvalid literal number
-one error found
-\[error\].*Compilation failed

@@ -28,33 +28,44 @@ class TCLogAppender extends LogAppender {
   private val activeDependencyFlows = ConcurrentHashMap.newKeySet[String]()
   private val directDependencyFlows = ConcurrentHashMap.newKeySet[String]()
   private val activeCompilationFlows = ConcurrentHashMap.newKeySet[String]()
-
-  override def shouldLog(message: String): Boolean = !isRedundantCompilationFailureSummary(message)
+  private val compilerProblemCounts = new ConcurrentHashMap[String, CompilerProblemCounts]()
 
   def log(level: sbt.Level.Value, message: => String, flowId: String): Unit = {
     val text = message
     val status = discoverStatus(level)
 
-    if (shouldLog(text)) {
-      if (sbt.Level.Error.equals(level)){
-        processSpecialErrorsMessage(text, flowId)
-      }
-
-      printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> withLevelPrefix(level.toString, text))
+    if (sbt.Level.Error.equals(level)){
+      processSpecialErrorsMessage(text, flowId)
     }
+
+    printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> withLevelPrefix(level.toString, text))
   }
 
   def log(level: String, message: => String, flowId: String): Unit = {
     val text = message
     val status = discoverStatus(level)
 
-    if (shouldLog(text)) {
-      if ("ERROR".equals(status)){
-        processSpecialErrorsMessage(text, flowId)
-      }
-
-      printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> withLevelPrefix(level, text))
+    if ("ERROR".equals(status)){
+      processSpecialErrorsMessage(text, flowId)
     }
+
+    printServerMessage("message", "status" -> status, "flowId" -> flowId, "text" -> withLevelPrefix(level, text))
+  }
+
+  def logCompilerTask(level: sbt.Level.Value, message: => String, compilerFlowId: String): Unit = {
+    val text = message
+    if (activeCompilationFlows.contains(compilerFlowId)) log(level, text, compilerFlowId)
+    else logUngrouped(level, text)
+  }
+
+  /**
+   * The default Zinc reporter owns a typed count of warnings and errors.  The
+   * TeamCity reporter replaces its formatted diagnostics, so retain that count
+   * here and render the same summary only after the compiler lifecycle closes.
+   */
+  def recordCompilerProblem(flowId: String, problem: xsbti.Problem): Unit = {
+    val counts = compilerProblemCounts.computeIfAbsent(flowId, _ => new CompilerProblemCounts)
+    counts.record(problem.severity())
   }
 
 
@@ -84,14 +95,6 @@ class TCLogAppender extends LogAppender {
       testFailed(testName, message, flowId)
     }
   }
-
-  /**
-   * SBT emits this generic summary after the compiler lifecycle has closed. The
-   * structured reporter has already sent the actual source diagnostics, so a
-   * TeamCity message here would only duplicate—and mis-scope—the failure.
-   */
-  private def isRedundantCompilationFailureSummary(message: String): Boolean =
-    message.endsWith("Compilation failed")
 
   def dependencyBlockStart(flowId: String, projectName: Option[String], inTest: Boolean): Unit = {
     if (activeDependencyFlows.add(flowId)) {
@@ -129,6 +132,7 @@ class TCLogAppender extends LogAppender {
 
   def compilationBlockStart(flowId: String, projectName: Option[String]): Unit = {
     if (activeCompilationFlows.add(flowId)) {
+      compilerProblemCounts.remove(flowId)
       printServerMessage("compilationStarted", "compiler" -> compilerName(projectName), "flowId" -> flowId)
     }
   }
@@ -136,11 +140,13 @@ class TCLogAppender extends LogAppender {
   def compilationBlockEnd(flowId: String, projectName: Option[String]): Unit = {
     if (activeCompilationFlows.remove(flowId)) {
       printServerMessage("compilationFinished", "compiler" -> compilerName(projectName), "flowId" ->  flowId)
+      flushCompilerSummary(flowId)
     }
   }
 
   def compilationTestBlockStart(flowId: String, projectName: Option[String]): Unit = {
     if (activeCompilationFlows.add(flowId)) {
+      compilerProblemCounts.remove(flowId)
       printServerMessage("compilationStarted", "compiler" -> compilerName(projectName, inTest = true), "flowId" -> flowId)
     }
   }
@@ -148,6 +154,20 @@ class TCLogAppender extends LogAppender {
   def compilationTestBlockEnd(flowId: String, projectName: Option[String]): Unit = {
     if (activeCompilationFlows.remove(flowId)) {
       printServerMessage("compilationFinished", "compiler" -> compilerName(projectName, inTest = true), "flowId" -> flowId)
+      flushCompilerSummary(flowId)
+    }
+  }
+
+  private def logUngrouped(level: sbt.Level.Value, text: String): Unit = {
+    val status = discoverStatus(level)
+    printServerMessage("message", "status" -> status, "text" -> withLevelPrefix(level.toString, text))
+  }
+
+  private def flushCompilerSummary(flowId: String): Unit = {
+    val counts = compilerProblemCounts.remove(flowId)
+    if (counts != null) {
+      counts.warningSummary.foreach(summary => logUngrouped(sbt.Level.Warn, summary))
+      counts.errorSummary.foreach(summary => logUngrouped(sbt.Level.Error, summary))
     }
   }
 
@@ -206,5 +226,37 @@ class TCLogAppender extends LogAppender {
       case (k, v) => s"$k='${MapSerializerUtil.escapeStr(v,MapSerializerUtil.STD_ESCAPER2)}'"
     }.mkString(" ")
     println(s"##teamcity[$messageName $attributeString]")
+  }
+}
+
+private final class CompilerProblemCounts {
+  private var warnings = 0
+  private var errors = 0
+
+  def record(severity: xsbti.Severity): Unit = synchronized {
+    severity match {
+      case xsbti.Severity.Warn => warnings += 1
+      case xsbti.Severity.Error => errors += 1
+      case _ =>
+    }
+  }
+
+  def warningSummary: Option[String] = synchronized {
+    if (warnings > 0) Some(countElementsAsString(warnings, "warning") + " found") else None
+  }
+
+  def errorSummary: Option[String] = synchronized {
+    if (errors > 0) Some(countElementsAsString(errors, "error") + " found") else None
+  }
+
+  private def countElementsAsString(count: Int, noun: String): String = {
+    val quantity = count match {
+      case 1 => "one"
+      case 2 => "two"
+      case 3 => "three"
+      case 4 => "four"
+      case _ => count.toString
+    }
+    s"$quantity $noun${if (count == 1) "" else "s"}"
   }
 }
