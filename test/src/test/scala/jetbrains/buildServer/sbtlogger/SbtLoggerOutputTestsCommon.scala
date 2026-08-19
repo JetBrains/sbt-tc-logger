@@ -14,13 +14,27 @@ import org.junit.Test
  */
 abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtLoggerOutputTestBase(runtime) {
 
-  // Verifies that the plugin reports loading and detects the TeamCity version.
+  // Verifies that the status command reports the loaded artifact and its default configuration.
   @Test
   def pluginStatus_LoadedInTeamCity(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/failure",
       sbtCommands = Seq("sbt-teamcity-logger"),
       expectations = ExpectationSet.singleFile("plugin_status_output.txt")
+    ))
+
+  // Verifies that the status command exposes values explicitly supplied as JVM properties.
+  @Test
+  def pluginStatus_ReportsConfiguredLoggerOptions(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/failure",
+      sbtCommands = Seq("sbt-teamcity-logger"),
+      sbtOptions = Seq(
+        "-Dteamcity.sbt.logger.preserveConsole=true",
+        "-Dteamcity.sbt.logger.detailedDependencyResolution=true"
+      ),
+      expectations = ExpectationSet.singleFile("plugin_status_configured_options_output.txt"),
+      isolateSbtServer = true
     ))
 
   // Verifies that the plugin disables itself and emits no service messages outside TeamCity.

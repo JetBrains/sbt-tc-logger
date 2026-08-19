@@ -1,2 +1,6 @@
-Plugin sbt-teamcity-logger was loaded.
-TeamCity was not discovered\. Logger was switched off\.
+^TeamCity sbt logger$
+^  Version: (?!unknown$).+$
+^  TeamCity: not detected$
+^  Status: inactive$
+^  Preserve SBT console: false \(default\)$
+^  Detailed dependency resolution: false \(default\)$
