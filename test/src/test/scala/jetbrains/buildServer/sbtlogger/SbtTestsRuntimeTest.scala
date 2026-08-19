@@ -62,6 +62,8 @@ class SbtTestsRuntimeTest {
     val stateDirectories = SbtTestsRuntime.All.flatMap { runtime =>
       Seq(
         SbtIntegrationTestLayout.fixtureWorkBase(root, runtime.id),
+        SbtIntegrationTestLayout.sbtBootDirectory(root, runtime.id),
+        SbtIntegrationTestLayout.sbtCoursierHome(root, runtime.id),
         SbtIntegrationTestLayout.sbtIvyHome(root, runtime.id),
         SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion),
         SbtIntegrationTestLayout.sbtGlobalServerDirectory(runtime.id, runtime.launcherVersion)
@@ -69,6 +71,50 @@ class SbtTestsRuntimeTest {
     }
 
     Assert.assertEquals(stateDirectories.size, stateDirectories.distinct.size)
+  }
+
+  @Test
+  def integrationTestCacheDirectoriesCanBeRelocatedOutsideTarget(): Unit = {
+    val bootProperty = SbtIntegrationTestLayout.IntegrationTestBootDirectoryProperty
+    val coursierProperty = SbtIntegrationTestLayout.IntegrationTestCoursierHomeProperty
+    val ivyProperty = SbtIntegrationTestLayout.IntegrationTestIvyHomeProperty
+    val previousBootValue = Option(System.getProperty(bootProperty))
+    val previousCoursierValue = Option(System.getProperty(coursierProperty))
+    val previousIvyValue = Option(System.getProperty(ivyProperty))
+    val bootCacheRoot = new File("teamcity-caches/integration-test-sbt-boot")
+    val coursierCacheRoot = new File("teamcity-caches/integration-test-coursier")
+    val ivyCacheRoot = new File("teamcity-caches/integration-test-ivy")
+
+    try {
+      System.setProperty(bootProperty, bootCacheRoot.getPath)
+      System.setProperty(coursierProperty, coursierCacheRoot.getPath)
+      System.setProperty(ivyProperty, ivyCacheRoot.getPath)
+      Assert.assertEquals(
+        new File(bootCacheRoot, "1.12.15-jdk17").getAbsolutePath,
+        SbtIntegrationTestLayout.sbtBootDirectory(new File("repository-root"), "1.12.15-jdk17").getPath
+      )
+      Assert.assertEquals(
+        new File(coursierCacheRoot, "1.12.15-jdk17").getAbsolutePath,
+        SbtIntegrationTestLayout.sbtCoursierHome(new File("repository-root"), "1.12.15-jdk17").getPath
+      )
+      Assert.assertEquals(
+        new File(ivyCacheRoot, "1.12.15-jdk17").getAbsolutePath,
+        SbtIntegrationTestLayout.sbtIvyHome(new File("repository-root"), "1.12.15-jdk17").getPath
+      )
+    } finally {
+      previousBootValue match {
+        case Some(value) => System.setProperty(bootProperty, value)
+        case None => System.clearProperty(bootProperty)
+      }
+      previousCoursierValue match {
+        case Some(value) => System.setProperty(coursierProperty, value)
+        case None => System.clearProperty(coursierProperty)
+      }
+      previousIvyValue match {
+        case Some(value) => System.setProperty(ivyProperty, value)
+        case None => System.clearProperty(ivyProperty)
+      }
+    }
   }
 
   @Test

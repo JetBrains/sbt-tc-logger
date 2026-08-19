@@ -93,6 +93,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val sbtVersion = Version(runtime.sbtVersion)
     val javaHome = CurrentEnvironment.javaHomeFor(runtime.jdk)
     val javaBin = CurrentEnvironment.javaExecutableFor(runtime.jdk)
+    val sbtBootDirectory = SbtIntegrationTestLayout.sbtBootDirectory(root, runtime.id)
+    val sbtCoursierHome = SbtIntegrationTestLayout.sbtCoursierHome(root, runtime.id)
     val sbtIvyHome = SbtIntegrationTestLayout.sbtIvyHome(root, runtime.id)
 
     val sbtGlobalServerDirectory = Option.when(sbtVersion >= Version("1.4.0")) {
@@ -105,6 +107,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     val launcherOptions = testCase.sbtOptions.filterNot(_.startsWith("-D"))
     val commandLinePrefix = Seq(javaBin, "-Xmx512m") ++ scenarioJvmProperties ++ Seq(
       s"-Dsbt.global.base=${sbtGlobalBase.getAbsolutePath}",
+      s"-Dsbt.boot.directory=${sbtBootDirectory.getAbsolutePath}",
+      s"-Dsbt.coursier.home=${sbtCoursierHome.getAbsolutePath}",
       s"-Dsbt.ivy.home=${sbtIvyHome.getAbsolutePath}",
       "-Dsbt.log.noformat=true",
       "-jar",
@@ -122,7 +126,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
         Seq("sbt-teamcity-logger") ++
         testCase.behaviorCommands
 
-    val environmentVariablesToRemove = if (testCase.teamCityEnvironment) Seq.empty else Seq("TEAMCITY_VERSION")
+    val environmentVariablesToRemove = Seq("COURSIER_CACHE") ++
+      Option.when(!testCase.teamCityEnvironment)("TEAMCITY_VERSION")
     val runResult = SbtProcessRunner.runSbtProcess(
       projectDir = workingDir,
       commandLinePrefix = commandLinePrefix,
