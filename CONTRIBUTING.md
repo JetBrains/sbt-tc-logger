@@ -52,6 +52,8 @@ Useful targeted commands:
 
 `sbt testSbt2_0_Jdk17`
 
+`sbt testOther`
+
 The integration matrix is intentionally limited rather than a full SBT × JDK cross-product:
 
 | JUnit class | Nested SBT | JDK | Fixture roots |
@@ -63,7 +65,7 @@ The integration matrix is intentionally limited rather than a full SBT × JDK cr
 
 This balance makes the supported SBT 1.4 baseline, current SBT 1 on both supported JDKs, and current SBT 2 meaningful and visible while avoiding the runtime and maintenance cost of combinations that do not add useful compatibility evidence. Future JDK changes intentionally rename the affected concrete class and alias.
 
-The aliases select concrete SBT/JDK matrix entries. The JaCoCo scenario runs on the SBT 1.12 classes through `1.9+` and on SBT 2.0 through `2.0+`; `publishTest` remains dormant.
+The versioned aliases select concrete SBT/JDK matrix entries. `testOther` uses JUnit's category filter to run every auxiliary integration test while excluding the runtime-matrix suites, which inherit the `SbtRuntimeMatrix` category from their shared base class. The JaCoCo scenario runs on the SBT 1.12 classes through `1.9+` and on SBT 2.0 through `2.0+`; `publishTest` remains dormant.
 
 The TeamCity job must require both `env.JDK_1_8_0` and `env.JDK_17_0` before it is scheduled. This matches the explicit matrix and prevents a Java-8 entry from reaching the harness on an incompatible agent.
 
