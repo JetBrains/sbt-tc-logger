@@ -129,34 +129,30 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   /** Compile lifecycle is a presentation feature and is deliberately absent in preserve-console observer mode. */
   private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[_]] = Seq(
-    (compile in Compile).toSettingKey ~= { original =>
-      Def.taskDyn {
-        // Start before evaluating the original task so that compile-input and compiler log messages share this flow.
-        tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))
-        val result = original.result.value
-        Def.task {
-          tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName))
-          result match {
-            case Value(value) => value
-            case Inc(cause) => throw cause
-          }
+    compile in Compile := Def.taskDyn {
+      // Start before evaluating the original task so that compile-input and compiler log messages share this flow.
+      tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))
+      val result = (compile in Compile).result.value
+      Def.task {
+        tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName))
+        result match {
+          case Value(value) => value
+          case Inc(cause) => throw cause
         }
       }
-    },
-    (compile in Test).toSettingKey ~= { original =>
-      Def.taskDyn {
-        // See the Compile wrapper above: Test compilation has the same task/logging structure.
-        tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))
-        val result = original.result.value
-        Def.task {
-          tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName))
-          result match {
-            case Value(value) => value
-            case Inc(cause) => throw cause
-          }
+    }.value,
+    compile in Test := Def.taskDyn {
+      // See the Compile wrapper above: Test compilation has the same task/logging structure.
+      tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))
+      val result = (compile in Test).result.value
+      Def.task {
+        tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName))
+        result match {
+          case Value(value) => value
+          case Inc(cause) => throw cause
         }
       }
-    }
+    }.value
   )
 
   /**
