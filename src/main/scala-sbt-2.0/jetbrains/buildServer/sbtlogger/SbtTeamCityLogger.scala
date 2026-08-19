@@ -12,10 +12,13 @@ package jetbrains.buildServer.sbtlogger
 
 import sbt.Keys.*
 import sbt.internal.LogManager
+import sbt.internal.util.AttributeKey
 import sbt.jetbrains.buildServer.sbtlogger.TCLoggerAppender
 import sbt.jetbrains.buildServer.sbtlogger.apiAdapter.*
 import sbt.plugins.JvmPlugin
 import sbt.{Def, *}
+import sbt.util.Level
+import lmcoursier.definitions.CacheLogger
 
 /** Native SBT 2 implementation of the TeamCity logger. */
 object SbtTeamCityLogger extends AutoPlugin with (State => State) {
@@ -24,6 +27,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   override def trigger: PluginTrigger = allRequirements
 
   private val PreserveConsoleProperty = "teamcity.sbt.logger.preserveConsole"
+  private val DetailedDependencyResolutionProperty = "teamcity.sbt.logger.detailedDependencyResolution"
   private val ResolverTaskNames = Set(
     "update",
     "updateClassifiers",
@@ -35,7 +39,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     "ivyConfiguration",
     "ivySbt"
   )
-  private val CompilerTaskNames = Set("compileIncremental")
+  private val CompilerTaskKeys: Set[AttributeKey[?]] = Set(compile.key, compileIncremental.key)
 
   def apply(state: State): State = {
     if (System.getProperty(TC_LOGGER_PROPERTY_NAME) == "reloaded") return state
@@ -46,7 +50,11 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
       val project = projectScope(projectRef)
       transformSettings(project, projectRef.build, rootProject, SbtTeamCityLogger.projectSettings) ++
         (if tcFound then transformSettings(project, projectRef.build, rootProject, compilerReporterSettings(getScopeId(project.project), projectRef.project)) else Nil) ++
-        (if tcFound && !preserveConsole then transformSettings(project, projectRef.build, rootProject, lifecycleSettings(getScopeId(project.project), projectRef.project)) else Nil)
+        (if tcFound && !preserveConsole then
+          val scopeId = getScopeId(project.project)
+          transformSettings(project, projectRef.build, rootProject, lifecycleSettings(scopeId, projectRef.project)) ++
+            transformSettings(project, projectRef.build, rootProject, detailedDependencySettings(projectRef, projectRef.project, extracted, state))
+        else Nil)
     }
     reapply(session.appendRaw(transformedProjectSettings), state)
   }
@@ -62,6 +70,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   val tcVersion: Option[String] = sys.env.get("TEAMCITY_VERSION")
   val tcFound: Boolean = tcVersion.isDefined
   val preserveConsole: Boolean = java.lang.Boolean.getBoolean(PreserveConsoleProperty)
+  val detailedDependencyResolution: Boolean = java.lang.Boolean.getBoolean(DetailedDependencyResolutionProperty)
 
   val TC_LOGGER_PROPERTY_NAME = "TEAMCITY_SBT_LOGGER_VERSION"
 
@@ -117,61 +126,76 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   /** Compile lifecycle is a presentation feature and is deliberately absent in preserve-console observer mode. */
   private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[?]] = Seq(
-    update.toSettingKey ~= { original =>
-      original
-        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.directDependencyBlockStart(
-          dependencyFlowId(scope, "global"),
-          Some(projectName)
-        )))
-        .andFinally(tcLogAppender.directDependencyBlockEnd(dependencyFlowId(scope, "global")))
-    },
-    (Compile / update).toSettingKey ~= { original =>
-      original
-        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.dependencyBlockStart(
-          dependencyFlowId(scope, Compile.name),
-          Some(projectName),
-          inTest = false
-        )))
-        .andFinally(tcLogAppender.dependencyBlockEnd(dependencyFlowId(scope, Compile.name)))
-    },
-    (Test / update).toSettingKey ~= { original =>
-      original
-        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.dependencyBlockStart(
-          dependencyFlowId(scope, Test.name),
-          Some(projectName),
-          inTest = true
-        )))
-        .andFinally(tcLogAppender.dependencyBlockEnd(dependencyFlowId(scope, Test.name)))
-    },
-    Compile / compileIncremental := Def.uncached {
-      val _ = (Compile / compile / compileInputs).value
-      tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))
-      val result = (Compile / compileIncremental).result.value
-      tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName))
-      result match {
-        case sbt.Result.Value(value) => value
-        case sbt.Result.Inc(cause) => throw cause
-      }
-    },
-    Test / compileIncremental := Def.uncached {
-      val _ = (Test / compile / compileInputs).value
-      tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))
-      val result = (Test / compileIncremental).result.value
-      tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName))
-      result match {
-        case sbt.Result.Value(value) => value
-        case sbt.Result.Inc(cause) => throw cause
-      }
-    },
     (Compile / compile).toSettingKey ~= { original =>
-      original
-        .andFinally(tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName)))
+      Def.taskDyn {
+        // Start before evaluating the original task so that compile-input and compiler log messages share this flow.
+        tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))
+        val result = original.result.value
+        Def.task {
+          tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName))
+          result match {
+            case sbt.Result.Value(value) => value
+            case sbt.Result.Inc(cause) => throw cause
+          }
+        }
+      }
     },
     (Test / compile).toSettingKey ~= { original =>
-      original
-        .andFinally(tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName)))
+      Def.taskDyn {
+        // See the Compile wrapper above: Test compilation has the same task/logging structure.
+        tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))
+        val result = original.result.value
+        Def.task {
+          tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName))
+          result match {
+            case sbt.Result.Value(value) => value
+            case sbt.Result.Inc(cause) => throw cause
+          }
+        }
+      }
     }
   )
+
+  /** Replaces Coursier's native Debug-only `downloaded URL` callback while detailed normal-mode reporting is active. */
+  private def detailedDependencySettings(
+    projectRef: ProjectRef,
+    projectName: String,
+    extracted: Extracted,
+    state: State
+  ): Seq[Def.Setting[?]] =
+    if !detailedDependencyResolution then Nil
+    else
+      val global = if !debugUpdateLogLevel(extracted, state, projectRef, None) then detailedDependencySettingsFor(projectName, "global") else Nil
+      val compile = if !debugUpdateLogLevel(extracted, state, projectRef, Some(Compile)) then inConfig(Compile)(detailedDependencySettingsFor(projectName, Compile.name)) else Nil
+      val test = if !debugUpdateLogLevel(extracted, state, projectRef, Some(Test)) then inConfig(Test)(detailedDependencySettingsFor(projectName, Test.name)) else Nil
+      global ++ compile ++ test
+
+  private def detailedDependencySettingsFor(projectName: String, configuration: String): Seq[Def.Setting[?]] = Seq(
+    update.toSettingKey ~= { original =>
+      original
+        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.detailedDependencyResolutionStarted(projectName, configuration)))
+        .mapN { report =>
+          if report.stats.cached then tcLogAppender.detailedDependencyReportCacheHit(projectName, configuration)
+          report
+        }
+        .andFinally(tcLogAppender.detailedDependencyResolutionFinished(projectName, configuration))
+    },
+    csrLogger.toSettingKey ~= { original =>
+      sbt.std.TaskExtra.task(Some(new DetailedCoursierLogger(tcLogAppender, projectName, configuration)))
+    }
+  )
+
+  private def debugUpdateLogLevel(
+    extracted: Extracted,
+    state: State,
+    projectRef: ProjectRef,
+    configuration: Option[Configuration]
+  ): Boolean = {
+    val level = configuration match
+      case Some(config) => extracted.getOpt(projectRef / config / update / logLevel)
+      case None => extracted.getOpt(projectRef / update / logLevel)
+    level.orElse(state.get(logLevel.key)).contains(Level.Debug)
+  }
 
   private def compilerReporterSettings(scope: String, projectName: String): Seq[Def.Setting[?]] =
     inConfig(Compile)(Seq(reporterSettings(
@@ -203,22 +227,32 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     val project = getScopeId(scope.project)
     val configuration = scope.config.toOption.map(_.name).getOrElse("global")
     val task = scope.task.toOption.map(_.label).getOrElse("general")
-    val phase = phaseForTask(task)
+    val phase = if isCompilerTask(key) then "compiler" else phaseForTask(task)
     s"$project:$configuration:$phase"
   }
 
   private def isCompilerTask(key: ScopedKey[?]): Boolean =
-    CompilerTaskNames.contains(key.scope.task.toOption.map(_.label).getOrElse("general"))
+    key.scope.task.toOption.exists(CompilerTaskKeys.contains)
 
   private def phaseForTask(task: String): String =
     if ResolverTaskNames.contains(task) then "dependency"
-    else if CompilerTaskNames.contains(task) then "compiler"
     else s"general:$task"
-
-  private def dependencyFlowId(project: String, configuration: String): String =
-    s"$project:$configuration:dependency"
 
   private def compilerFlowId(project: String, configuration: String): String =
     s"$project:$configuration:compiler"
 
 }
+
+/** Version-local boundary for the Coursier API; the shared reporter remains free of sbt implementation classes. */
+private final class DetailedCoursierLogger(appender: TCLogAppender, projectName: String, configuration: String) extends CacheLogger:
+  override def foundLocally(url: String): Unit =
+    appender.detailedDependencyFoundLocally(projectName, configuration, url)
+
+  override def downloadingArtifact(url: String): Unit =
+    appender.detailedDependencyDownloading(projectName, configuration, url)
+
+  override def downloadLength(url: String, totalLength: Long, alreadyDownloaded: Long, watching: Boolean): Unit =
+    appender.detailedDependencyDownloadLength(projectName, configuration, url, totalLength)
+
+  override def downloadedArtifact(url: String, success: Boolean): Unit =
+    appender.detailedDependencyDownloaded(projectName, configuration, url, success)

@@ -5,7 +5,7 @@ import org.junit.{Assert, Test}
 class SbtProcessRunnerTest {
 
   @Test
-  def buildCommandLinePlacesOptionsBeforeOneTrailingCommandArgument(): Unit = {
+  def buildCommandLinePlacesOptionsBeforeIndividualCommandArguments(): Unit = {
     val commandLine = SbtProcessRunner.buildCommandLine(
       commandLinePrefix = Seq("java", "-jar", "sbt-launch.jar"),
       sbtOptions = Seq("--error", "-Dsbt.log.noformat=true"),
@@ -19,7 +19,9 @@ class SbtProcessRunnerTest {
         "sbt-launch.jar",
         "--error",
         "-Dsbt.log.noformat=true",
-        ";apply -cp logger.jar;compile;exit"
+        "apply -cp logger.jar",
+        "compile",
+        "exit"
       ),
       commandLine
     )

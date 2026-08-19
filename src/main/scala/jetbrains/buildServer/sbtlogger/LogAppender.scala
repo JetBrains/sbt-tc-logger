@@ -26,15 +26,6 @@ trait LogAppender {
   /** Routes a compiler-task event according to the active compiler lifecycle. */
   def logCompilerTask(level: sbt.Level.Value, message: => String, compilerFlowId: String): Unit
 
-  def dependencyBlockStart(flowId: String, projectName: Option[String], inTest: Boolean): Unit
-
-  def dependencyBlockEnd(flowId: String): Unit
-
-  /** Instruments SBT's unconfigured `update` task without duplicating its configuration-scoped delegate. */
-  def directDependencyBlockStart(flowId: String, projectName: Option[String]): Unit
-
-  def directDependencyBlockEnd(flowId: String): Unit
-
   def compilationBlockStart(flowId: String, projectName: Option[String]): Unit
 
   def compilationBlockEnd(flowId: String, projectName: Option[String]): Unit

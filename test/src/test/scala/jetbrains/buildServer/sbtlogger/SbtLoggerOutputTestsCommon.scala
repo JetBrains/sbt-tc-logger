@@ -77,15 +77,15 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       sbtCommands = Seq("compile")
     ))
 
-  // `update` is independently invokable: it gets a resolver block, never a fake compiler lifecycle.
+  // Dependency-resolution presentation is opt-in. A regular `update` must not leave an empty TeamCity block.
   @Test
-  def dependencyResolution_DirectUpdateReported(): Unit =
+  def dependencyResolution_DirectUpdateIsSilentByDefault(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "compilation/success",
       sbtCommands = Seq("clean", "update"),
       sbtOptions = Seq("--info"),
-      expectations = ExpectationSet.singleFile("direct-update-output.txt"),
-      dependencyLifecycle = Some(SbtDependencyLifecycleExpectation.Complete(expectedClosures = 1)),
+      verifyOutput = false,
+      dependencyLifecycle = Some(SbtDependencyLifecycleExpectation.Absent),
       compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
     ))
 
@@ -100,15 +100,15 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
     ))
 
-  // Resolver failures close only their dependency block and remain independent from compiler error reporting.
+  // Resolver failures retain their ordinary final error without creating an empty dependency block by default.
   @Test
-  def dependencyResolution_UpdateFailureClosesItsBlock(): Unit =
+  def dependencyResolution_UpdateFailureIsSilentByDefault(): Unit =
     runCase(SbtLoggerOutputTestCase(
       fixture = "dependencyResolution/updateFailure",
       sbtCommands = Seq("update"),
       sbtOptions = Seq("--info"),
       failurePropagation = SbtFailurePropagationExpectation.ProcessExitNonZero,
-      dependencyLifecycle = Some(SbtDependencyLifecycleExpectation.Complete(expectedClosures = 1)),
+      dependencyLifecycle = Some(SbtDependencyLifecycleExpectation.Absent),
       compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
     ))
 

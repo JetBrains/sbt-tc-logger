@@ -68,6 +68,8 @@ private[sbtlogger] object SbtOutputVerifier {
     }
     val grouped = lifecycles.groupBy(_.flowId)
     expectation match {
+      case SbtDependencyLifecycleExpectation.Absent =>
+        Assert.assertTrue(s"Expected no dependency-resolution lifecycle, found ${grouped.keys.mkString(", ")}", grouped.isEmpty)
       case SbtDependencyLifecycleExpectation.Complete(expectedClosures) =>
         Assert.assertEquals(
           s"Expected $expectedClosures dependency lifecycle closures, found ${grouped.size}: ${grouped.keys.mkString(", ")}",
@@ -86,6 +88,48 @@ private[sbtlogger] object SbtOutputVerifier {
       s"Dependency and compiler activities must use distinct TeamCity flows, but both used: ${grouped.keySet.intersect(compilerFlows).mkString(", ")}",
       grouped.keySet.intersect(compilerFlows).isEmpty
     )
+  }
+
+  /** Checks the high-level contract that the opt-in Coursier adapter emits useful data in one collapsed block. */
+  def assertDetailedDependencyResolution(output: String): Unit = {
+    val lines = output.linesIterator.toVector
+    val blockOpens = lines.filter(_.contains("##teamcity[blockOpened name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution']"))
+    val blockCloses = lines.filter(_.contains("##teamcity[blockClosed name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution']"))
+    val resourceLines = lines.filter(line =>
+      line.contains("flowId='teamcity-sbt-dependency-resolution'") &&
+        (line.contains("local cache hit") || line.contains("downloaded "))
+    )
+
+    Assert.assertFalse("Detailed dependency resolution did not open a TeamCity block", blockOpens.isEmpty)
+    Assert.assertEquals("Every detailed dependency-resolution wave must close", blockOpens.size, blockCloses.size)
+    Assert.assertFalse("Coursier did not report a final resource outcome", resourceLines.isEmpty)
+    Assert.assertTrue("Detailed dependency resolution did not report the sbt update-report cache", output.contains("sbt update report cache hit"))
+    Assert.assertTrue("Detailed dependency resolution did not emit its wave footer", output.contains("Dependency resolution finished in"))
+    Assert.assertTrue("Detailed dependency resolution must close after its footer", output.lastIndexOf("Dependency resolution finished in") < output.lastIndexOf("blockClosed name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution'"))
+  }
+
+  def assertDetailedDependencyFailure(output: String): Unit = {
+    Assert.assertTrue("Coursier's failed resolver attempt must be a TeamCity warning", output.contains("failed download attempt"))
+    Assert.assertTrue("Coursier's failed resolver attempt must be a TeamCity warning", output.contains("status='WARNING'"))
+    Assert.assertFalse(
+      "Transient Coursier resolver attempts must not create a TeamCity error",
+      output.linesIterator.exists(line => line.contains("flowId='teamcity-sbt-dependency-resolution'") && line.contains("status='ERROR'"))
+    )
+    assertDetailedBlockClosure(output)
+  }
+
+  def assertNoDetailedDependencyResolution(output: String): Unit = {
+    Assert.assertFalse(
+      "Detailed dependency resolution must be absent",
+      output.contains("flowId='teamcity-sbt-dependency-resolution'")
+    )
+  }
+
+  private def assertDetailedBlockClosure(output: String): Unit = {
+    val openIndex = output.indexOf("##teamcity[blockOpened name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution']")
+    val closeIndex = output.lastIndexOf("##teamcity[blockClosed name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution']")
+    Assert.assertTrue("Detailed dependency block was not opened", openIndex >= 0)
+    Assert.assertTrue("Detailed dependency block was not closed", closeIndex > openIndex)
   }
 
   private def checkOutputLines(lines: Seq[String], excludesFile: Option[File], expectations: ExpectationSet, fixtureDirectory: File): Unit = {

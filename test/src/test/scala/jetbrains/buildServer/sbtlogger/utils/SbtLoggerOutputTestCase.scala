@@ -19,6 +19,9 @@ import org.junit.Assert.assertTrue
  * @param teamCityEnvironment whether the nested process receives `TEAMCITY_VERSION`; when false, an inherited value is
  *                            removed before the process starts.
  * @param expectNoTeamCityMessages asserts the logger remains completely inactive when TeamCity is absent.
+ * @param isolateSbtServer runs the nested process with a fresh SBT global base and server directory. This is useful
+ *                         for tests that load the logger with mutually exclusive JVM properties: `apply` is deliberately
+ *                         idempotent within a long-lived SBT server.
  */
 final case class SbtLoggerOutputTestCase(
   fixture: String,
@@ -32,7 +35,8 @@ final case class SbtLoggerOutputTestCase(
   compilationLifecycle: Option[SbtCompilationLifecycleExpectation] = None,
   dependencyLifecycle: Option[SbtDependencyLifecycleExpectation] = None,
   teamCityEnvironment: Boolean = true,
-  expectNoTeamCityMessages: Boolean = false
+  expectNoTeamCityMessages: Boolean = false,
+  isolateSbtServer: Boolean = false
 )
 
 /** The complete expected-output contract selected by one [[SbtLoggerOutputTestCase]]. */
@@ -145,6 +149,9 @@ object SbtCompilationLifecycleExpectation {
 sealed trait SbtDependencyLifecycleExpectation
 
 object SbtDependencyLifecycleExpectation {
+  /** The opt-in detailed dependency reporter must stay entirely silent by default. */
+  case object Absent extends SbtDependencyLifecycleExpectation
+
   /** Requires every observed dependency block to have one opener, one later closer, and no compiler-flow reuse. */
   final case class Complete(expectedClosures: Int) extends SbtDependencyLifecycleExpectation {
     require(expectedClosures > 0, "A dependency-lifecycle regression fixture must require at least one closure.")
