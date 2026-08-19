@@ -56,10 +56,10 @@ The integration matrix is intentionally limited rather than a full SBT × JDK cr
 
 | JUnit class | Nested SBT | JDK | Fixture roots |
 | --- | --- | --- | --- |
-| `SbtLoggerOutputTest_1_4_Jdk8` | 1.4.5 | 8 | `1.4+` |
-| `SbtLoggerOutputTest_1_12_Jdk8` | 1.12.15 | 8 | `1.4+`, `1.9+` |
-| `SbtLoggerOutputTest_1_12_Jdk17` | 1.12.15 | 17 | `1.4+`, `1.9+` |
-| `SbtLoggerOutputTest_2_0_Jdk17` | 2.0.6 | 17 | `2.0+` |
+| `SbtLoggerOutput_TestSbt1_4_Jdk8` | 1.4.5 | 8 | `1.4+` |
+| `SbtLoggerOutput_TestSbt1_12_Jdk8` | 1.12.15 | 8 | `1.4+`, `1.9+` |
+| `SbtLoggerOutput_TestSbt1_12_Jdk17` | 1.12.15 | 17 | `1.4+`, `1.9+` |
+| `SbtLoggerOutput_TestSbt2_0_Jdk17` | 2.0.6 | 17 | `2.0+` |
 
 This balance makes the supported SBT 1.4 baseline, current SBT 1 on both supported JDKs, and current SBT 2 meaningful and visible while avoiding the runtime and maintenance cost of combinations that do not add useful compatibility evidence. Future JDK changes intentionally rename the affected concrete class and alias.
 
