@@ -1,6 +1,0 @@
-##teamcity\[compilationStarted compiler='Scala compiler \|\[[^|]+\|\]' flowId='<flowId1>'\]
-##teamcity\[inspection SEVERITY='ERROR'.*\]
-##teamcity\[message status='ERROR' flowId='<flowId1>' text='.*BrokenHelloWorld\.scala:4: [Ii]nvalid literal number\|n.*123println.*\|n.*\^'\]
-##teamcity\[message status='ERROR' flowId='<flowId1>' text='.*one error found'\]
-##teamcity\[compilationFinished compiler='Scala compiler \|\[[^|]+\|\]' flowId='<flowId1>'\]
-##teamcity\[message status='ERROR' text='.*Compilation failed'\]

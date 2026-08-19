@@ -6,6 +6,7 @@ package jetbrains.buildServer.sbtlogger
  * The runtime metadata selects the fixture root and the staged logger JAR that nested sbt should load.
  *
  * @param id                      identifier used for isolated fixture workspaces and runtime-specific SBT directories.
+ * @param outputProfile           stable directory name for this runtime's adjacent exact-transcript goldens.
  * @param sbtVersion              exact SBT version rendered into the copied fixture before launching nested SBT.
  * @param jdk                     exact JDK major version used to launch nested SBT.
  * @param testDataRelativePath    path from the repository root to this runtime's fixture directory.
@@ -14,6 +15,7 @@ package jetbrains.buildServer.sbtlogger
  */
 final case class SbtTestsRuntime(
   id: String,
+  outputProfile: String,
   sbtVersion: String,
   jdk: SbtTestJdk,
   testDataRelativePath: String,
@@ -75,7 +77,8 @@ object SbtTestsRuntime {
   private[sbtlogger] def forSbtVersion(
     sbtVersion: String,
     jdk: SbtTestJdk,
-    testDataRelativePath: String
+    testDataRelativePath: String,
+    outputProfile: String
   ): SbtTestsRuntime = {
     val line = sbtVersion match {
       case SbtVersionPattern("1") => SbtLine.Sbt1
@@ -85,6 +88,7 @@ object SbtTestsRuntime {
 
     SbtTestsRuntime(
       id = s"$sbtVersion-${jdk.id}",
+      outputProfile = outputProfile,
       sbtVersion = sbtVersion,
       jdk = jdk,
       testDataRelativePath = testDataRelativePath,
@@ -101,13 +105,13 @@ object SbtTestsRuntime {
   // exercises JDK 17.
   // Running all combinations adds time and maintenance cost without materially improving coverage.
   val Sbt1_4_Jdk8: SbtTestsRuntime =
-    forSbtVersion(MinimumSbt1Version, SbtTestJdk.Jdk8, "test/testdata/1.4+")
+    forSbtVersion(MinimumSbt1Version, SbtTestJdk.Jdk8, "test/testdata/1.4+", "sbt-1.4-jdk8")
   val Sbt1_12_Jdk8: SbtTestsRuntime =
-    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk8, "test/testdata/1.4+")
+    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk8, "test/testdata/1.4+", "sbt-1-jdk8")
   val Sbt1_12_Jdk17: SbtTestsRuntime =
-    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk17, "test/testdata/1.4+")
+    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk17, "test/testdata/1.4+", "sbt-1-jdk17")
   val Sbt2_0_Jdk17: SbtTestsRuntime =
-    forSbtVersion(LatestSbt2Version, SbtTestJdk.Jdk17, "test/testdata/2.0+")
+    forSbtVersion(LatestSbt2Version, SbtTestJdk.Jdk17, "test/testdata/2.0+", "sbt-2-jdk17")
 
   val All: Seq[SbtTestsRuntime] = Seq(
     Sbt1_4_Jdk8,

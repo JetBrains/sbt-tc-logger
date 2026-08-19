@@ -1,0 +1,2 @@
+[info] custom manager ordinary task message
+[[noise:sbt-task-summary]]

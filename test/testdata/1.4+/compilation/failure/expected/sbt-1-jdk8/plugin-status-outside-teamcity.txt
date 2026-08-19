@@ -1,0 +1,6 @@
+TeamCity sbt logger
+  Version: {{logger-version}}
+  TeamCity: not detected
+  Status: inactive
+  Preserve SBT console: false (default)
+  Detailed dependency resolution: false (default)

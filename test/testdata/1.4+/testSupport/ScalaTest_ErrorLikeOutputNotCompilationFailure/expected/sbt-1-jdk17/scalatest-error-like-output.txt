@@ -1,0 +1,46 @@
+##teamcity[compilationStarted compiler='Scala compiler in Test |[scalatest-error-like-output|]' flowId='{{build-id:root}}:test:compiler']
+##teamcity[compilationStarted compiler='Scala compiler |[scalatest-error-like-output|]' flowId='{{build-id:root}}:compile:compiler']
+##teamcity[compilationFinished compiler='Scala compiler |[scalatest-error-like-output|]' flowId='{{build-id:root}}:compile:compiler']
+##teamcity[inspectionType id='SbtCompileProblem' name='sbt compile problem' description='Compile problems' category='Compile problems']
+##teamcity[inspection SEVERITY='WARNING' line='11' typeId='SbtCompileProblem' message='a pure expression does nothing in statement position' file='${BASE}/src/test/scala/TestSpec.scala']
+##teamcity[message status='WARNING' flowId='{{build-id:root}}:test:compiler' text='|[warn|] ${BASE}/src/test/scala/TestSpec.scala:11: a pure expression does nothing in statement position|n|[warn|]     "Hello"  //warning will be risen here|n|[warn|]     ^']
+##teamcity[message status='WARNING' flowId='{{build-id:root}}:test:compiler' text='|[warn|] one warning found']
+##teamcity[compilationFinished compiler='Scala compiler in Test |[scalatest-error-like-output|]' flowId='{{build-id:root}}:test:compiler']
+##teamcity[testSuiteStarted name='TestSpec' flowId='{{flow:test}}']
+WARNING: Invalid stat name /127.0.0.1:4010_backoffs exported as _127_0_0_1_4010_backoffs
+WARNING 3/19/14 1:26 PM:liquidbase: modifyDataType will lose primary key/autoincrement/not null settings for mysql
+Invalid stat name /127...
+- About to log waring!
+{{timestamp:log}} [{{thread:test}}-ScalaTest-running-TestSpec] WARN TestSpec -- WARNING: Invalid blah-blah-blah
+- About to log error!
+{{timestamp:log}} [{{thread:test}}-ScalaTest-running-TestSpec] ERROR TestSpec -- [error] some error in test output
+##teamcity[testStarted name='TestSpec.Some Test stat warnings' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test stat warnings' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testStarted name='TestSpec.Some Test should print warnings' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test should print warnings' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testStarted name='TestSpec.Some Test run something' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test run something' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testStarted name='TestSpec.Some Test log warning' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test log warning' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testStarted name='TestSpec.Some Test log error' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test log error' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testSuiteFinished name='TestSpec' flowId='{{flow:test}}']
+##teamcity[testSuiteStarted name='TestSpec' flowId='{{flow:test}}']
+WARNING: Invalid stat name /127.0.0.1:4010_backoffs exported as _127_0_0_1_4010_backoffs
+WARNING 3/19/14 1:26 PM:liquidbase: modifyDataType will lose primary key/autoincrement/not null settings for mysql
+Invalid stat name /127...
+- About to log waring!
+{{timestamp:log}} [{{thread:test}}-ScalaTest-running-TestSpec] WARN TestSpec -- WARNING: Invalid blah-blah-blah
+- About to log error!
+{{timestamp:log}} [{{thread:test}}-ScalaTest-running-TestSpec] ERROR TestSpec -- [error] some error in test output
+##teamcity[testStarted name='TestSpec.Some Test stat warnings' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test stat warnings' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testStarted name='TestSpec.Some Test should print warnings' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test should print warnings' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testStarted name='TestSpec.Some Test run something' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test run something' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testStarted name='TestSpec.Some Test log warning' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test log warning' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testStarted name='TestSpec.Some Test log error' captureStandardOutput='true' flowId='{{flow:test}}']
+##teamcity[testFinished name='TestSpec.Some Test log error' duration='{{duration:test}}' flowId='{{flow:test}}']
+##teamcity[testSuiteFinished name='TestSpec' flowId='{{flow:test}}']

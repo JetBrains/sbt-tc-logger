@@ -1,0 +1,2 @@
+##teamcity[compilationStarted compiler='Scala compiler |[compiler-log-level-error|]' flowId='{{build-id:root}}:compile:compiler']
+##teamcity[compilationFinished compiler='Scala compiler |[compiler-log-level-error|]' flowId='{{build-id:root}}:compile:compiler']

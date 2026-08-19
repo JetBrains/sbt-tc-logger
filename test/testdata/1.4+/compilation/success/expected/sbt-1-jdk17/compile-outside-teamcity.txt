@@ -1,0 +1,3 @@
+[info] compiling 1 Scala source to {{path:work-dir}}/target/scala-2.13/classes ...
+[[noise:sbt-compiler-bridge]]
+[info] done compiling

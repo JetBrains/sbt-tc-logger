@@ -1,363 +1,162 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{ExpectationSet, SbtCompilationLifecycleExpectation, SbtDependencyLifecycleExpectation, SbtExitCodeExpectation, SbtFailurePropagationExpectation, SbtLoggerOutputTestCase, SbtOutputExpectations}
+import jetbrains.buildServer.sbtlogger.utils.{SbtLoggerOutputTestCase, SbtProcessResultExpectation}
 import org.junit.Test
 
-/**
- * Common JUnit scenarios for sbt TeamCity logger output integration tests.
- *
- * Each `@Test` method keeps the fixture details next to the test name and delegates to [[runCase]], which performs the
- * actual nested sbt execution and output verification. Runtime-specific suites may inherit these tests or add
- * capability-specific scenarios through a dedicated trait.
- *
- * @param runtime sbt runtime used by every case in this suite instance.
- */
+/** Common exact-transcript scenarios shared by every supported SBT runtime. */
 abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtLoggerOutputTestBase(runtime) {
 
-  // Verifies that the status command reports the loaded artifact and its default configuration.
-  @Test
-  def pluginStatus_LoadedInTeamCity(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/failure",
-      sbtCommands = Seq("sbt-teamcity-logger"),
-      expectations = ExpectationSet.singleFile("plugin_status_output.txt")
+  @Test def pluginStatus_LoadedInTeamCity(): Unit = run(
+    "plugin-status-active", "compilation/failure", behavior = Seq("sbt-teamcity-logger"), success = true)
+
+  @Test def pluginStatus_ReportsConfiguredLoggerOptions(): Unit = run(
+    "plugin-status-configured", "compilation/failure",
+    behavior = Seq("sbt-teamcity-logger"), success = true,
+    options = Seq(
+      "-Dteamcity.sbt.logger.preserveConsole=true",
+      "-Dteamcity.sbt.logger.detailedDependencyResolution=true"
     ))
 
-  // Verifies that the status command exposes values explicitly supplied as JVM properties.
-  @Test
-  def pluginStatus_ReportsConfiguredLoggerOptions(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/failure",
-      sbtCommands = Seq("sbt-teamcity-logger"),
-      sbtOptions = Seq(
-        "-Dteamcity.sbt.logger.preserveConsole=true",
-        "-Dteamcity.sbt.logger.detailedDependencyResolution=true"
-      ),
-      expectations = ExpectationSet.singleFile("plugin_status_configured_options_output.txt"),
-      isolateSbtServer = true
-    ))
+  @Test def pluginStatus_DisabledOutsideTeamCity(): Unit = run(
+    "plugin-status-outside-teamcity", "compilation/failure",
+    behavior = Seq("sbt-teamcity-logger"), success = true, teamCity = false)
 
-  // Verifies that the plugin disables itself and emits no service messages outside TeamCity.
-  @Test
-  def pluginStatus_DisabledOutsideTeamCity(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/failure",
-      sbtCommands = Seq("sbt-teamcity-logger"),
-      expectations = ExpectationSet.singleFile("plugin_status_non_teamcity_output.txt"),
-      teamCityEnvironment = false,
-      expectNoTeamCityMessages = true
-    ))
+  @Test def taskLogging_CompileStaysInactiveOutsideTeamCity(): Unit = run(
+    "compile-outside-teamcity", "compilation/success",
+    setup = Seq("clean"), behavior = Seq("compile"), success = true,
+    options = Seq("--info"), teamCity = false)
 
-  // Outside TeamCity the plugin must leave normal task logging untouched.
-  @Test
-  def taskLogging_CompileStaysInactiveOutsideTeamCity(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/success",
-      sbtCommands = Seq("clean", "compile"),
-      sbtOptions = Seq("--info"),
-      verifyOutput = false,
-      expectedExitCode = SbtExitCodeExpectation.Zero,
-      teamCityEnvironment = false,
-      expectNoTeamCityMessages = true
-    ))
+  @Test def testReporting_FailedTestsStillFailOutsideTeamCity(): Unit = run(
+    "failed-tests-outside-teamcity", "testSupport/JUnit_PassAndFailure",
+    behavior = Seq("test"), success = false, teamCity = false)
 
-  // Outside TeamCity SBT's original test-result logger must still make failed tests fail the process.
-  @Test
-  def testReporting_FailedTestsStillFailOutsideTeamCity(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/JUnit_PassAndFailure",
-      sbtCommands = Seq("test"),
-      verifyOutput = false,
-      expectedExitCode = SbtExitCodeExpectation.NonZero,
-      teamCityEnvironment = false,
-      expectNoTeamCityMessages = true
-    ))
+  @Test def compilation_FailureReported(): Unit = run(
+    "compilation-failure", "compilation/failure", behavior = Seq("compile"), success = false)
 
-  // Verifies compiler lifecycle, source-error, and final-failure messages for a failed compilation.
-  @Test
-  def compilation_FailureReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/failure",
-      sbtCommands = Seq("compile"),
-      failurePropagation = compilationFailurePropagation,
-      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 1)
-    ))
+  @Test def compilation_SuccessReported(): Unit = run(
+    "compilation-success", "compilation/success",
+    setup = Seq("clean"), behavior = Seq("compile"), success = true, options = Seq("--info"))
 
-  // Verifies compiler start and finish messages for a successful Scala compilation.
-  @Test
-  def compilation_SuccessReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/success",
-      sbtCommands = Seq("clean", "compile"),
-      sbtOptions = Seq("--info"),
-      isolateSbtServer = true
-    ))
+  // A direct update is intentionally in the ordinary corpus: its exact golden proves detailed reporting stays absent.
+  @Test def dependencyResolution_DirectUpdateIsSilentByDefault(): Unit = run(
+    "dependency-update-default", "compilation/success",
+    setup = Seq("clean"), behavior = Seq("update"), success = true, options = Seq("--info"))
 
-  // Dependency-resolution presentation is opt-in. A regular `update` must not leave an empty TeamCity block.
-  @Test
-  def dependencyResolution_DirectUpdateIsSilentByDefault(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/success",
-      sbtCommands = Seq("clean", "update"),
-      sbtOptions = Seq("--info"),
-      verifyOutput = false,
-      dependencyLifecycle = Some(SbtDependencyLifecycleExpectation.Absent),
-      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
-    ))
+  @Test def compilation_DirectCompileInputsDoesNotInventCompilerLifecycle(): Unit = run(
+    "compile-inputs", "compilation/success",
+    behavior = Seq("Compile / dependencyClasspath"), success = true, options = Seq("--info"))
 
-  // `compileInputs` prepares compilation inputs but must not open the compiler block itself.
-  @Test
-  def compilation_DirectCompileInputsDoesNotInventCompilerLifecycle(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/success",
-      sbtCommands = Seq("clean", "compileInputs"),
-      sbtOptions = Seq("--info"),
-      verifyOutput = false,
-      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
-    ))
+  @Test def dependencyResolution_UpdateFailureIsSilentByDefault(): Unit = run(
+    "dependency-update-failure-default", "dependencyResolution/updateFailure",
+    behavior = Seq("update"), success = false, options = Seq("--info"))
 
-  // Resolver failures retain their ordinary final error without creating an empty dependency block by default.
-  @Test
-  def dependencyResolution_UpdateFailureIsSilentByDefault(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "dependencyResolution/updateFailure",
-      sbtCommands = Seq("update"),
-      sbtOptions = Seq("--info"),
-      failurePropagation = SbtFailurePropagationExpectation.ProcessExitNonZero,
-      dependencyLifecycle = Some(SbtDependencyLifecycleExpectation.Absent),
-      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
-    ))
+  @Test def taskLogging_GenericLevelsAreSingleStructuredMessages(): Unit = run(
+    "logging-generic-levels", "logging/genericLevels",
+    behavior = Seq("genericLevels"), success = true, options = Seq("--debug"))
 
-  // Ordinary logger levels are emitted exactly once through the TeamCity screen appender.
-  @Test
-  def taskLogging_GenericLevelsAreSingleStructuredMessages(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "logging/genericLevels",
-      sbtCommands = Seq("genericLevels"),
-      sbtOptions = Seq("--debug")
-    ))
+  @Test def taskLogging_CustomLogManagerIsReplacedByDefault(): Unit = run(
+    "logging-custom-manager-replaced", "logging/customLogManager",
+    behavior = Seq("customManagerLog"), success = true, options = Seq("--info"))
 
-  // The replacement policy is strict by default: a build's custom manager does not leak duplicate console messages.
-  @Test
-  def taskLogging_CustomLogManagerIsReplacedByDefault(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "logging/customLogManager",
-      sbtCommands = Seq("customManagerLog"),
-      sbtOptions = Seq("--info"),
-      expectations = ExpectationSet.singleFile("strict-output.txt")
-    ))
+  @Test def taskLogging_CustomLogManagerCanBePreservedExplicitly(): Unit = run(
+    "logging-custom-manager-preserved", "logging/customLogManager",
+    behavior = Seq("customManagerLog"), success = true,
+    options = Seq("--info", "-Dteamcity.sbt.logger.preserveConsole=true"))
 
-  // The documented JVM property is the only fallback: it preserves the custom manager and deliberately stops
-  // mirroring ordinary task logger messages into TeamCity.
-  @Test
-  def taskLogging_CustomLogManagerCanBePreservedExplicitly(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "logging/customLogManager",
-      sbtCommands = Seq("customManagerLog"),
-      sbtOptions = Seq("--info", "-Dteamcity.sbt.logger.preserveConsole=true"),
-      verifyOutput = false,
-      expectNoTeamCityMessages = true
-    ))
+  @Test def compilation_MinimalModePreservesDefaultOutputAndReportsInspections(): Unit = run(
+    "compilation-preserve-console", "logging/preserveConsole",
+    behavior = Seq("compile"), success = false,
+    options = Seq("-Dteamcity.sbt.logger.preserveConsole=true"))
 
-  // Observer mode must keep the default compiler reporter while still publishing inspections, without compiler blocks.
-  @Test
-  def compilation_MinimalModePreservesDefaultOutputAndReportsInspections(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "logging/preserveConsole",
-      sbtCommands = Seq("compile"),
-      sbtOptions = Seq("-Dteamcity.sbt.logger.preserveConsole=true"),
-      failurePropagation = compilationFailurePropagation,
-      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
-    ))
+  @Test def testReporting_MinimalModePreservesDefaultResultLoggerAndReportsEvents(): Unit = run(
+    "tests-preserve-console", "testSupport/JUnit_PassAndFailure",
+    behavior = Seq("test"), success = false,
+    options = Seq("-Dteamcity.sbt.logger.preserveConsole=true"))
 
-  // The default test-result logger is retained in observer mode, while the TeamCity test listener remains active.
-  @Test
-  def testReporting_MinimalModePreservesDefaultResultLoggerAndReportsEvents(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/JUnit_PassAndFailure",
-      sbtCommands = Seq("test"),
-      sbtOptions = Seq("-Dteamcity.sbt.logger.preserveConsole=true"),
-      expectations = ExpectationSet.singleFile("minimal-output.txt"),
-      expectedExitCode = SbtExitCodeExpectation.NonZero,
-      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent)
-    ))
+  // Aggregate compiles are genuinely concurrent; their goldens use ordered lanes instead of imposing a total order.
+  @Test def compilation_MultiProject_FailuresReported(): Unit = run(
+    "compilation-multiproject-failure", "compilation/multiProject",
+    behavior = Seq("compile"), success = false)
 
-  // Verifies that compilation failures from both aggregated subprojects are reported.
-  @Test
-  def compilation_MultiProject_FailuresReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/multiProject",
-      sbtCommands = Seq("compile"),
-      // The fixture asserts its own ordered subsequence; its scheduler-dependent three-flow topology is checked by the lifecycle contract.
-      expectations = SbtOutputExpectations.multiProjectCompilation,
-      failurePropagation = compilationFailurePropagation,
-      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3)
-    ))
+  @Test def compilation_MultiProject_FailuresReportedWithDebug(): Unit = run(
+    "compilation-multiproject-failure-debug", "compilation/multiProject",
+    behavior = Seq("compile"), success = false, options = Seq("--debug"))
 
-  // Verifies that multi-project compilation failures and all compiler lifecycles remain reported with the SBT debug option.
-  @Test
-  def compilation_MultiProject_FailuresReportedWithDebug(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/multiProject",
-      sbtCommands = Seq("compile"),
-      sbtOptions = Seq("--debug"),
-      expectations = SbtOutputExpectations.multiProjectCompilation,
-      failurePropagation = compilationFailurePropagation,
-      compilationLifecycle = compilationFailureLifecycle(expectedClosures = 3)
-    ))
+  @Test def testCompilation_FailureReported(): Unit = run(
+    "test-compilation-failure", "compilation/testFailure",
+    behavior = Seq("Test / compile"), success = false)
 
-  // Verifies Test / compile closes its lifecycle and rethrows an underlying compiler failure.
-  @Test
-  def testCompilation_FailureReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/testFailure",
-      sbtCommands = Seq(testCompileCommand),
-      failurePropagation = compilationFailurePropagation,
-      compilationLifecycle = testCompilationFailureLifecycle
-    ))
+  @Test def projectConfiguration_NoBuildFileCompiles(): Unit = run(
+    "project-no-build-file", "projectConfiguration/noBuildFile",
+    behavior = Seq("compile"), success = true)
 
-  // Verifies that a project without build.sbt compiles successfully and reports its compiler lifecycle.
-  @Test
-  def projectConfiguration_NoBuildFileCompiles(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "projectConfiguration/noBuildFile",
-      sbtCommands = Seq("compile"),
-      expectedExitCode = SbtExitCodeExpectation.Zero
-    ))
+  @Test def testReporting_JUnit_PassAndFailureReported(): Unit = run(
+    "junit-pass-and-failure", "testSupport/JUnit_PassAndFailure",
+    behavior = Seq("test"), success = true)
 
-  // Verifies JUnit suite, passing-test, failing-test, and failure-detail service messages.
-  @Test
-  def testReporting_JUnit_PassAndFailureReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/JUnit_PassAndFailure",
-      sbtCommands = Seq("test"),
-      expectedExitCode = SbtExitCodeExpectation.Zero
-    ))
+  @Test def testReporting_JUnit_TestQuickPassAndFailureReported(): Unit = run(
+    "junit-test-quick", "testSupport/JUnit_PassAndFailure",
+    behavior = Seq("testQuick"), success = true)
 
-  // TW-53224 - `testQuick` must preserve the normal per-test TeamCity protocol, including failures.
-  // A deliberately failing JUnit method proves the task uses the logger's silent result handler instead of only
-  // exercising an empty quick-test selection.
-  @Test
-  def testReporting_JUnit_TestQuickPassAndFailureReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/JUnit_PassAndFailure",
-      sbtCommands = Seq("testQuick"),
-      expectedExitCode = SbtExitCodeExpectation.Zero
-    ))
+  @Test def compilation_WarningsReportedAsInspections(): Unit = run(
+    "compilation-warnings", "compilation/warnings",
+    setup = Seq("clean"), behavior = Seq("compile"), success = true, options = Seq.empty)
 
-  // Verifies that compiler warnings are reported as TeamCity warning inspections.
-  @Test
-  def compilation_WarningsReportedAsInspections(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/warnings",
-      sbtCommands = Seq("clean", "compile"),
-      sbtOptions = Seq.empty
-    ))
+  @Test def compilerLogLevel_DebugOutputSuppressedAtError(): Unit = run(
+    "compiler-log-level-error", "compilerLogLevel/error",
+    behavior = Seq("compile"), success = true)
 
-  // TW-35404 - Verifies that error-level logging suppresses compiler debug noise.
-  @Test
-  def compilerLogLevel_DebugOutputSuppressedAtError(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilerLogLevel/error",
-      sbtCommands = Seq("compile")
-    ))
+  @Test def compilerLogLevel_DebugOutputShownAtDebug(): Unit = run(
+    "compiler-log-level-debug", "compilerLogLevel/debug",
+    behavior = Seq("compile"), success = true)
 
-  // TW-35404 - Verifies that debug-level logging keeps compiler debug output visible.
-  @Test
-  def compilerLogLevel_DebugOutputShownAtDebug(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilerLogLevel/debug",
-      sbtCommands = Seq("compile")
-    ))
+  @Test def compilation_SubprojectLifecycleReported(): Unit = run(
+    "compilation-subproject", "compilation/subproject",
+    behavior = Seq("backend/compile"), success = true)
 
-  // Verifies compiler lifecycle messages for the backend subproject compile command.
-  @Test
-  def compilation_SubprojectLifecycleReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "compilation/subproject",
-      sbtCommands = Seq("backend/compile")
-    ))
+  @Test def testReporting_ScalaTest_PassAndFailureReported(): Unit = run(
+    "scalatest-pass-and-failure", "testSupport/ScalaTest_PassAndFailure",
+    behavior = Seq("test"), success = true)
 
-  // Verifies standard ScalaTest passing and failing test service messages.
-  @Test
-  def testReporting_ScalaTest_PassAndFailureReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/ScalaTest_PassAndFailure",
-      sbtCommands = Seq("test"),
-      expectations = SbtOutputExpectations.scalaTestPassAndFailure,
-      expectedExitCode = SbtExitCodeExpectation.Zero
-    ))
+  @Test def projectExecution_JavaSourcesCompileAndRun(): Unit = run(
+    "java-sources-compile-run", "projectExecution/javaSources",
+    behavior = Seq("compile", "run"), success = true, options = Seq("--debug"))
 
-  // Verifies that mixed Java and Scala sources compile and the Java main class runs.
-  @Test
-  def projectExecution_JavaSourcesCompileAndRun(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "projectExecution/javaSources",
-      sbtCommands = Seq("clean", "compile", "run"),
-      sbtOptions = Seq("--debug"),
-      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Complete(expectedClosures = 2)),
-    ))
+  @Test def testReporting_Specs2_IgnoredTestsReported(): Unit = run(
+    "specs2-ignored-tests", "testSupport/Specs2_IgnoredTests",
+    behavior = Seq("test"), success = true, options = Seq("--info"))
 
-  // Verifies that framework-skipped Specs2 examples are reported as ignored tests.
-  @Test
-  def testReporting_Specs2_IgnoredTestsReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/Specs2_IgnoredTests",
-      sbtCommands = Seq("test"),
-      sbtOptions = Seq("--info"),
-      expectedExitCode = SbtExitCodeExpectation.Zero
-    ))
+  @Test def testReporting_ScalaTest_NestedSuitesReported(): Unit = run(
+    "scalatest-nested-suites", "testSupport/ScalaTest_NestedSuites",
+    behavior = Seq("test"), success = true, options = Seq("--info"))
 
-  // Verifies nested ScalaTest suite and member-test service messages.
-  @Test
-  def testReporting_ScalaTest_NestedSuitesReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/ScalaTest_NestedSuites",
-      sbtCommands = Seq("test"),
-      sbtOptions = Seq("--info"),
-      expectedExitCode = SbtExitCodeExpectation.Zero
-    ))
+  @Test def testReporting_ScalaTest_LongNamesNotDuplicated(): Unit = run(
+    "scalatest-long-names", "testSupport/ScalaTest_LongNamesNotDuplicated",
+    behavior = Seq("testOnly"), success = true)
 
-  // TW-46964 - Verifies that long ScalaTest FeatureSpec names do not repeat name segments.
-  @Test
-  def testReporting_ScalaTest_LongNamesNotDuplicated(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/ScalaTest_LongNamesNotDuplicated",
-      sbtCommands = Seq("testOnly")
-    ))
+  @Test def testReporting_Specs2_TestOnlyExamplesReported(): Unit = run(
+    "specs2-test-only", "testSupport/Specs2_TestOnlyExamples",
+    behavior = Seq("testOnly"), success = true)
 
-  // Verifies that Specs2 examples invoked through testOnly are reported.
-  @Test
-  def testReporting_Specs2_TestOnlyExamplesReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/Specs2_TestOnlyExamples",
-      sbtCommands = Seq("testOnly"),
-      expectedExitCode = SbtExitCodeExpectation.Zero
-    ))
+  @Test def testReporting_ScalaTest_ParallelEventsReported(): Unit = run(
+    "scalatest-parallel-events", "testSupport/ScalaTest_ParallelEvents",
+    behavior = Seq("test"), success = true, options = Seq("--info"))
 
-  // TW-43578 - Verifies parallel and non-parallel ScalaTest test and suite event reporting.
-  @Test
-  def testReporting_ScalaTest_ParallelEventsReported(): Unit =
-    runCase(SbtLoggerOutputTestCase(
-      fixture = "testSupport/ScalaTest_ParallelEvents",
-      sbtCommands = Seq("test"),
-      sbtOptions = Seq("--info"),
-      expectations = SbtOutputExpectations.scalaTestParallelEvents
-    ))
-
-  private def compilationFailureLifecycle(expectedClosures: Int): Option[SbtCompilationLifecycleExpectation] =
-    Some(SbtCompilationLifecycleExpectation.Complete(expectedClosures))
-
-  private def testCompilationFailureLifecycle: Option[SbtCompilationLifecycleExpectation] =
-    Some(SbtCompilationLifecycleExpectation.Complete(expectedClosures = 2))
-
-  private def testCompileCommand: String = "Test / compile"
-
-  private def compilationFailurePropagation: SbtFailurePropagationExpectation =
-    SbtFailurePropagationExpectation.ProcessExitNonZero
-
-  /**
-   * Aggregate projects may run in parallel, so their output fixture intentionally does not impose a false total order.
-   * The lifecycle verifier instead associates each summary with its own complete flow.
-   */
+  private def run(
+    scenarioId: String,
+    fixture: String,
+    setup: Seq[String] = Seq.empty,
+    behavior: Seq[String],
+    success: Boolean,
+    options: Seq[String] = Seq("--error"),
+    teamCity: Boolean = true
+  ): Unit = runCase(SbtLoggerOutputTestCase(
+    scenarioId = scenarioId,
+    fixture = fixture,
+    setupCommands = setup,
+    behaviorCommands = behavior,
+    expectedResult = if (success) SbtProcessResultExpectation.Success else SbtProcessResultExpectation.Failure,
+    sbtOptions = options,
+    teamCityEnvironment = teamCity
+  ))
 }

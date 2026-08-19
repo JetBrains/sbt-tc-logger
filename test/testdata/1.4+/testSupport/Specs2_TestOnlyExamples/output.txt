@@ -1,8 +1,0 @@
-##teamcity\[testSuiteStarted name='org.jetbrains.teamcity.ExampleSpec.* flowId='<flowId1>'\]
-##teamcity\[testStarted name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::contain 11 characters.* flowId='<flowId1>'\]
-##teamcity\[testFinished name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::contain 11 characters.* flowId='<flowId1>'\]
-##teamcity\[testStarted name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::start with.* flowId='<flowId1>'\]
-##teamcity\[testFinished name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::start with.* flowId='<flowId1>'\]
-##teamcity\[testStarted name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::end with.* flowId='<flowId1>'\]
-##teamcity\[testFinished name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::end with.* flowId='<flowId1>'\]
-##teamcity\[testSuiteFinished name='org.jetbrains.teamcity.ExampleSpec.* flowId='<flowId1>'\]

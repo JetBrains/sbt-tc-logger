@@ -1,0 +1,5 @@
+##teamcity[compilationStarted compiler='Scala compiler |[compilation-success|]' flowId='{{build-id:root}}:compile:compiler']
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:compiler' text='|[info|] compiling 1 Scala source to {{path:work-dir}}/target/scala-2.13/classes ...']
+[[noise:sbt-compiler-bridge]]
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:compiler' text='|[info|] done compiling']
+##teamcity[compilationFinished compiler='Scala compiler |[compilation-success|]' flowId='{{build-id:root}}:compile:compiler']

@@ -1,5 +1,0 @@
-##teamcity\[testSuiteStarted name='fixture.jacoco.PointTest' flowId='<flowId1>'\]
-##teamcity\[testStarted name='fixture.jacoco.PointTest.movesPoint' captureStandardOutput='true' flowId='<flowId1>'\]
-##teamcity\[testFinished name='fixture.jacoco.PointTest.movesPoint' duration='.*' flowId='<flowId1>'\]
-##teamcity\[testSuiteFinished name='fixture.jacoco.PointTest' flowId='<flowId1>'\]
-##teamcity\[message status='NORMAL' flowId='<flowId2>' text='.*Jacoco Coverage Report.*\|\[info\|\] Lines: .* covered.*\|\[info\|\].*Check .*jacoco/report.*'\]

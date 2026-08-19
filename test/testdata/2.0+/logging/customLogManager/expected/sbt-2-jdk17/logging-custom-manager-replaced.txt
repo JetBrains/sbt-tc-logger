@@ -1,0 +1,2 @@
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:general:customManagerLog' text='|[info|] custom manager ordinary task message']
+[[noise:sbt-task-summary]]

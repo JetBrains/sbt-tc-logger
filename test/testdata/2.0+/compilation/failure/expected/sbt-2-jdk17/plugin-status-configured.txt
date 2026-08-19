@@ -1,0 +1,6 @@
+TeamCity sbt logger
+  Version: {{logger-version}}
+  TeamCity: 9.0.TEST
+  Status: active
+  Preserve SBT console: true
+  Detailed dependency resolution: true

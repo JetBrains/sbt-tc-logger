@@ -1,1 +1,0 @@
-\[error\].*BrokenHelloWorld\.scala:4:.*[Ii]nvalid literal number

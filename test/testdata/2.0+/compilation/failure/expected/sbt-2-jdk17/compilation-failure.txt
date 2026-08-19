@@ -1,0 +1,8 @@
+##teamcity[compilationStarted compiler='Scala compiler |[compilation-failure|]' flowId='{{build-id:root}}:compile:compiler']
+##teamcity[inspectionType id='SbtCompileProblem' name='sbt compile problem' description='Compile problems' category='Compile problems']
+##teamcity[inspection SEVERITY='ERROR' line='4' typeId='SbtCompileProblem' message='Invalid literal number' file='${BASE}/src/main/scala/BrokenHelloWorld.scala']
+##teamcity[message status='ERROR' flowId='{{build-id:root}}:compile:compiler' text='|[error|] ${BASE}/src/main/scala/BrokenHelloWorld.scala:4: Invalid literal number|n|[error|]   def main(args: Array|[String|]) = 123println("Hello, World!")|n|[error|]                                   ^']
+##teamcity[message status='ERROR' flowId='{{build-id:root}}:compile:compiler' text='|[error|] one error found']
+##teamcity[compilationFinished compiler='Scala compiler |[compilation-failure|]' flowId='{{build-id:root}}:compile:compiler']
+##teamcity[message status='ERROR' text='|[error|] (Compile / compileIncremental) Compilation failed']
+[[noise:sbt-task-summary]]

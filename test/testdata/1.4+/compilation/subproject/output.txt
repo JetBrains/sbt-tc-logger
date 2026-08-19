@@ -1,2 +1,0 @@
-##teamcity\[compilationStarted compiler='Scala compiler \|\[backend\|\]' flowId='<flowId1>'\]
-##teamcity\[compilationFinished compiler='Scala compiler \|\[backend\|\]' flowId='<flowId1>'\]

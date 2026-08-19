@@ -37,10 +37,10 @@ Then run the tests:
 
 1. The pre-step assembles `sbt-teamcity-logger` and stages one self-contained JAR per SBT line under `target/integration-tests/artifacts/`.
 2. `sbt test` enters the Scala/JUnit harness in the `integrationTests` project.
-3. Each JUnit test copies its fixture under `target/integration-tests/work/<runtime>/`, renders its `sbt.version=@SBT_VERSION@` template with that runtime's concrete version, then downloads or reuses the current launcher for the selected SBT line under `target/integration-tests/sbt-launcher`.
-4. The nested sbt command file first runs `apply -cp <logger jar> jetbrains.buildServer.sbtlogger.SbtTeamCityLogger`.
+3. Each JUnit test copies its fixture to a scenario-qualified directory under `target/integration-tests/work/<runtime>/`, renders its `sbt.version=@SBT_VERSION@` template with that runtime's concrete version, then starts a fresh nested SBT server for that scenario.
+4. The nested command order is: load the logger, configure the scenario cache, run setup commands, print the `sbt-teamcity-logger` status handshake, then run behavior commands. Plain SBT output before the handshake is outside the product contract, but any pre-handshake TeamCity service message fails the test.
 5. Fixture-root names express their minimum SBT version: `testdata/1.4+` is the modern SBT 1 corpus, `testdata/1.9+` is the JaCoCo extension, and `testdata/2.0+` is the SBT 2 corpus. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
-6. The harness compares nested sbt output with the source fixture's `output.txt` regexes and checks `excludes.txt` when present.
+6. From the handshake through process completion, the harness compares every merged stdout/stderr line with the fixture's exact `expected/<profile>/<scenario-id>.txt` transcript. It also parses every TeamCity-looking line with TeamCity's service-message parser and checks the nested process result independently.
 
 Useful targeted commands:
 
@@ -53,6 +53,45 @@ Useful targeted commands:
 `sbt testSbt2_0_Jdk17`
 
 `sbt testOther`
+
+### Exact transcript goldens
+
+Goldens are raw wire text: ordinary lines, TeamCity message names, attribute order, escaping, and meaningful version/path suffixes are literal. The format deliberately has no arbitrary regex, includes, or ignored ranges. An intentionally silent behavior must contain the single directive `[[expect-empty]]`; an empty file is invalid.
+
+Typed placeholders cover values which cannot be frozen safely:
+
+- `{{flow:<name>}}` binds one test flow; repeated names must match and different names must remain distinct.
+- `{{build-id:<name>}}` binds a numeric build ID while preserving its literal flow suffix.
+- `{{path:repo-root}}`, `{{path:work-dir}}`, `{{path:sbt-global-base}}`, `{{path:sbt-ivy-home}}`, `{{path:java-home}}`, and `{{path:user-home}}` replace only known machine-specific roots.
+- `{{duration:<name>}}`, `{{timestamp:<name>}}`, `{{thread:<name>}}`, `{{hash:<name>}}`, and `{{logger-version}}` validate their typed values.
+- Dependency outcome/metadata and framework stack-tail placeholders are accepted only by their dedicated validators; fixture causes and frames before a recognized framework tail remain literal.
+
+Use an unordered block only for observed concurrent output. Every lane remains internally ordered and every line remains mandatory:
+
+```text
+[[unordered]]
+[[lane:compile]]
+exact first compile line
+exact second compile line
+[[/lane]]
+[[lane:test]]
+exact test line
+[[/lane]]
+[[/unordered]]
+```
+
+The only non-literal directives are named strict noise recognizers: `sbt-task-summary`, `sbt-debug-line`, `zinc-debug-message`, `framework-stack-tail`, `dependency-resource-outcome`, `sbt-compiler-bridge`, and `parallel-scalatest-native-summary`. Each recognizer accepts a bounded SBT/Zinc/framework shape and rejects unrelated fixture or plugin output. Prefer literal lines; introduce or widen a recognizer only with focused mutation tests and a nearby rationale.
+
+Candidate commands write only below `target/integration-tests/output-candidates/<profile>/` and finish with `session clear`:
+
+```text
+sbt generateSbt1_4_Jdk8OutputCandidates
+sbt generateSbt1_12_Jdk8OutputCandidates
+sbt generateSbt1_12_Jdk17OutputCandidates
+sbt generateSbt2_0_Jdk17OutputCandidates
+```
+
+Audit every candidate before copying it beside its source fixture. Preserve pinned SBT, Scala, Zinc, framework, dependency, and tool versions; add one-line or ordered lanes only for repeat-observed concurrency; never convert suspicious logger output into noise. After updating a profile, run its targeted test alias three complete times. The fixture contract tests reject missing, duplicate, empty, unknown-profile, and orphaned goldens, as well as legacy `output*.txt` or `excludes.txt` files.
 
 The integration matrix is intentionally limited rather than a full SBT × JDK cross-product:
 

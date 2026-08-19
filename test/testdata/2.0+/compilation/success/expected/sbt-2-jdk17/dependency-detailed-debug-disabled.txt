@@ -1,0 +1,7 @@
+[debug] > Exec(update, None, None)
+[debug] Evaluating tasks: update
+[debug] Running task... Cancel: Signal, check cycles: false, forcegc: true
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] not up to date. inChanged = true, force = true']
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] Updating ...']
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] Done updating ']
+[[noise:sbt-task-summary]]

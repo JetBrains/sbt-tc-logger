@@ -1,5 +1,0 @@
-##teamcity\[compilationStarted compiler='Scala compiler in Test \|\[[^|]+\|\]' flowId='<flowId1>'\]
-##teamcity\[message status='ERROR' flowId='<flowId1>' text='.*BrokenTest\.scala:2:.*type mismatch.*\|n.*val value: String = 1.*\|n.*\^'\]
-##teamcity\[message status='ERROR' flowId='<flowId1>' text='.*one error found'\]
-##teamcity\[compilationFinished compiler='Scala compiler in Test \|\[[^|]+\|\]' flowId='<flowId1>'\]
-##teamcity\[message status='ERROR' text='.*Compilation failed'\]

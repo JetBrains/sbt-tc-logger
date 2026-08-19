@@ -4,440 +4,260 @@ import org.jetbrains.sbt.integrationTests.FileUtils
 import org.junit.{Assert, Test}
 
 import java.io.File
-import java.nio.file.Files
 
-/**
- * The test doesn't test business logic.
- *
- * Instead, it tests the implementation of the test utility [[SbtOutputVerifierTest]]
- */
 class SbtOutputVerifierTest {
+  private val context = TranscriptContext(
+    repoRoot = new File("/repo"),
+    workDir = new File("/repo/target/integration-tests/work/profile/scenario"),
+    sbtGlobalBase = new File("/repo/target/integration-tests/global/profile/scenario"),
+    sbtIvyHome = new File("/repo/target/integration-test-ivy/profile"),
+    javaHome = new File("/jdks/17"),
+    loggerVersion = "2026.1-test"
+  )
 
-  @Test
-  def compilationLifecycleRejectsDuplicateOrUnmatchedFinishes(): Unit = {
-    val duplicateFinish = expectAssertionError {
-      SbtOutputVerifier.assertCompilationLifecycle(
-        """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
-          |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
-          |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
-          |""".stripMargin,
-        SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1)
-      )
-    }
-    assertFailureMessageContains(duplicateFinish, "Compilation finish has no matching start")
-
-    val unmatchedFinish = expectAssertionError {
-      SbtOutputVerifier.assertCompilationLifecycle(
-        "##teamcity[compilationFinished compiler='Scala compiler' flowId='main']\n",
-        SbtCompilationLifecycleExpectation.Complete(expectedClosures = 1)
-      )
-    }
-    assertFailureMessageContains(unmatchedFinish, "Compilation finish has no matching start")
+  @Test def exactComparisonRejectsMissingExtraReorderedAndAlteredLines(): Unit = {
+    val golden = goldenFile("alpha", "beta", "gamma")
+    verify(Vector("alpha", "beta", "gamma"), golden)
+    Seq(
+      Vector("alpha", "gamma"),
+      Vector("alpha", "extra", "beta", "gamma"),
+      Vector("beta", "alpha", "gamma"),
+      Vector("alpha", "changed", "gamma")
+    ).foreach(actual => expectAssertionError(verify(actual, golden)))
   }
 
-  @Test
-  def compilationLifecycleAcceptsSequentialInvocationsOnOneFlow(): Unit =
-    SbtOutputVerifier.assertCompilationLifecycle(
-      """##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
-        |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
-        |##teamcity[compilationStarted compiler='Scala compiler' flowId='main']
-        |##teamcity[compilationFinished compiler='Scala compiler' flowId='main']
-        |""".stripMargin,
-      SbtCompilationLifecycleExpectation.Complete(expectedClosures = 2)
-    )
-
-  @Test
-  def checkOutputTextAcceptsRequiredPatternsInOrder(): Unit = {
-    val required = patternFile("required", "first", "second")
-
-    SbtOutputVerifier.checkOutputText(
-      "first\nnoise\nsecond\n",
-      excludesFile = None,
-      requiredFiles = Seq(required)
-    )
-  }
-
-  @Test
-  def checkOutputTextRejectsForbiddenPatterns(): Unit = {
-    val excludes = patternFile("excludes", "forbidden")
-
+  @Test def rawTeamCityAttributeReorderingFails(): Unit = {
+    val golden = goldenFile("##teamcity[message text='hello' status='NORMAL']")
+    verify(Vector("##teamcity[message text='hello' status='NORMAL']"), golden)
     expectAssertionError {
-      SbtOutputVerifier.checkOutputText(
-        "allowed\nforbidden\n",
-        excludesFile = Some(excludes),
-        requiredFiles = Seq.empty
-      )
+      verify(Vector("##teamcity[message status='NORMAL' text='hello']"), golden)
     }
   }
 
-  @Test
-  def requiredPatternsConsumeAtMostOnePatternPerOutputLine(): Unit = {
-    val required = patternFile("required", "first", "second")
+  @Test def typedPlaceholdersValidateBindingsDistinctFlowsAndPathSuffixes(): Unit = {
+    val golden = goldenFile(
+      "##teamcity[testStarted name='a' flowId='{{flow:first}}']",
+      "##teamcity[testFinished name='a' duration='{{duration:test}}' flowId='{{flow:first}}']",
+      "##teamcity[testStarted name='b' flowId='{{flow:second}}']",
+      "source={{path:work-dir}}/src/Test.scala version={{logger-version}} build={{build-id:root}}",
+      "again={{build-id:root}}"
+    )
+    verify(Vector(
+      "##teamcity[testStarted name='a' flowId='17']",
+      "##teamcity[testFinished name='a' duration='9' flowId='17']",
+      "##teamcity[testStarted name='b' flowId='18']",
+      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala version=2026.1-test build=-42",
+      "again=-42"
+    ), golden)
 
-    expectAssertionError {
-      SbtOutputVerifier.checkOutputText(
-        "first second\n",
-        excludesFile = None,
-        requiredFiles = Seq(required)
-      )
+    expectAssertionError(verify(Vector(
+      "##teamcity[testStarted name='a' flowId='17']",
+      "##teamcity[testFinished name='a' duration='9' flowId='99']",
+      "##teamcity[testStarted name='b' flowId='18']",
+      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala version=2026.1-test build=-42",
+      "again=-42"
+    ), golden))
+    expectAssertionError(verify(Vector(
+      "##teamcity[testStarted name='a' flowId='17']",
+      "##teamcity[testFinished name='a' duration='9' flowId='17']",
+      "##teamcity[testStarted name='b' flowId='17']",
+      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala version=2026.1-test build=-42",
+      "again=-42"
+    ), golden))
+    expectAssertionError(verify(Vector(
+      "##teamcity[testStarted name='a' flowId='17']",
+      "##teamcity[testFinished name='a' duration='9' flowId='17']",
+      "##teamcity[testStarted name='b' flowId='18']",
+      "source=/tmp/other/src/Test.scala version=2026.1-test build=-42",
+      "again=-42"
+    ), golden))
+  }
+
+  @Test def unknownOrUntypedPlaceholderIsRejected(): Unit = {
+    expectIllegalArgument(verify(Vector("anything"), goldenFile("{{regex:.*}}")))
+    expectIllegalArgument(verify(Vector("anything"), goldenFile("{{path:not-a-root}}")))
+  }
+
+  @Test def malformedTeamCityLookingLinesAreRejectedByOfficialParser(): Unit = {
+    expectAssertionError(verify(Vector("prefix ##teamcity[message text='x']"), goldenFile("prefix ##teamcity[message text='x']")))
+    expectAssertionError(verify(Vector("##teamcity[testStarted flowId='1']"), goldenFile("##teamcity[testStarted flowId='1']")))
+  }
+
+  @Test def unorderedBlockAcceptsEveryLaneInterleaving(): Unit = {
+    val golden = unorderedGolden()
+    interleavings(Vector("a1", "a2"), Vector("b1", "b2")).foreach { middle =>
+      verify(Vector("before") ++ middle ++ Vector("after"), golden)
     }
   }
 
-  @Test
-  def flowIdPlaceholderRequiresRepeatedTokensToUseTheSameConcreteFlow(): Unit = {
-    val required = patternFile(
-      "required",
-      """##teamcity\[testSuiteStarted name='suite' flowId='<flowId1>'\]""",
-      """##teamcity\[testStarted name='suite.test' captureStandardOutput='true' flowId='<flowId1>'\]""",
-      """##teamcity\[testFinished name='suite.test' duration='.*' flowId='<flowId1>'\]""",
-      """##teamcity\[testSuiteFinished name='suite' flowId='<flowId1>'\]"""
-    )
-
-    SbtOutputVerifier.checkOutputText(
-      """##teamcity[testSuiteStarted name='suite' flowId='thread-A']
-        |##teamcity[testStarted name='suite.test' captureStandardOutput='true' flowId='thread-A']
-        |##teamcity[testFinished name='suite.test' duration='7' flowId='thread-A']
-        |##teamcity[testSuiteFinished name='suite' flowId='thread-A']
-        |""".stripMargin,
-      excludesFile = None,
-      requiredFiles = Seq(required)
-    )
+  @Test def unorderedBlockRejectsMissingDuplicateCrossLaneOrderAndUnexpectedLines(): Unit = {
+    val golden = unorderedGolden()
+    Seq(
+      Vector("before", "a1", "b1", "a2", "after"),
+      Vector("before", "a1", "b1", "a1", "a2", "b2", "after"),
+      Vector("before", "a2", "a1", "b1", "b2", "after"),
+      Vector("before", "a1", "surprise", "a2", "b1", "b2", "after")
+    ).foreach(actual => expectAssertionError(verify(actual, golden)))
   }
 
-  @Test
-  def flowIdPlaceholderRejectsADifferentConcreteFlowForARepeatedToken(): Unit = {
-    val required = patternFile(
-      "required",
-      """##teamcity\[testSuiteStarted name='suite' flowId='<flowId1>'\]""",
-      """##teamcity\[testSuiteFinished name='suite' flowId='<flowId1>'\]"""
+  @Test def everyNoiseRecognizerRejectsUnrelatedOutput(): Unit = {
+    val samples = Seq(
+      "sbt-task-summary" -> "[success] elapsed time: 1 s, cache 25%, 3 onsite tasks",
+      "sbt-debug-line" -> "[debug] Evaluating tasks: Compile / compile",
+      "zinc-debug-message" -> "##teamcity[message status='NORMAL' flowId='1:compile:compiler' text='|[debug|] |[zinc|] IncrementalCompile -----------']",
+      "framework-stack-tail" -> "\tat org.scalatest.Suite.run(Suite.scala:1)",
+      "dependency-resource-outcome" -> "##teamcity[message status='NORMAL' flowId='teamcity-sbt-dependency-resolution' text='|[root / global|] local cache hit https://repo1.maven.org/a.jar']",
+      "parallel-scalatest-native-summary" -> "##teamcity[message status='NORMAL' flowId='17:test:general:test' text='|[info|] NonParallelTest:']"
     )
-
-    val error = expectAssertionError {
-      SbtOutputVerifier.checkOutputText(
-        """##teamcity[testSuiteStarted name='suite' flowId='first-thread']
-          |##teamcity[testSuiteFinished name='suite' flowId='second-thread']
-          |""".stripMargin,
-        excludesFile = None,
-        requiredFiles = Seq(required)
-      )
+    samples.foreach { case (name, accepted) =>
+      verify(Vector(accepted), goldenFile(s"[[noise:$name]]"))
+      expectAssertionError(verify(Vector("fixture says something unrelated"), goldenFile(s"[[noise:$name]]")))
     }
-
-    assertFailureMessageContains(error, "flowId1 = 'first-thread'")
-    assertFailureMessageContains(error, "First missing pattern:")
   }
 
-  @Test
-  def flowIdPlaceholdersRequireDifferentTokensToUseDifferentConcreteFlows(): Unit = {
-    val required = patternFile(
-      "required",
-      """##teamcity\[testSuiteStarted name='first' flowId='<flowId1>'\]""",
-      """##teamcity\[testSuiteStarted name='second' flowId='<flowId2>'\]"""
+  @Test def compilerBridgeRecognizerAcceptsOnlyACompleteColdCacheBlockOrItsExplicitAbsence(): Unit = {
+    val golden = goldenFile("[[noise:sbt-compiler-bridge]]")
+    val coldBridge = Vector(
+      "[info] Non-compiled module 'compiler-bridge_2.12' for Scala 2.12.20. Compiling...",
+      "[info]   Compilation completed in 4.321s."
     )
-
-    val error = expectAssertionError {
-      SbtOutputVerifier.checkOutputText(
-        """##teamcity[testSuiteStarted name='first' flowId='shared-thread']
-          |##teamcity[testSuiteStarted name='second' flowId='shared-thread']
-          |""".stripMargin,
-        excludesFile = None,
-        requiredFiles = Seq(required)
-      )
-    }
-
-    assertFailureMessageContains(error, "flowId1 = 'shared-thread'")
-    assertFailureMessageContains(error, "flowId2 cannot bind to 'shared-thread': it is already bound to flowId1")
+    verify(Vector.empty, golden)
+    verify(coldBridge, golden)
+    expectAssertionError(verify(coldBridge.take(1), golden))
+    expectAssertionError(verify(Vector("[info] fixture output", coldBridge(1)), golden))
   }
 
-  @Test
-  def flowIdPlaceholderBindingsAreScopedToOneRequiredFile(): Unit = {
-    val firstRequired = patternFile("first-required", """##teamcity\[testSuiteStarted name='first' flowId='<flowId1>'\]""")
-    val secondRequired = patternFile("second-required", """##teamcity\[testSuiteStarted name='second' flowId='<flowId1>'\]""")
-
-    SbtOutputVerifier.checkOutputText(
-      """##teamcity[testSuiteStarted name='first' flowId='shared-thread']
-        |##teamcity[testSuiteStarted name='second' flowId='shared-thread']
-        |""".stripMargin,
-      excludesFile = None,
-      requiredFiles = Seq(firstRequired, secondRequired)
+  @Test def compilerBridgeRecognizerCanBeOptionalInsideAnUnorderedLane(): Unit = {
+    val golden = goldenFile(
+      "[[unordered]]",
+      "[[lane:compile]]", "compile-started", "[[noise:sbt-compiler-bridge]]", "compile-finished", "[[/lane]]",
+      "[[lane:other]]", "other", "[[/lane]]",
+      "[[/unordered]]"
     )
+    val coldBridge = Vector(
+      "[info] Non-compiled module 'compiler-bridge_2.12' for Scala 2.12.20. Compiling...",
+      "[info]   Compilation completed in 4.321s."
+    )
+
+    verify(Vector("other", "compile-started", "compile-finished"), golden)
+    verify(Vector("compile-started") ++ coldBridge ++ Vector("other", "compile-finished"), golden)
+    expectAssertionError(verify(Vector("compile-started", coldBridge.head, "other", "compile-finished"), golden))
   }
 
-  @Test
-  def flowIdPlaceholderSearchBacktracksToALaterCompatibleOrderedSubsequence(): Unit = {
-    val required = patternFile(
-      "required",
-      """##teamcity\[testStarted name='suite.test' captureStandardOutput='true' flowId='<flowId7>'\]""",
-      """##teamcity\[testFinished name='suite.test' duration='.*' flowId='<flowId7>'\]"""
+  @Test def parallelScalaTestNativeSummaryIsStrictOptionalAndCappedByTheGolden(): Unit = {
+    val summary = "##teamcity[message status='NORMAL' flowId='17:test:general:test' text='|[info|] NonParallelTest:']"
+    val parallelSummary = "##teamcity[message status='NORMAL' flowId='17:test:general:test' text='|[info|] ParallelTest:']"
+    val golden = goldenFile(
+      "[[unordered]]",
+      "[[lane:events]]", "event", "[[/lane]]",
+      "[[lane:native-summary]]",
+      "[[noise:parallel-scalatest-native-summary]]",
+      "[[noise:parallel-scalatest-native-summary]]",
+      "[[/lane]]",
+      "[[/unordered]]"
     )
 
-    SbtOutputVerifier.checkOutputText(
-      """##teamcity[testStarted name='suite.test' captureStandardOutput='true' flowId='first-thread']
-        |##teamcity[testStarted name='suite.test' captureStandardOutput='true' flowId='second-thread']
-        |##teamcity[testFinished name='suite.test' duration='1' flowId='second-thread']
-        |""".stripMargin,
-      excludesFile = None,
-      requiredFiles = Seq(required)
-    )
+    verify(Vector("event"), golden)
+    verify(Vector(summary, "event", summary), golden)
+    verify(Vector(parallelSummary, "event"), golden)
+    expectAssertionError(verify(Vector(summary, summary, summary, "event"), golden))
+    expectAssertionError(verify(Vector("##teamcity[message status='NORMAL' flowId='17:test:general:test' text='fixture output']", "event"), golden))
   }
 
-  @Test
-  def flowIdPlaceholderRecognisesAServiceMessageWithTrailingConsoleOutput(): Unit = {
-    val required = patternFile(
-      "required",
-      """##teamcity\[testStarted name='suite.test' captureStandardOutput='true'.* flowId='<flowId1>'\]""",
-      """##teamcity\[testFinished name='suite.test'.* flowId='<flowId1>'\]"""
-    )
-
-    SbtOutputVerifier.checkOutputText(
-      """##teamcity[testStarted name='suite.test' captureStandardOutput='true' flowId='worker-7'][info] suite started
-        |##teamcity[testFinished name='suite.test' duration='4' flowId='worker-7'][info] suite finished
-        |""".stripMargin,
-      excludesFile = None,
-      requiredFiles = Seq(required)
-    )
+  @Test def explicitEmptyTranscriptIsRequiredAndEnforced(): Unit = {
+    verify(Vector.empty, goldenFile("[[expect-empty]]"))
+    expectAssertionError(verify(Vector("unexpected"), goldenFile("[[expect-empty]]")))
+    expectIllegalArgument(verify(Vector.empty, goldenFile()))
   }
 
-  @Test
-  def requiredPatternFailureReportsUsefulMatchContext(): Unit = {
-    val required = patternFile("required", "first", "second")
-
-    val error = expectAssertionError {
-      SbtOutputVerifier.checkOutputText(
-        "first\nunexpected\n",
-        excludesFile = None,
-        requiredFiles = Seq(required)
-      )
-    }
-
-    assertFailureMessageContains(error, "Matched 1/2 patterns across 2 captured output lines.")
-    assertFailureMessageContains(error, "Last matched pattern:")
-    assertFailureMessageContains(error, "matched output line 1: first")
-    assertFailureMessageContains(error, "First missing pattern:")
-    assertFailureMessageContains(error, "See the build log for the complete nested-sbt output.")
+  @Test def candidateRenderingRoundTripsWithoutTouchingSourceGoldens(): Unit = {
+    val actual = Vector(
+      "##teamcity[compilationStarted compiler='Scala compiler' flowId='123:compile:compiler']",
+      "##teamcity[message status='NORMAL' flowId='123:compile:compiler' text='source /repo/target/integration-tests/work/profile/scenario/src/A.scala']",
+      "##teamcity[testStarted name='test' flowId='17']",
+      "##teamcity[testFinished name='test' duration='8' flowId='17']",
+      "version 2026.1-test",
+      "[success] elapsed time: 1 s, cache 0%, 2 onsite tasks"
+    )
+    val destination = FileUtils.createTempFile("candidate", ".txt")
+    SbtOutputVerifier.writeCandidate(actual, destination, context)
+    Assert.assertTrue(FileUtils.read(destination).contains("{{path:work-dir}}/src/A.scala"))
+    Assert.assertTrue(FileUtils.read(destination).contains("{{build-id:root}}:compile:compiler"))
+    Assert.assertTrue(FileUtils.read(destination).contains("{{flow:test}}"))
+    verify(actual, destination)
   }
 
-  @Test
-  def expectationValidationRejectsAlphaEquivalentDuplicateGroups(): Unit = {
-    val first = patternFile("first", """##teamcity\[testStarted name='first' flowId='<flowId1>'\]""")
-    val second = patternFile("second", """##teamcity\[testStarted name='first' flowId='<flowId9>'\]""")
-    val expectations = ExpectationSet(Seq(
-      FlowScope("one", Seq(AssertionGroup("first", first.getAbsolutePath))),
-      FlowScope("two", Seq(AssertionGroup("second", second.getAbsolutePath)))
+  @Test def longFrameworkStackTailIsRecognizedWithoutRegexBacktracking(): Unit = {
+    val frameworkTail = (1 to 300).map(index => s"|n\tat org.junit.runners.ParentRunner.run(ParentRunner.scala:$index)").mkString
+    val actual = Vector(
+      s"##teamcity[testFailed name='fixture.Test.fails' details='java.lang.AssertionError: boom|n\tat fixture.Test.$$anonfun$$fails(Test.scala:7)$frameworkTail' flowId='17']"
+    )
+    val candidate = FileUtils.createTempFile("stack-candidate", ".txt")
+    SbtOutputVerifier.writeCandidate(actual, candidate, context)
+    Assert.assertTrue(FileUtils.read(candidate).contains("{{framework-stack-tail:junit}}"))
+    verify(actual, candidate)
+  }
+
+  @Test def handshakeBoundsTranscriptAndCapturesVersion(): Unit = {
+    val bounded = SbtTranscriptBoundary.extract(
+      "startup\nTeamCity sbt logger\n  Version: v1\n  TeamCity: 9.0.TEST\n  Status: active\n  Preserve SBT console: false (default)\n  Detailed dependency resolution: false (default)\nafter\n",
+      activeHandshake
+    )
+    Assert.assertEquals("v1", bounded.loggerVersion)
+    Assert.assertEquals(Vector("after"), bounded.lines)
+  }
+
+  @Test def handshakeRejectsMissingMalformedAndPreBoundaryTeamCityOutput(): Unit = {
+    expectAssertionError(SbtTranscriptBoundary.extract("startup\n", activeHandshake))
+    expectAssertionError(SbtTranscriptBoundary.extract(
+      "TeamCity sbt logger\n  Version: \n  TeamCity: 9.0.TEST\n  Status: active\n  Preserve SBT console: false (default)\n  Detailed dependency resolution: false (default)\n",
+      activeHandshake
     ))
-
-    val error = expectIllegalArgument {
-      SbtOutputVerifier.validateExpectationSet(expectations, new File("."))
-    }
-    Assert.assertTrue(error.getMessage.contains("Duplicate expected-output assertion groups"))
-    Assert.assertTrue(error.getMessage.contains("one/first"))
-    Assert.assertTrue(error.getMessage.contains("two/second"))
-  }
-
-  @Test
-  def expectationValidationNormalisesLineEndingsBeforeDuplicateComparison(): Unit = {
-    val first = patternFile("first", "first", "second")
-    val second = FileUtils.createTempFile("second", ".txt")
-    Files.writeString(second.toPath, "first\r\nsecond\r\n")
-    val expectations = ExpectationSet(Seq(
-      FlowScope("one", Seq(AssertionGroup("first", first.getAbsolutePath))),
-      FlowScope("two", Seq(AssertionGroup("second", second.getAbsolutePath)))
+    expectAssertionError(SbtTranscriptBoundary.extract(
+      "##teamcity[message text='too early']\nTeamCity sbt logger\n  Version: v1\n  TeamCity: 9.0.TEST\n  Status: active\n  Preserve SBT console: false (default)\n  Detailed dependency resolution: false (default)\n",
+      activeHandshake
     ))
-
-    Assert.assertTrue(expectIllegalArgument {
-      SbtOutputVerifier.validateExpectationSet(expectations, new File("."))
-    }.getMessage.contains("Duplicate expected-output assertion groups"))
   }
 
-  @Test
-  def expectationValidationRejectsMalformedAndEmptyGroups(): Unit = {
-    val malformed = patternFile("malformed", """##teamcity\[testStarted name='test' flowId='<flowId0>'\]""")
-    val malformedSet = ExpectationSet.oneScope("scope", AssertionGroup("malformed", malformed.getAbsolutePath))
-    Assert.assertTrue(expectIllegalArgument {
-      SbtOutputVerifier.validateExpectationSet(malformedSet, new File("."))
-    }.getMessage.contains("Malformed flow-ID placeholder"))
+  private val activeHandshake = SbtTranscriptBoundary.ExpectedHandshake(
+    teamCityVersion = Some("9.0.TEST"),
+    preserveConsole = false,
+    detailedDependencyResolution = false
+  )
 
-    val empty = emptyPatternFile("empty")
-    val emptySet = ExpectationSet.oneScope("scope", AssertionGroup("empty", empty.getAbsolutePath))
-    Assert.assertTrue(expectIllegalArgument {
-      SbtOutputVerifier.validateExpectationSet(emptySet, new File("."))
-    }.getMessage.contains("is empty"))
+  private def unorderedGolden(): File = goldenFile(
+    "before",
+    "[[unordered]]",
+    "[[lane:a]]", "a1", "a2", "[[/lane]]",
+    "[[lane:b]]", "b1", "b2", "[[/lane]]",
+    "[[/unordered]]",
+    "after"
+  )
 
-    val nonPositiveSet = ExpectationSet.oneScope("scope", AssertionGroup("count", malformed.getAbsolutePath, minimumOccurrences = 0))
-    Assert.assertTrue(expectIllegalArgument {
-      SbtOutputVerifier.validateExpectationSet(nonPositiveSet, new File("."))
-    }.getMessage.contains("minimumOccurrences >= 1"))
-  }
+  private def interleavings(left: Vector[String], right: Vector[String]): Vector[Vector[String]] =
+    if (left.isEmpty) Vector(right)
+    else if (right.isEmpty) Vector(left)
+    else interleavings(left.tail, right).map(left.head +: _) ++ interleavings(left, right.tail).map(right.head +: _)
 
-  @Test
-  def expectationValidationRejectsDuplicateNamesAndEmptyScopes(): Unit = {
-    val valid = patternFile("valid", "expected")
-    val duplicateScopeNames = ExpectationSet(Seq(
-      FlowScope("scope", Seq(AssertionGroup("first", valid.getAbsolutePath))),
-      FlowScope("scope", Seq(AssertionGroup("second", valid.getAbsolutePath)))
-    ))
-    Assert.assertTrue(expectIllegalArgument {
-      SbtOutputVerifier.validateExpectationSet(duplicateScopeNames, new File("."))
-    }.getMessage.contains("Duplicate flow-scope names"))
-
-    val duplicateGroupNames = ExpectationSet(Seq(
-      FlowScope("first", Seq(AssertionGroup("group", valid.getAbsolutePath))),
-      FlowScope("second", Seq(AssertionGroup("group", valid.getAbsolutePath)))
-    ))
-    Assert.assertTrue(expectIllegalArgument {
-      SbtOutputVerifier.validateExpectationSet(duplicateGroupNames, new File("."))
-    }.getMessage.contains("Duplicate assertion-group names"))
-
-    Assert.assertTrue(expectIllegalArgument {
-      SbtOutputVerifier.validateExpectationSet(ExpectationSet(Seq(FlowScope("empty", Seq.empty))), new File("."))
-    }.getMessage.contains("must contain at least one assertion group"))
-  }
-
-  @Test
-  def groupsInOneScopeMayShareFlowsWithoutARelativeOrder(): Unit = {
-    val first = patternFile("first", """##teamcity\[testStarted name='first' flowId='<flowId1>'\]""")
-    val second = patternFile("second", """##teamcity\[testStarted name='second' flowId='<flowId1>'\]""")
-    val expectations = ExpectationSet.oneScope(
-      "shared",
-      AssertionGroup("first", first.getAbsolutePath),
-      AssertionGroup("second", second.getAbsolutePath)
-    )
-
-    SbtOutputVerifier.checkOutputText(
-      """##teamcity[testStarted name='second' flowId='runner']
-        |##teamcity[testStarted name='first' flowId='runner']
-        |""".stripMargin,
-      excludesFile = None,
-      expectations = expectations,
-      fixtureDirectory = new File(".")
-    )
-  }
-
-  @Test
-  def flowScopeOwnershipBacktracksToACompatibleBinding(): Unit = {
-    val first = patternFile("first", """##teamcity\[testStarted name='first' flowId='<flowId1>'\]""")
-    val second = patternFile("second", """##teamcity\[testStarted name='second' flowId='<flowId1>'\]""")
-    val expectations = ExpectationSet(Seq(
-      FlowScope("first-scope", Seq(AssertionGroup("first", first.getAbsolutePath))),
-      FlowScope("second-scope", Seq(AssertionGroup("second", second.getAbsolutePath)))
-    ))
-
-    SbtOutputVerifier.checkOutputText(
-      """##teamcity[testStarted name='first' flowId='shared']
-        |##teamcity[testStarted name='first' flowId='dedicated']
-        |##teamcity[testStarted name='second' flowId='shared']
-        |""".stripMargin,
-      excludesFile = None,
-      expectations = expectations,
-      fixtureDirectory = new File(".")
-    )
-  }
-
-  @Test
-  def flowScopeOwnershipRejectsTheSameConcreteFlowInDifferentScopes(): Unit = {
-    val first = patternFile("first", """##teamcity\[testStarted name='first' flowId='<flowId1>'\]""")
-    val second = patternFile("second", """##teamcity\[testStarted name='second' flowId='<flowId1>'\]""")
-    val expectations = ExpectationSet(Seq(
-      FlowScope("first-scope", Seq(AssertionGroup("first", first.getAbsolutePath))),
-      FlowScope("second-scope", Seq(AssertionGroup("second", second.getAbsolutePath)))
-    ))
-
-    val error = expectAssertionError {
-      SbtOutputVerifier.checkOutputText(
-        """##teamcity[testStarted name='first' flowId='shared']
-          |##teamcity[testStarted name='second' flowId='shared']
-          |""".stripMargin,
-        excludesFile = None,
-        expectations = expectations,
-        fixtureDirectory = new File(".")
-      )
-    }
-    assertFailureMessageContains(error, "no globally compatible flow-scope assignment")
-    assertFailureMessageContains(error, "first-scope: {shared}")
-  }
-
-  @Test
-  def repeatedOccurrencesUseDistinctOutputLinesAndLocalBindings(): Unit = {
-    val repeated = patternFile(
-      "repeated",
-      """##teamcity\[testStarted name='test' flowId='<flowId1>'\]""",
-      """##teamcity\[testFinished name='test' flowId='<flowId1>'\]"""
-    )
-    val expectations = ExpectationSet.oneScope("repeated", AssertionGroup("event", repeated.getAbsolutePath, minimumOccurrences = 2))
-
-    SbtOutputVerifier.checkOutputText(
-      """##teamcity[testStarted name='test' flowId='one']
-        |##teamcity[testFinished name='test' flowId='one']
-        |##teamcity[testStarted name='test' flowId='two']
-        |##teamcity[testFinished name='test' flowId='two']
-        |""".stripMargin,
-      excludesFile = None,
-      expectations = expectations,
-      fixtureDirectory = new File(".")
-    )
-  }
-
-  @Test
-  def repeatedOccurrencesCannotReuseTheSameOutputLines(): Unit = {
-    val repeated = patternFile(
-      "repeated",
-      """##teamcity\[testStarted name='test' flowId='<flowId1>'\]""",
-      """##teamcity\[testFinished name='test' flowId='<flowId1>'\]"""
-    )
-    val expectations = ExpectationSet.oneScope("repeated", AssertionGroup("event", repeated.getAbsolutePath, minimumOccurrences = 2))
-
-    val error = expectAssertionError {
-      SbtOutputVerifier.checkOutputText(
-        """##teamcity[testStarted name='test' flowId='one']
-          |##teamcity[testFinished name='test' flowId='one']
-          |""".stripMargin,
-        excludesFile = None,
-        expectations = expectations,
-        fixtureDirectory = new File(".")
-      )
-    }
-    assertFailureMessageContains(error, "requires 2 distinct occurrences")
-  }
-
-  private def patternFile(prefix: String, lines: String*): File = {
-    val file = FileUtils.createTempFile(prefix, ".txt")
-    FileUtils.writeLinesTo(file, lines*)
+  private def goldenFile(lines: String*): File = {
+    val file = FileUtils.createTempFile("exact-transcript", ".txt")
+    FileUtils.writeStringToFile(file, lines.mkString("\n"))
     file
   }
 
-  private def emptyPatternFile(prefix: String): File = {
-    val file = FileUtils.createTempFile(prefix, ".txt")
-    Files.writeString(file.toPath, "")
-    file
-  }
+  private def verify(actual: Vector[String], golden: File): Unit =
+    SbtOutputVerifier.verify(actual, golden, context)
 
-  private def expectAssertionError(block: => Unit): AssertionError = {
+  private def expectAssertionError(body: => Any): AssertionError = expect[AssertionError](body)
+  private def expectIllegalArgument(body: => Any): IllegalArgumentException = expect[IllegalArgumentException](body)
+
+  private def expect[T <: Throwable](body: => Any)(using tag: reflect.ClassTag[T]): T = {
     try {
-      block
+      body
+      Assert.fail(s"Expected ${tag.runtimeClass.getSimpleName}")
+      throw new AssertionError("unreachable")
     } catch {
-      case e: AssertionError =>
-        return e
+      case error if tag.runtimeClass.isInstance(error) => error.asInstanceOf[T]
     }
-
-    Assert.fail("Expected the verifier to throw AssertionError, but it completed successfully")
-    throw new AssertionError("unreachable")
-  }
-
-  private def expectIllegalArgument(block: => Unit): IllegalArgumentException = {
-    try {
-      block
-    } catch {
-      case e: IllegalArgumentException => return e
-    }
-
-    Assert.fail("Expected IllegalArgumentException, but the verifier completed successfully")
-    throw new IllegalArgumentException("unreachable")
-  }
-
-  private def assertFailureMessageContains(error: AssertionError, expectedText: String): Unit = {
-    val actualMessage = Option(error.getMessage).getOrElse("<no failure message>")
-    Assert.assertTrue(
-      s"Expected verifier failure message to contain '$expectedText', but was: $actualMessage",
-      actualMessage.contains(expectedText)
-    )
   }
 }

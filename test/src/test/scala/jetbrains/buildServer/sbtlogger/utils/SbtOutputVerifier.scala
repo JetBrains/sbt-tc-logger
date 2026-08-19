@@ -1,469 +1,799 @@
 package jetbrains.buildServer.sbtlogger.utils
 
-import org.jetbrains.sbt.integrationTests.FileUtils
-import org.jetbrains.sbt.integrationTests.FileUtils.normalisedAbsolutePath
+import jetbrains.buildServer.messages.serviceMessages.{ServiceMessage, ServiceMessageParserCallback, ServiceMessagesParser}
+import org.jetbrains.sbt.integrationTests.{FileUtils, SbtIntegrationTestLayout}
 import org.junit.Assert
 
 import java.io.File
-import java.util.regex.{Pattern, PatternSyntaxException}
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.text.ParseException
+import java.util.regex.Pattern
 import scala.collection.mutable
+import scala.jdk.CollectionConverters.*
 
-/** Verifies nested-sbt output against named, flow-owning expected-output groups. */
+/** Values which typed golden placeholders may refer to. */
+private[sbtlogger] final case class TranscriptContext(
+  repoRoot: File,
+  workDir: File,
+  sbtGlobalBase: File,
+  sbtIvyHome: File,
+  javaHome: File,
+  loggerVersion: String
+) {
+  val paths: Map[String, String] = Map(
+    "repo-root" -> normalise(repoRoot),
+    "work-dir" -> normalise(workDir),
+    "sbt-global-base" -> normalise(sbtGlobalBase),
+    "sbt-ivy-home" -> normalise(sbtIvyHome),
+    "java-home" -> normalise(javaHome),
+    "user-home" -> FileUtils.normalisePathSeparator(System.getProperty("user.home"))
+  )
+
+  private def normalise(file: File): String = FileUtils.normalisedAbsolutePath(file)
+}
+
+private[sbtlogger] final case class BoundedTranscript(lines: Vector[String], loggerVersion: String)
+
+/** Locates and validates the logger-status handshake which bounds the product transcript. */
+private[sbtlogger] object SbtTranscriptBoundary {
+  final case class ExpectedHandshake(
+    teamCityVersion: Option[String],
+    preserveConsole: Boolean,
+    detailedDependencyResolution: Boolean
+  )
+
+  private val Start = "TeamCity sbt logger"
+  private val VersionPrefix = "  Version: "
+
+  def extract(output: String, expected: ExpectedHandshake): BoundedTranscript = {
+    val lines = output.linesIterator.toVector
+    val startIndexes = lines.zipWithIndex.collect { case (Start, index) => index }
+    if (startIndexes.isEmpty) fail("Missing logger-status handshake.")
+
+    val start = startIndexes.head
+    val preBoundaryServiceMessage = lines.take(start).zipWithIndex.collectFirst {
+      case (line, index) if line.contains("##teamcity[") => index -> line
+    }
+    preBoundaryServiceMessage.foreach { case (index, line) =>
+      fail(s"TeamCity service message before the transcript boundary at output line ${index + 1}: $line")
+    }
+
+    val expectedTail = Vector(
+      expected.teamCityVersion.fold("  TeamCity: not detected")(version => s"  TeamCity: $version"),
+      if (expected.teamCityVersion.isDefined) "  Status: active" else "  Status: inactive",
+      s"  Preserve SBT console: ${booleanSetting(expected.preserveConsole)}",
+      s"  Detailed dependency resolution: ${booleanSetting(expected.detailedDependencyResolution)}"
+    )
+    val handshake = lines.slice(start, start + 6)
+    if (handshake.size != 6) fail(s"Incomplete logger-status handshake at output line ${start + 1}.")
+    if (handshake.head != Start) fail(s"Malformed logger-status handshake start at output line ${start + 1}.")
+    if (!handshake(1).startsWith(VersionPrefix) || handshake(1).stripPrefix(VersionPrefix).trim.isEmpty) {
+      fail(s"Malformed logger version in handshake: '${handshake(1)}'.")
+    }
+    val actualTail = handshake.drop(2)
+    if (actualTail != expectedTail) {
+      fail(
+        s"Malformed logger-status handshake.\nExpected:\n${expectedTail.mkString("\n")}\nActual:\n${actualTail.mkString("\n")}"
+      )
+    }
+
+    BoundedTranscript(lines.drop(start + 6), handshake(1).stripPrefix(VersionPrefix))
+  }
+
+  private def booleanSetting(value: Boolean): String = if (value) "true" else "false (default)"
+
+  private def fail(message: String): Nothing = throw new AssertionError(message)
+}
+
+/** Exact, line-bounded transcript verifier and candidate renderer. */
 private[sbtlogger] object SbtOutputVerifier {
+  val CandidateModeProperty = "sbt.logger.transcripts.candidate"
 
-  def validateExpectationSet(expectations: ExpectationSet, fixtureDirectory: File): Unit =
-    compileExpectationSet(expectations, fixtureDirectory)
+  def goldenFile(fixtureDirectory: File, outputProfile: String, scenarioId: String): File =
+    new File(fixtureDirectory, s"expected/$outputProfile/$scenarioId.txt")
 
-  def checkOutputFile(outputFile: File, excludesFile: Option[File], expectations: ExpectationSet, fixtureDirectory: File): Unit = {
-    val lines = FileUtils.readLines(outputFile)
-    lines.foreach(line => println(TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput(line)))
-    checkOutputLines(lines, excludesFile, expectations, fixtureDirectory)
+  def candidateFile(repoRoot: File, outputProfile: String, scenarioId: String): File =
+    new File(repoRoot, s"target/integration-tests/output-candidates/$outputProfile/$scenarioId.txt")
+
+  def verify(lines: Vector[String], golden: File, context: TranscriptContext): Unit = {
+    validateTeamCityLines(lines)
+    if (!golden.isFile) {
+      throw new AssertionError(s"Missing exact transcript golden: ${FileUtils.normalisedAbsolutePath(golden)}")
+    }
+    val goldenLines = FileUtils.readLines(golden).toVector
+    val document = GoldenParser.parse(goldenLines, golden)
+    ExactMatcher.verify(document, lines, context, golden)
   }
 
-  def checkOutputFile(outputFile: File, excludesFile: Option[File], requiredFiles: Seq[File]): Unit =
-    checkOutputFile(outputFile, excludesFile, legacyExpectations(requiredFiles), new File("."))
-
-  def checkOutputText(output: String, excludesFile: Option[File], expectations: ExpectationSet, fixtureDirectory: File): Unit =
-    checkOutputLines(output.linesIterator.toVector, excludesFile, expectations, fixtureDirectory)
-
-  /** Compatibility overload retained for focused legacy verifier tests. */
-  def checkOutputText(output: String, excludesFile: Option[File], requiredFiles: Seq[File]): Unit =
-    checkOutputText(output, excludesFile, legacyExpectations(requiredFiles), new File("."))
-
-  def assertCompilationLifecycle(output: String, expectation: SbtCompilationLifecycleExpectation): Unit = {
-    val lines = output.linesIterator.toVector
-    val lifecycles = lines.zipWithIndex.flatMap { case (line, index) =>
-      parseServiceMessage(line).collect {
-        case ("compilationStarted", attributes) if attributes.contains("compiler") && attributes.contains("flowId") =>
-          CompilationLifecycleEvent(started = true, attributes("compiler"), attributes("flowId"), index)
-        case ("compilationFinished", attributes) if attributes.contains("compiler") && attributes.contains("flowId") =>
-          CompilationLifecycleEvent(started = false, attributes("compiler"), attributes("flowId"), index)
-      }
-    }
-    val grouped = lifecycles.groupBy(event => (event.compiler, event.flowId))
-    expectation match {
-      case SbtCompilationLifecycleExpectation.Absent =>
-        Assert.assertTrue(s"Expected no compiler lifecycle, found ${grouped.keys.mkString(", ")}", grouped.isEmpty)
-      case SbtCompilationLifecycleExpectation.Complete(expectedClosures) =>
-        val intervals = grouped.toVector.flatMap { case ((compiler, flowId), events) =>
-          assertCompleteLifecycles(compiler, flowId, events)
-        }
-        Assert.assertEquals(
-          s"Expected $expectedClosures compilation lifecycle closures, found ${intervals.size}: ${grouped.keys.mkString(", ")}",
-          expectedClosures,
-          intervals.size
-        )
-    }
-  }
-
-  def assertDependencyLifecycle(output: String, expectation: SbtDependencyLifecycleExpectation): Unit = {
-    val lines = output.linesIterator.toVector
-    val lifecycles = lines.zipWithIndex.flatMap { case (line, index) =>
-      parseServiceMessage(line).collect {
-        case ("blockOpened", attributes) if attributes.get("name").exists(_.startsWith("Dependency resolution")) && attributes.contains("flowId") =>
-          DependencyLifecycleEvent(opened = true, attributes("flowId"), index)
-        case ("blockClosed", attributes) if attributes.get("name").contains("Dependency resolution") && attributes.contains("flowId") =>
-          DependencyLifecycleEvent(opened = false, attributes("flowId"), index)
-      }
-    }
-    val grouped = lifecycles.groupBy(_.flowId)
-    expectation match {
-      case SbtDependencyLifecycleExpectation.Absent =>
-        Assert.assertTrue(s"Expected no dependency-resolution lifecycle, found ${grouped.keys.mkString(", ")}", grouped.isEmpty)
-      case SbtDependencyLifecycleExpectation.Complete(expectedClosures) =>
-        Assert.assertEquals(
-          s"Expected $expectedClosures dependency lifecycle closures, found ${grouped.size}: ${grouped.keys.mkString(", ")}",
-          expectedClosures,
-          grouped.size
-        )
-        grouped.foreach { case (flowId, events) => assertCompleteDependencyLifecycle(flowId, events) }
-    }
-
-    val compilerFlows = lines.flatMap { line =>
-      parseServiceMessage(line).collect {
-        case ("compilationStarted", attributes) if attributes.contains("flowId") => attributes("flowId")
-      }
-    }.toSet
-    Assert.assertTrue(
-      s"Dependency and compiler activities must use distinct TeamCity flows, but both used: ${grouped.keySet.intersect(compilerFlows).mkString(", ")}",
-      grouped.keySet.intersect(compilerFlows).isEmpty
+  def writeCandidate(lines: Vector[String], destination: File, context: TranscriptContext): Unit = {
+    validateTeamCityLines(lines)
+    val rendered = CandidateRenderer.render(lines, context)
+    val parent = destination.toPath.getParent
+    Files.createDirectories(parent)
+    Files.writeString(
+      destination.toPath,
+      rendered.mkString("", System.lineSeparator(), System.lineSeparator()),
+      StandardCharsets.UTF_8
     )
+    // Candidate output must itself be accepted by the same parser and matcher before it is offered for review.
+    ExactMatcher.verify(GoldenParser.parse(rendered, destination), lines, context, destination)
   }
 
-  /** Checks the high-level contract that the opt-in Coursier adapter emits useful data in one collapsed block. */
-  def assertDetailedDependencyResolution(output: String): Unit = {
-    val lines = output.linesIterator.toVector
-    val blockOpens = lines.filter(_.contains("##teamcity[blockOpened name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution']"))
-    val blockCloses = lines.filter(_.contains("##teamcity[blockClosed name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution']"))
-    val resourceLines = lines.filter(line =>
-      line.contains("flowId='teamcity-sbt-dependency-resolution'") &&
-        (line.contains("local cache hit") || line.contains("downloaded "))
-    )
-
-    Assert.assertFalse("Detailed dependency resolution did not open a TeamCity block", blockOpens.isEmpty)
-    Assert.assertEquals("Every detailed dependency-resolution wave must close", blockOpens.size, blockCloses.size)
-    Assert.assertFalse("Coursier did not report a final resource outcome", resourceLines.isEmpty)
-    Assert.assertTrue("Detailed dependency resolution did not report the sbt update-report cache", output.contains("sbt update report cache hit"))
-    Assert.assertTrue("Detailed dependency resolution did not emit its wave footer", output.contains("Dependency resolution finished in"))
-    Assert.assertTrue("Detailed dependency resolution must close after its footer", output.lastIndexOf("Dependency resolution finished in") < output.lastIndexOf("blockClosed name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution'"))
+  def validateTeamCityLines(lines: Seq[String]): Unit = lines.zipWithIndex.foreach { case (line, index) =>
+    if (line.contains("##teamcity[")) validateTeamCityLine(line, index + 1)
   }
 
-  def assertDetailedDependencyFailure(output: String): Unit = {
-    Assert.assertTrue("Coursier's failed resolver attempt must be a TeamCity warning", output.contains("failed download attempt"))
-    Assert.assertTrue("Coursier's failed resolver attempt must be a TeamCity warning", output.contains("status='WARNING'"))
-    Assert.assertFalse(
-      "Transient Coursier resolver attempts must not create a TeamCity error",
-      output.linesIterator.exists(line => line.contains("flowId='teamcity-sbt-dependency-resolution'") && line.contains("status='ERROR'"))
-    )
-    assertDetailedBlockClosure(output)
-  }
-
-  def assertNoDetailedDependencyResolution(output: String): Unit = {
-    Assert.assertFalse(
-      "Detailed dependency resolution must be absent",
-      output.contains("flowId='teamcity-sbt-dependency-resolution'")
-    )
-  }
-
-  private def assertDetailedBlockClosure(output: String): Unit = {
-    val openIndex = output.indexOf("##teamcity[blockOpened name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution']")
-    val closeIndex = output.lastIndexOf("##teamcity[blockClosed name='Dependency resolution' flowId='teamcity-sbt-dependency-resolution']")
-    Assert.assertTrue("Detailed dependency block was not opened", openIndex >= 0)
-    Assert.assertTrue("Detailed dependency block was not closed", closeIndex > openIndex)
-  }
-
-  private def checkOutputLines(lines: Seq[String], excludesFile: Option[File], expectations: ExpectationSet, fixtureDirectory: File): Unit = {
-    assertNoForbiddenMatches(findForbiddenMatches(lines, excludesFile.toSeq.flatMap(file => compilePatterns(file, validateFlowPlaceholders = false))))
-    val scopes = compileExpectationSet(expectations, fixtureDirectory)
-    val candidates = scopes.map { scope =>
-      scope.groups.foreach(group => println(s"=== Check group: ${scope.name}/${group.group.name} (${normalisedAbsolutePath(group.file)}) ==="))
-      scope -> findScopeMatches(lines, scope)
+  private def validateTeamCityLine(line: String, lineNumber: Int): Unit = {
+    if (!line.startsWith("##teamcity[") || !line.endsWith("]")) {
+      fail(s"Malformed TeamCity-looking output line $lineNumber: $line")
     }
-    candidates.collectFirst { case (_, ScopeSearch.NoCompleteMatch(result, minimumOccurrences)) => result -> minimumOccurrences }
-      .foreach { case (result, minimumOccurrences) => assertRequiredGroupMatched(result, minimumOccurrences) }
-    val completeScopes = candidates.collect { case (scope, ScopeSearch.Complete(matches)) => scope -> matches }
-    if (findCompatibleScopeMatches(completeScopes, Set.empty, Vector.empty).isEmpty) assertNoCompatibleFlowScopeAssignment(completeScopes)
-  }
 
-  private def compileExpectationSet(expectations: ExpectationSet, fixtureDirectory: File): Vector[CompiledScope] = {
-    validateExpectationShape(expectations)
-    val scopes = expectations.scopes.toVector.map { scope =>
-      val groups = scope.groups.toVector.map { group =>
-        val file = resolveFixtureFile(fixtureDirectory, group.fileName)
-        if (!file.isFile) throw new IllegalArgumentException(s"Expected-output group '${group.name}' in scope '${scope.name}' references a missing file: ${normalisedAbsolutePath(file)}")
-        val patterns = compilePatterns(file, validateFlowPlaceholders = true)
-        if (patterns.isEmpty) throw new IllegalArgumentException(s"Expected-output group '${group.name}' is empty: ${normalisedAbsolutePath(file)}")
-        CompiledGroup(scope.name, group, file, patterns)
+    val messages = mutable.ArrayBuffer.empty[ServiceMessage]
+    val unparsedText = mutable.ArrayBuffer.empty[String]
+    val errors = mutable.ArrayBuffer.empty[(ParseException, String)]
+    val parser = new ServiceMessagesParser
+    parser.setValidateRequiredAttributes(true)
+    parser.parse(line, new ServiceMessageParserCallback {
+      override def regularText(text: String): Unit = if (text.nonEmpty) unparsedText += text
+      override def serviceMessage(message: ServiceMessage): Unit = messages += message
+      override def parseException(error: ParseException, text: String): Unit = errors += error -> text
+    })
+    if (errors.nonEmpty || unparsedText.nonEmpty || messages.size != 1) {
+      val details = errors.headOption.map(_._1.getMessage).getOrElse {
+        if (unparsedText.nonEmpty) s"unparsed text: ${unparsedText.mkString}" else s"parsed ${messages.size} messages"
       }
-      CompiledScope(scope.name, groups)
-    }
-    val duplicates = scopes.flatMap(_.groups).groupBy(_.canonicalText).values.filter(_.size > 1).toVector
-    if (duplicates.nonEmpty) {
-      val details = duplicates.map(_.map(group => s"${group.scopeName}/${group.group.name}: ${normalisedAbsolutePath(group.file)}").mkString(System.lineSeparator())).mkString(System.lineSeparator() + System.lineSeparator())
-      throw new IllegalArgumentException(s"Duplicate expected-output assertion groups were selected:${System.lineSeparator()}$details")
-    }
-    scopes
-  }
-
-  private def validateExpectationShape(expectations: ExpectationSet): Unit = {
-    if (expectations.scopes.isEmpty) throw new IllegalArgumentException("An expectation set must contain at least one flow scope.")
-    assertDistinctNames("flow-scope", expectations.scopes.map(_.name))
-    assertDistinctNames("assertion-group", expectations.scopes.flatMap(_.groups.map(_.name)))
-    expectations.scopes.foreach { scope =>
-      if (scope.name.trim.isEmpty) throw new IllegalArgumentException("Flow-scope names must not be empty.")
-      if (scope.groups.isEmpty) throw new IllegalArgumentException(s"Flow scope '${scope.name}' must contain at least one assertion group.")
-      scope.groups.foreach { group =>
-        if (group.name.trim.isEmpty) throw new IllegalArgumentException(s"Flow scope '${scope.name}' has an assertion group with an empty name.")
-        if (group.fileName.trim.isEmpty) throw new IllegalArgumentException(s"Assertion group '${group.name}' has an empty fixture file name.")
-        if (group.minimumOccurrences < 1) throw new IllegalArgumentException(s"Assertion group '${group.name}' must have minimumOccurrences >= 1.")
-      }
+      fail(s"Malformed TeamCity service message at output line $lineNumber ($details): $line")
     }
   }
 
-  private def assertDistinctNames(kind: String, names: Seq[String]): Unit = {
-    val duplicates = names.groupBy(identity).collect { case (name, all) if all.size > 1 => name }.toSeq.sorted
-    if (duplicates.nonEmpty) throw new IllegalArgumentException(s"Duplicate $kind names: ${duplicates.mkString(", ")}")
+  private def fail(message: String): Nothing = throw new AssertionError(message)
+
+  private sealed trait GoldenDocument
+  private case object ExpectEmpty extends GoldenDocument
+  private final case class Transcript(segments: Vector[Segment]) extends GoldenDocument
+
+  private sealed trait Segment
+  private sealed trait Atom extends Segment {
+    def sourceLine: Int
+    def description: String
+    def tryMatch(actual: String, state: Bindings, context: TranscriptContext): Option[Bindings]
   }
-
-  private def resolveFixtureFile(fixtureDirectory: File, fileName: String): File = {
-    val file = new File(fileName)
-    if (file.isAbsolute) file else new File(fixtureDirectory, fileName)
+  private final case class Literal(template: LineTemplate, sourceLine: Int) extends Atom {
+    override def description: String = template.source
+    override def tryMatch(actual: String, state: Bindings, context: TranscriptContext): Option[Bindings] =
+      template.tryMatch(actual, state, context)
   }
-
-  private def legacyExpectations(requiredFiles: Seq[File]): ExpectationSet =
-    ExpectationSet(Seq(FlowScope("legacy", requiredFiles.zipWithIndex.map { case (file, index) =>
-      AssertionGroup(s"legacy-${index + 1}", file.getAbsolutePath)
-    })))
-
-  private def findScopeMatches(lines: Seq[String], scope: CompiledScope): ScopeSearch = {
-    val groupMatches = scope.groups.map(group => group -> findGroupMatches(lines, group))
-    val result = groupMatches.collectFirst { case (group, matches) if matches.isEmpty =>
-      ScopeSearch.NoCompleteMatch(matchRequiredPatterns(lines, group), group.group.minimumOccurrences)
-    }.getOrElse {
-      def combine(index: Int, selected: Vector[GroupMatch]): Vector[ScopeMatch] =
-        if (index == groupMatches.size) Vector(ScopeMatch(scope.name, selected))
-        else groupMatches(index)._2.flatMap(groupMatch => combine(index + 1, selected :+ groupMatch))
-      ScopeSearch.Complete(combine(0, Vector.empty).distinctBy(_.flowIds))
-    }
-    result
+  private final case class Noise(name: String, sourceLine: Int) extends Atom {
+    override def description: String = s"[[noise:$name]]"
+    override def tryMatch(actual: String, state: Bindings, context: TranscriptContext): Option[Bindings] =
+      Option.when(NoiseRecognizers.matches(name, actual))(state)
   }
+  private final case class Unordered(lanes: Vector[Lane]) extends Segment
+  private final case class Lane(name: String, atoms: Vector[Atom], sourceLine: Int)
 
-  private def findGroupMatches(lines: Seq[String], group: CompiledGroup): Vector[GroupMatch] = {
-    def search(remaining: Int, usedLines: Set[Int], occurrences: Vector[RequiredMatchResult]): Vector[GroupMatch] =
-      if (remaining == 0) Vector(GroupMatch(group, occurrences))
-      else findCompleteMatches(lines, group, usedLines).flatMap { occurrence =>
-        search(remaining - 1, usedLines ++ occurrence.matches.map(_.outputLineNumber - 1), occurrences :+ occurrence)
-      }
-    search(group.group.minimumOccurrences, Set.empty, Vector.empty).distinctBy { matchResult =>
-      matchResult.occurrences.map(result => result.matches.map(_.outputLineNumber) -> result.flowIdBindings)
-    }
-  }
+  private object GoldenParser {
+    private val NoiseDirective = "\\[\\[noise:([a-z][a-z0-9-]*)\\]\\]".r
+    private val LaneStart = "\\[\\[lane:([a-z][a-z0-9-]*)\\]\\]".r
 
-  private def findCompleteMatches(lines: Seq[String], group: CompiledGroup, unavailableLines: Set[Int]): Vector[RequiredMatchResult] = {
-    def search(patternIndex: Int, nextLine: Int, bindings: Map[String, String], matches: Vector[OutputMatch]): Vector[RequiredMatchResult] = {
-      if (patternIndex == group.patterns.size) Vector(RequiredMatchResult(group, lines.size, RequiredMatchBranch(matches, bindings, None)))
-      else {
-        val pattern = group.patterns(patternIndex)
-        val candidates = (nextLine until lines.size).iterator.flatMap { lineIndex =>
-          if (unavailableLines.contains(lineIndex)) None
-          else pattern.matchLine(lines(lineIndex), bindings) match {
-            case RequiredPatternMatch.Matched(updated) => Some(RequiredMatchCandidate(OutputMatch(pattern, lineIndex + 1, lines(lineIndex)), updated))
-            case _ => None
-          }
-        }.toVector
-        val choices = if (pattern.hasUnboundFlowId(bindings)) firstCandidateForEachFlowId(pattern, candidates) else candidates.headOption.toSeq
-        choices.toVector.flatMap(candidate => search(patternIndex + 1, candidate.outputMatch.outputLineNumber, candidate.bindings, matches :+ candidate.outputMatch))
-      }
-    }
-    search(0, 0, Map.empty, Vector.empty)
-  }
+    def parse(lines: Vector[String], source: File): GoldenDocument = {
+      if (lines.isEmpty) invalid(source, 1, "Empty goldens are forbidden; use [[expect-empty]].")
+      if (lines == Vector("[[expect-empty]]")) return ExpectEmpty
+      if (lines.contains("[[expect-empty]]")) invalid(source, lines.indexOf("[[expect-empty]]") + 1, "[[expect-empty]] must be the only line.")
 
-  private def findCompatibleScopeMatches(scopes: Seq[(CompiledScope, Vector[ScopeMatch])], owned: Set[String], selected: Vector[ScopeMatch]): Option[Vector[ScopeMatch]] =
-    if (scopes.isEmpty) Some(selected)
-    else scopes.head._2.iterator
-      .filter(candidate => candidate.flowIds.intersect(owned).isEmpty)
-      .map(candidate => findCompatibleScopeMatches(scopes.tail, owned ++ candidate.flowIds, selected :+ candidate))
-      .collectFirst { case Some(matches) => matches }
-
-  private def assertNoCompatibleFlowScopeAssignment(scopes: Seq[(CompiledScope, Vector[ScopeMatch])]): Nothing = {
-    val details = scopes.map { case (scope, matches) =>
-      s"${scope.name}: ${matches.map(_.flowIds.toSeq.sorted.mkString("{", ", ", "}")).distinct.mkString(", ")}" // candidates
-    }.mkString(System.lineSeparator())
-    val message = s"""Output verification failed: no globally compatible flow-scope assignment exists.
-                     |Concrete flow IDs may be owned by only one scope.
-                     |Candidate flow IDs by scope:
-                     |$details
-                     |""".stripMargin
-    println(message)
-    Assert.fail(message)
-    throw new AssertionError("unreachable")
-  }
-
-  private def findForbiddenMatches(lines: Seq[String], patterns: Seq[ExpectedPattern]): Seq[ForbiddenMatch] =
-    for { line <- lines; pattern <- patterns if pattern.matches(line) } yield ForbiddenMatch(pattern, line)
-
-  private def matchRequiredPatterns(lines: Seq[String], group: CompiledGroup): RequiredMatchResult = {
-    def search(patternIndex: Int, nextLine: Int, bindings: Map[String, String]): RequiredMatchBranch = {
-      if (patternIndex == group.patterns.size) RequiredMatchBranch(Vector.empty, bindings, None)
-      else {
-        val pattern = group.patterns(patternIndex)
-        val candidates = (nextLine until lines.size).iterator.map { lineIndex =>
-          pattern.matchLine(lines(lineIndex), bindings) match {
-            case RequiredPatternMatch.Matched(updated) => Some(RequiredMatchCandidate(OutputMatch(pattern, lineIndex + 1, lines(lineIndex)), updated))
-            case conflict: RequiredPatternMatch.ConflictingFlowId => Some(conflict)
-            case RequiredPatternMatch.NotMatched => None
-          }
-        }.flatten.toVector
-        val successful = candidates.collect { case candidate: RequiredMatchCandidate => candidate }
-        val conflicts = candidates.collect { case conflict: RequiredPatternMatch.ConflictingFlowId => conflict }
-        val choices = if (pattern.hasUnboundFlowId(bindings)) firstCandidateForEachFlowId(pattern, successful) else successful.headOption.toSeq
-        choices.foldLeft(RequiredMatchBranch(Vector.empty, bindings, conflicts.headOption)) { (best, candidate) =>
-          val continuation = search(patternIndex + 1, candidate.outputMatch.outputLineNumber, candidate.bindings)
-          RequiredMatchBranch.best(best, continuation.prepend(candidate.outputMatch).withFallbackConflict(conflicts.headOption))
+      val segments = Vector.newBuilder[Segment]
+      var index = 0
+      while (index < lines.size) {
+        lines(index) match {
+          case "[[unordered]]" =>
+            val (unordered, next) = parseUnordered(lines, index, source)
+            segments += unordered
+            index = next
+          case line =>
+            segments += parseAtom(line, index + 1, source)
+            index += 1
         }
       }
+      val result = segments.result()
+      if (result.isEmpty) invalid(source, 1, "A transcript must contain at least one expectation.")
+      Transcript(result)
     }
-    RequiredMatchResult(group, lines.size, search(0, 0, Map.empty))
+
+    private def parseUnordered(lines: Vector[String], start: Int, source: File): (Unordered, Int) = {
+      val lanes = Vector.newBuilder[Lane]
+      val names = mutable.HashSet.empty[String]
+      var index = start + 1
+      while (index < lines.size && lines(index) != "[[/unordered]]") {
+        val (name, laneLine) = lines(index) match {
+          case LaneStart(value) => value -> (index + 1)
+          case other => invalid(source, index + 1, s"Expected [[lane:name]] inside unordered block, found: $other")
+        }
+        if (!names.add(name)) invalid(source, index + 1, s"Duplicate unordered lane '$name'.")
+        index += 1
+        val atoms = Vector.newBuilder[Atom]
+        while (index < lines.size && lines(index) != "[[/lane]]") {
+          if (lines(index) == "[[unordered]]" || lines(index).startsWith("[[lane:") || lines(index) == "[[/unordered]]") {
+            invalid(source, index + 1, "Nested or unterminated unordered lane.")
+          }
+          atoms += parseAtom(lines(index), index + 1, source)
+          index += 1
+        }
+        if (index >= lines.size) invalid(source, laneLine, s"Missing [[/lane]] for lane '$name'.")
+        val laneAtoms = atoms.result()
+        if (laneAtoms.isEmpty) invalid(source, laneLine, s"Unordered lane '$name' must not be empty.")
+        lanes += Lane(name, laneAtoms, laneLine)
+        index += 1
+      }
+      if (index >= lines.size) invalid(source, start + 1, "Missing [[/unordered]].")
+      val result = lanes.result()
+      if (result.size < 2) invalid(source, start + 1, "An unordered block needs at least two ordered lanes.")
+      Unordered(result) -> (index + 1)
+    }
+
+    private def parseAtom(line: String, lineNumber: Int, source: File): Atom = line match {
+      case NoiseDirective(name) =>
+        if (!NoiseRecognizers.names.contains(name)) invalid(source, lineNumber, s"Unknown noise recognizer '$name'.")
+        Noise(name, lineNumber)
+      case directive if directive.startsWith("[[") && directive.endsWith("]]" ) =>
+        invalid(source, lineNumber, s"Unknown or misplaced directive: $directive")
+      case literal => Literal(LineTemplate.compile(literal, source, lineNumber), lineNumber)
+    }
+
+    private def invalid(source: File, line: Int, message: String): Nothing =
+      throw new IllegalArgumentException(s"${FileUtils.normalisedAbsolutePath(source)}:$line: $message")
   }
 
-  private def firstCandidateForEachFlowId(pattern: ExpectedPattern, candidates: Seq[RequiredMatchCandidate]): Seq[RequiredMatchCandidate] = {
-    val seen = mutable.Set.empty[String]
-    candidates.filter(candidate => seen.add(candidate.bindings(pattern.flowIdPlaceholder.get)))
-  }
-
-  private def assertNoForbiddenMatches(matches: Seq[ForbiddenMatch]): Unit = if (matches.nonEmpty) {
-    val message = s"""===================== ERROR ==========================
-                     |The following lines were found but should not be there:
-                     |${matches.map(_.diagnosticText).mkString(System.lineSeparator())}
-                     |""".stripMargin
-    println(message)
-    Assert.fail(message)
-  }
-
-  private def assertRequiredPatternsMatched(result: RequiredMatchResult): Unit = if (!result.isComplete) {
-    val message = s"""Output verification failed: required patterns from ${normalisedAbsolutePath(result.group.file)} were not matched in order.
-                     |Matched ${result.matchedCount}/${result.group.patterns.size} patterns across ${result.outputLineCount} captured output lines.
-                     |Last matched pattern:
-                     |${result.lastMatch.map(_.diagnosticText).getOrElse("<none>")}
-                     |First missing pattern:
-                     |${result.firstMissingPattern.map(_.diagnosticText).getOrElse("<none>")}
-                     |Bound flow-ID placeholders:
-                     |${result.flowIdBindings.map { case (token, flowId) => s"$token = '$flowId'" }.mkString(System.lineSeparator()) match {
-                          case "" => "<none>"
-                          case bindings => bindings
-                        }}
-                     |Conflicting concrete flow ID:
-                     |${result.flowIdConflict.map(_.diagnosticText).getOrElse("<none>")}
-                     |See the build log for the complete nested-sbt output.
-                     |""".stripMargin
-    println(message)
-    Assert.fail(message)
-  }
-
-  private def assertRequiredGroupMatched(result: RequiredMatchResult, minimumOccurrences: Int): Unit = {
-    if (!result.isComplete) assertRequiredPatternsMatched(result)
-    else if (minimumOccurrences > 1) {
-      val message = s"""Output verification failed: assertion group '${result.group.group.name}' from ${normalisedAbsolutePath(result.group.file)} requires $minimumOccurrences distinct occurrences, but only one complete occurrence was found.
-                       |Occurrences must use distinct output-line indexes and independent flow-ID bindings.
-                       |See the build log for the complete nested-sbt output.
-                       |""".stripMargin
-      println(message)
-      Assert.fail(message)
+  private final case class BindingKey(kind: String, name: String)
+  private final case class Bindings(values: Map[BindingKey, String]) {
+    def bind(key: BindingKey, value: String, distinctWithinKind: Boolean): Option[Bindings] = values.get(key) match {
+      case Some(existing) => Option.when(existing == value)(this)
+      case None if distinctWithinKind && values.exists { case (other, existing) => other.kind == key.kind && existing == value } => None
+      case None => Some(copy(values = values.updated(key, value)))
     }
   }
+  private object Bindings { val empty: Bindings = Bindings(Map.empty) }
 
-  private def compilePatterns(file: File, validateFlowPlaceholders: Boolean): Vector[ExpectedPattern] =
-    FileUtils.readLines(file).toVector.zipWithIndex.map { case (line, index) =>
-      val lineNumber = index + 1
-      if (validateFlowPlaceholders) validateFlowPlaceholder(file, lineNumber, line)
-      try {
-        val placeholder = FlowIdPlaceholderPattern.findFirstMatchIn(line).map(_.group(1))
-        val unbound = placeholder.map(token => Pattern.compile(line.replace(s"flowId='<$token>'", "flowId='[^']*'")))
-        ExpectedPattern(file, lineNumber, line, Pattern.compile(line), placeholder, unbound)
-      } catch {
-        case error: PatternSyntaxException => throw new IllegalArgumentException(s"Invalid regex pattern in ${normalisedAbsolutePath(file)}:$lineNumber: $line", error)
+  private final case class Capture(group: Int, placeholder: Placeholder)
+  private final case class LineTemplate(source: String, regex: Pattern, captures: Vector[Capture]) {
+    def tryMatch(actual: String, initial: Bindings, context: TranscriptContext): Option[Bindings] = {
+      val matcher = regex.matcher(actual)
+      if (!matcher.matches()) return None
+      captures.foldLeft(Option(initial)) { case (state, capture) =>
+        state.flatMap(capture.placeholder.accept(matcher.group(capture.group), _))
       }
     }
-
-  private def validateFlowPlaceholder(file: File, lineNumber: Int, line: String): Unit = {
-    val valid = FlowIdPlaceholderPattern.findAllMatchIn(line).toVector
-    val malformed = FlowIdPlaceholderCandidatePattern.findAllIn(line).exists(token => !FlowIdPlaceholderPattern.pattern.matcher(s"flowId='$token'").find())
-    if (malformed || valid.size > 1 || (line.contains("flowId='<") && valid.isEmpty)) {
-      throw new IllegalArgumentException(s"Malformed flow-ID placeholder in ${normalisedAbsolutePath(file)}:$lineNumber: $line")
-    }
   }
 
-  private def parseServiceMessage(line: String): Option[(String, Map[String, String])] =
-    ServiceMessagePattern.findFirstMatchIn(line).map { message =>
-      message.group(1) -> AttributePattern.findAllMatchIn(Option(message.group(2)).getOrElse("")).map(attribute => attribute.group(1) -> attribute.group(2)).toMap
+  private sealed trait Placeholder {
+    def regex(context: TranscriptContext): String
+    def captures: Boolean = true
+    def accept(value: String, bindings: Bindings): Option[Bindings] = Some(bindings)
+  }
+  private final case class BoundPlaceholder(kind: String, name: String, distinct: Boolean, valueRegex: String) extends Placeholder {
+    override def regex(context: TranscriptContext): String = valueRegex
+    override def accept(value: String, bindings: Bindings): Option[Bindings] =
+      bindings.bind(BindingKey(kind, name), value, distinct)
+  }
+  private final case class ExactPlaceholder(value: TranscriptContext => String) extends Placeholder {
+    override def captures: Boolean = false
+    override def regex(context: TranscriptContext): String = Pattern.quote(value(context))
+  }
+  private final case class ValidatedPlaceholder(valueRegex: String, validation: String => Boolean = _ => true) extends Placeholder {
+    override def regex(context: TranscriptContext): String = valueRegex
+    override def accept(value: String, bindings: Bindings): Option[Bindings] = Option.when(validation(value))(bindings)
+  }
+
+  private object LineTemplate {
+    private val PlaceholderPattern = "\\{\\{([^{}]+)\\}\\}".r
+    private val Named = "([a-z][a-z0-9-]*):([a-z][a-z0-9-]*)".r
+
+    def compile(source: String, file: File, lineNumber: Int): LineTemplate = {
+      val regex = new StringBuilder("^")
+      val captures = Vector.newBuilder[Capture]
+      var cursor = 0
+      var group = 0
+      PlaceholderPattern.findAllMatchIn(source).foreach { token =>
+        regex.append(Pattern.quote(source.substring(cursor, token.start)))
+        val placeholder = parsePlaceholder(token.group(1), file, lineNumber)
+        if (placeholder.captures) {
+          group += 1
+          regex.append('(').append(placeholder.regex(PlaceholderContext)).append(')')
+          captures += Capture(group, placeholder)
+        } else {
+          regex.append(placeholder.regex(PlaceholderContext))
+        }
+        cursor = token.end
+      }
+      regex.append(Pattern.quote(source.substring(cursor))).append('$')
+      // Exact path and logger placeholders depend on the run context, so compile their marker form lazily below.
+      LineTemplate(source, Pattern.compile(rewriteContextMarkers(regex.toString)), captures.result())
     }
 
-  private def assertCompleteLifecycles(
-    compiler: String,
-    flowId: String,
-    events: Seq[CompilationLifecycleEvent]
-  ): Vector[CompilationLifecycleInterval] = {
-    val label = s"compiler='$compiler', flowId='$flowId'"
-    var open: Option[CompilationLifecycleEvent] = None
-    val intervals = Vector.newBuilder[CompilationLifecycleInterval]
+    // A synthetic context lets parsing reject unknown path names while leaving stable markers for per-run substitution.
+    private val PlaceholderContext = TranscriptContext(
+      new File("/__TRANSCRIPT_PATH_repo-root__"),
+      new File("/__TRANSCRIPT_PATH_work-dir__"),
+      new File("/__TRANSCRIPT_PATH_sbt-global-base__"),
+      new File("/__TRANSCRIPT_PATH_sbt-ivy-home__"),
+      new File("/__TRANSCRIPT_PATH_java-home__"),
+      "__TRANSCRIPT_LOGGER_VERSION__"
+    )
 
-    events.sortBy(_.lineIndex).foreach { event =>
-      if (event.started) {
-        Assert.assertTrue(s"Compilation lifecycle started before the previous lifecycle finished for $label", open.isEmpty)
-        open = Some(event)
-      } else {
-        Assert.assertTrue(s"Compilation finish has no matching start for $label", open.nonEmpty)
-        intervals += CompilationLifecycleInterval(compiler, flowId, open.get.lineIndex, event.lineIndex)
-        open = None
+    private def rewriteContextMarkers(regex: String): String = regex
+
+    private def parsePlaceholder(text: String, file: File, lineNumber: Int): Placeholder = text match {
+      case "logger-version" => ExactPlaceholder(_.loggerVersion)
+      case "dependency-outcome" =>
+        ValidatedPlaceholder("(?:local cache hit|downloaded)")
+      case Named("flow", name) => BoundPlaceholder("flow", name, distinct = true, "[^'\\s\\]]+")
+      case Named("build-id", name) => BoundPlaceholder("build-id", name, distinct = false, "-?[0-9]+")
+      case Named("duration", _) => ValidatedPlaceholder("[0-9]+(?:\\.[0-9]+)?")
+      case Named("timestamp", _) => ValidatedPlaceholder("(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+|[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3})")
+      case Named("thread", _) => ValidatedPlaceholder("pool-[0-9]+-thread-[0-9]+")
+      case Named("hash", _) => ValidatedPlaceholder("[0-9a-fA-F]{6,16}")
+      case "dependency-metadata" => ValidatedPlaceholder("(?: \\([^)]*?, [0-9]+(?:\\.[0-9]+)? ?(?:ms|s)\\))?")
+      case Named("framework-stack-tail", framework) =>
+        ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", tail => FrameworkStackTail.isRecognized(framework, tail))
+      case Named("path", name) =>
+        if (!PlaceholderContext.paths.contains(name)) invalid(file, lineNumber, s"Unknown path root '$name'.")
+        // Marker substitution is handled by contextualCompile before matching.
+        ExactPlaceholder(context => context.paths(name))
+      case other => invalid(file, lineNumber, s"Unknown typed placeholder {{$other}}.")
+    }
+
+    private def invalid(file: File, line: Int, message: String): Nothing =
+      throw new IllegalArgumentException(s"${FileUtils.normalisedAbsolutePath(file)}:$line: $message")
+  }
+
+  /** Recompiles a literal with context-dependent exact placeholders before matching. */
+  private def contextualTemplate(template: LineTemplate, context: TranscriptContext): LineTemplate = {
+    val PlaceholderPattern = "\\{\\{([^{}]+)\\}\\}".r
+    val regex = new StringBuilder("^")
+    val captures = Vector.newBuilder[Capture]
+    var cursor = 0
+    var group = 0
+    PlaceholderPattern.findAllMatchIn(template.source).foreach { token =>
+      regex.append(Pattern.quote(template.source.substring(cursor, token.start)))
+      val text = token.group(1)
+      val placeholder: Placeholder = text match {
+        case "logger-version" => ExactPlaceholder(_.loggerVersion)
+        case "dependency-outcome" => ValidatedPlaceholder("(?:local cache hit|downloaded)")
+        case value if value.startsWith("path:") => ExactPlaceholder(ctx => ctx.paths(value.stripPrefix("path:")))
+        case value if value.startsWith("flow:") => BoundPlaceholder("flow", value.stripPrefix("flow:"), distinct = true, "[^'\\s\\]]+")
+        case value if value.startsWith("build-id:") => BoundPlaceholder("build-id", value.stripPrefix("build-id:"), distinct = false, "-?[0-9]+")
+        case value if value.startsWith("duration:") => ValidatedPlaceholder("[0-9]+(?:\\.[0-9]+)?")
+        case value if value.startsWith("timestamp:") => ValidatedPlaceholder("(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+|[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3})")
+        case value if value.startsWith("thread:") => ValidatedPlaceholder("pool-[0-9]+-thread-[0-9]+")
+        case value if value.startsWith("hash:") => ValidatedPlaceholder("[0-9a-fA-F]{6,16}")
+        case "dependency-metadata" => ValidatedPlaceholder("(?: \\([^)]*?, [0-9]+(?:\\.[0-9]+)? ?(?:ms|s)\\))?")
+        case value if value.startsWith("framework-stack-tail:") =>
+          val framework = value.stripPrefix("framework-stack-tail:")
+          ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", tail => FrameworkStackTail.isRecognized(framework, tail))
+      }
+      if (placeholder.captures) {
+        group += 1
+        regex.append('(').append(placeholder.regex(context)).append(')')
+        captures += Capture(group, placeholder)
+      } else regex.append(placeholder.regex(context))
+      cursor = token.end
+    }
+    regex.append(Pattern.quote(template.source.substring(cursor))).append('$')
+    LineTemplate(template.source, Pattern.compile(regex.toString), captures.result())
+  }
+
+  private object FrameworkStackTail {
+    private val AllowedPrefixes = Set(
+      "org.scalatest.", "org.specs2.", "org.junit.", "junit.", "sbt.", "sbt.internal.", "xsbti.",
+      "com.novocode.junit.", "scala.", "java.", "java.base/", "java.util.concurrent.", "jdk.internal.", "sun.reflect."
+    )
+
+    def isRecognized(framework: String, value: String): Boolean = {
+      if (!Set("scalatest", "specs2", "junit").contains(framework)) return false
+      value.split("\\|n", -1).filter(_.nonEmpty).forall { frame =>
+        val trimmed = frame.stripPrefix("\t").trim
+        trimmed.startsWith("...") ||
+          (trimmed.startsWith("at ") && AllowedPrefixes.exists(prefix => trimmed.stripPrefix("at ").startsWith(prefix))) ||
+          trimmed.startsWith("Caused by: ")
       }
     }
-
-    Assert.assertTrue(s"Compilation lifecycle has no matching finish for $label", open.isEmpty)
-    intervals.result()
   }
 
-  private def assertCompleteDependencyLifecycle(flowId: String, events: Seq[DependencyLifecycleEvent]): Unit = {
-    val opens = events.filter(_.opened)
-    val closes = events.filterNot(_.opened)
-    Assert.assertEquals(s"Expected exactly one dependency-block opener for flowId='$flowId'", 1, opens.size)
-    Assert.assertEquals(s"Expected exactly one dependency-block closer for flowId='$flowId'", 1, closes.size)
-    Assert.assertTrue(s"Dependency-block closer must follow its opener for flowId='$flowId'", opens.head.lineIndex < closes.head.lineIndex)
-  }
+  private object ExactMatcher {
+    def verify(document: GoldenDocument, actual: Vector[String], context: TranscriptContext, source: File): Unit = document match {
+      case ExpectEmpty =>
+        Assert.assertTrue(
+          s"Expected an empty bounded transcript from ${FileUtils.normalisedAbsolutePath(source)}, but got:\n${numbered(actual)}",
+          actual.isEmpty
+        )
+      case Transcript(segments) =>
+        val contextualSegments = segments.map {
+          case literal: Literal => literal.copy(template = contextualTemplate(literal.template, context))
+          case unordered: Unordered => unordered.copy(lanes = unordered.lanes.map(lane => lane.copy(atoms = lane.atoms.map {
+            case literal: Literal => literal.copy(template = contextualTemplate(literal.template, context))
+            case atom => atom
+          })))
+          case other => other
+        }
+        var states = Vector(0 -> Bindings.empty)
+        contextualSegments.foreach { segment =>
+          val next = states.flatMap { case (index, bindings) => matchSegment(segment, actual, index, bindings, context) }
+          if (next.isEmpty) mismatch(source, segment, actual, states.map(_._1).maxOption.getOrElse(0))
+          states = deduplicate(next)
+        }
+        if (!states.exists(_._1 == actual.size)) {
+          val furthest = states.map(_._1).max
+          fail(
+            s"Exact transcript has unexpected trailing output after line $furthest in ${FileUtils.normalisedAbsolutePath(source)}:\n" +
+              numbered(actual.drop(furthest), furthest + 1)
+          )
+        }
+    }
 
-  private val ServiceMessagePattern = """##teamcity\[([^ ]+)(?: (.*))?\]""".r
-  private val AttributePattern = """([^ =]+)='([^']*)'""".r
-  private val FlowIdPlaceholderPattern = """flowId='<(flowId[1-9][0-9]*)>'""".r
-  private val FlowIdPlaceholderCandidatePattern = """<flowId[^>]*>""".r
+    private def matchSegment(
+      segment: Segment,
+      actual: Vector[String],
+      index: Int,
+      bindings: Bindings,
+      context: TranscriptContext
+    ): Vector[(Int, Bindings)] = segment match {
+      case atom: Atom => matchAtom(atom, actual, index, bindings, context)
+      case Unordered(lanes) => matchUnordered(lanes, actual, index, bindings, context)
+    }
 
-  private final case class CompiledScope(name: String, groups: Vector[CompiledGroup])
-  private final case class CompiledGroup(scopeName: String, group: AssertionGroup, file: File, patterns: Vector[ExpectedPattern]) {
-    def canonicalText: String = {
-      val names = mutable.LinkedHashMap.empty[String, String]
-      var next = 1
-      patterns.map { pattern =>
-        FlowIdPlaceholderPattern.replaceAllIn(pattern.text, matched => {
-          val normalized = names.getOrElseUpdate(matched.group(1), { val value = s"flowId$next"; next += 1; value })
-          s"flowId='<$normalized>'"
+    private def matchAtom(
+      atom: Atom,
+      actual: Vector[String],
+      index: Int,
+      bindings: Bindings,
+      context: TranscriptContext
+    ): Vector[(Int, Bindings)] = atom match {
+      case Noise("sbt-compiler-bridge", _) =>
+        val consumed = NoiseRecognizers.compilerBridgeLength(actual, index)
+        if (consumed == 2) Vector(index + consumed -> bindings) else Vector(index -> bindings)
+      case Noise("parallel-scalatest-native-summary", _) =>
+        // ScalaTest 3.2 on SBT 1 may race its redundant native summary with the structured listener, yielding all or
+        // none of these lines. Each reviewed golden caps the number of optional atoms and exact TeamCity events remain mandatory.
+        val consumed = index < actual.size && NoiseRecognizers.matches("parallel-scalatest-native-summary", actual(index))
+        if (consumed) Vector(index + 1 -> bindings) else Vector(index -> bindings)
+      case _ if index < actual.size => atom.tryMatch(actual(index), bindings, context).toVector.map(index + 1 -> _)
+      case _ => Vector.empty
+    }
+
+    private def matchUnordered(
+      lanes: Vector[Lane],
+      actual: Vector[String],
+      start: Int,
+      initial: Bindings,
+      context: TranscriptContext
+    ): Vector[(Int, Bindings)] = {
+      val memo = mutable.Map.empty[(Int, Vector[Int], Bindings), Vector[(Int, Bindings)]]
+      def loop(index: Int, positions: Vector[Int], bindings: Bindings): Vector[(Int, Bindings)] = {
+        memo.getOrElseUpdate((index, positions, bindings), {
+          if (positions.indices.forall(lane => positions(lane) == lanes(lane).atoms.size)) Vector(index -> bindings)
+          else {
+            lanes.indices.foldLeft(Vector.empty[(Int, Bindings)]) { (results, laneIndex) =>
+              if (results.size >= 256) results
+              else {
+                val position = positions(laneIndex)
+                val expanded =
+                  if (position >= lanes(laneIndex).atoms.size) Vector.empty
+                  else matchAtom(lanes(laneIndex).atoms(position), actual, index, bindings, context).flatMap {
+                    case (nextIndex, nextBindings) =>
+                      loop(nextIndex, positions.updated(laneIndex, position + 1), nextBindings)
+                  }
+                deduplicate(results ++ expanded)
+              }
+            }
+          }
         })
-      }.mkString("\n")
+      }
+      loop(start, Vector.fill(lanes.size)(0), initial)
     }
+
+    private def deduplicate(states: Vector[(Int, Bindings)]): Vector[(Int, Bindings)] = states.distinct.take(256)
+
+    private def mismatch(source: File, segment: Segment, actual: Vector[String], index: Int): Nothing = {
+      val expectation = segment match {
+        case atom: Atom => s"golden line ${atom.sourceLine}: ${atom.description}"
+        case Unordered(lanes) => s"unordered lanes ${lanes.map(_.name).mkString(", ")}"
+      }
+      val actualLine = actual.lift(index).fold("<end of transcript>")(identity)
+      fail(
+        s"Exact transcript mismatch in ${FileUtils.normalisedAbsolutePath(source)} at output line ${index + 1}.\n" +
+          s"Expected $expectation\nActual: $actualLine\nContext:\n${numbered(actual.slice((index - 2).max(0), index + 3), (index - 2).max(0) + 1)}"
+      )
+    }
+
+    private def numbered(lines: Seq[String], start: Int = 1): String =
+      lines.zipWithIndex.map { case (line, index) => f"${start + index}%5d | $line" }.mkString("\n")
+
+    private def fail(message: String): Nothing = throw new AssertionError(message)
   }
-  private final case class ExpectedPattern(file: File, lineNumber: Int, text: String, pattern: Pattern, flowIdPlaceholder: Option[String], unboundFlowIdPattern: Option[Pattern]) {
-    private val boundPatterns = mutable.Map.empty[String, Pattern]
-    def matches(line: String): Boolean = pattern.matcher(line).find()
-    def hasUnboundFlowId(bindings: Map[String, String]): Boolean = flowIdPlaceholder.exists(token => !bindings.contains(token))
-    def matchLine(line: String, bindings: Map[String, String]): RequiredPatternMatch = flowIdPlaceholder match {
-      case None if matches(line) => RequiredPatternMatch.Matched(bindings)
-      case None => RequiredPatternMatch.NotMatched
-      case Some(token) => bindings.get(token) match {
-        case Some(flowId) if boundFlowIdPattern(flowId).matcher(line).find() => RequiredPatternMatch.Matched(bindings)
-        case Some(_) => RequiredPatternMatch.NotMatched
-        case None if unboundFlowIdPattern.get.matcher(line).find() => parseServiceMessage(line).flatMap(_._2.get("flowId")) match {
-          case Some(flowId) => bindings.collectFirst { case (boundToken, boundFlowId) if boundFlowId == flowId => boundToken } match {
-            case Some(boundToken) => RequiredPatternMatch.ConflictingFlowId(token, flowId, boundToken)
-            case None => RequiredPatternMatch.Matched(bindings.updated(token, flowId))
-          }
-          case None => RequiredPatternMatch.NotMatched
-        }
-        case None => RequiredPatternMatch.NotMatched
+
+  private object NoiseRecognizers {
+    val names: Set[String] = Set(
+      "sbt-task-summary",
+      "sbt-debug-line",
+      "zinc-debug-message",
+      "framework-stack-tail",
+      "dependency-resource-outcome",
+      "sbt-compiler-bridge",
+      "parallel-scalatest-native-summary"
+    )
+
+    private val SbtTaskSummary =
+      "^\\[(?:success|error)\\] (?:elapsed time: [0-9]+(?:\\.[0-9]+)? s, cache [0-9]+%, .+|Total time: [0-9]+(?:\\.[0-9]+)? s(?:, completed .+)?)$".r
+    private val RawFrameworkFrame = "^\\s*at (?:org\\.(?:scalatest|specs2|junit)\\.|junit\\.|sbt\\.|scala\\.|java\\.|java\\.base/).+$".r
+    private val KnownZincPrefixes = Vector(
+      "[debug] [zinc] ",
+      "[debug] IncrementalCompile",
+      "[debug] previous = ",
+      "[debug] current source = ",
+      "[debug] > initialChanges = ",
+      "[debug] Full compilation",
+      "[debug] No changes",
+      "[debug] Created transactional ClassFileManager",
+      "[debug] Removing the temporary directory",
+      "[debug] We backup class files",
+      "[debug] About to delete class files",
+      "[debug] Rolling back changes",
+      "[debug] all ",
+      "[debug] Recompiling ",
+      "[debug] Compilation failed",
+      "[debug] wrote ",
+      "[debug] not up to date.",
+      "[debug] Updating ",
+      "[debug] Done updating "
+    )
+
+    def matches(name: String, line: String): Boolean = name match {
+      case "sbt-task-summary" => SbtTaskSummary.matches(line)
+      case "sbt-debug-line" => isKnownRawSbtDebug(line)
+      case "zinc-debug-message" => serviceMessage(line).exists { message =>
+        message.getMessageName == "message" &&
+          Option(message.getAttributes.get("status")).contains("NORMAL") &&
+          Option(message.getAttributes.get("text")).exists(text => KnownZincPrefixes.exists(text.startsWith))
+      }
+      case "framework-stack-tail" => RawFrameworkFrame.matches(line)
+      case "dependency-resource-outcome" => serviceMessage(line).exists { message =>
+        val attributes = message.getAttributes.asScala
+        message.getMessageName == "message" &&
+          attributes.get("flowId").contains("teamcity-sbt-dependency-resolution") &&
+          attributes.get("text").exists(text =>
+            text.matches("^\\[[^]]+\\] (?:local cache hit|downloaded(?: in [0-9.]+ ?(?:ms|s))?|failed download attempt(?: in [0-9.]+ ?(?:ms|s))?) https?://[^ ]+$")
+          )
+      }
+      case "parallel-scalatest-native-summary" => serviceMessage(line).exists { message =>
+        val attributes = message.getAttributes.asScala
+        val allowedText = Set(
+          "[info] NonParallelTest:",
+          "[info] ParallelTest:",
+          "[info] - should Write Passing Tests",
+          "[info] - should Write Failing Tests *** FAILED ***",
+          "[info]   Test failed (NonParallelTest.scala:12)"
+        )
+        message.getMessageName == "message" &&
+          attributes.get("status").contains("NORMAL") &&
+          attributes.get("flowId").exists(_.matches("-?[0-9]+:test:general:(?:test|testQuick)")) &&
+          attributes.get("text").exists(allowedText.contains)
+      }
+      case "sbt-compiler-bridge" => false // This strict recognizer is a two-line optional block, handled by the matcher.
+    }
+
+    def compilerBridgeLength(lines: Vector[String], index: Int): Int = {
+      val pair = lines.slice(index, index + 2)
+      if (pair.size != 2) return 0
+      (bridgeLine(pair.head), bridgeCompletion(pair(1))) match {
+        case (Some((flow1, _)), Some(flow2)) if flow1 == flow2 => 2
+        case _ => 0
       }
     }
-    private def boundFlowIdPattern(flowId: String): Pattern = boundPatterns.getOrElseUpdate(flowId, Pattern.compile(text.replace(s"flowId='<${flowIdPlaceholder.get}>'", s"flowId='${Pattern.quote(flowId)}'")))
-    def diagnosticText: String = s"${normalisedAbsolutePath(file)}:$lineNumber: $text"
+
+    private def bridgeLine(line: String): Option[(Option[String], String)] = outputText(line).flatMap { case (flow, text) =>
+      "^\\[info\\] Non-compiled module 'compiler-bridge_[^']+' for Scala ([0-9.]+)\\. Compiling\\.\\.\\.$".r
+        .findFirstMatchIn(text).map(result => flow -> result.group(1))
+    }
+
+    private def bridgeCompletion(line: String): Option[Option[String]] = outputText(line).flatMap { case (flow, text) =>
+      "^\\[info\\]   Compilation completed in [0-9]+(?:\\.[0-9]+)?s\\.$".r
+        .findFirstMatchIn(text).map(_ => flow)
+    }
+
+    private def outputText(line: String): Option[(Option[String], String)] = {
+      if (line.startsWith("[info] ")) Some(None -> line)
+      else serviceMessage(line).flatMap { message =>
+        val attributes = message.getAttributes.asScala
+        Option.when(message.getMessageName == "message" && attributes.get("status").contains("NORMAL")) {
+          attributes.get("flowId") -> attributes("text")
+        }
+      }
+    }
+
+    private def isKnownRawSbtDebug(line: String): Boolean = {
+      val prefixes = Vector(
+        "[debug] > Exec(", "[debug] Evaluating tasks:", "[debug] Running task...", "[debug] not up to date.",
+        "[debug] Updating ", "[debug] Done updating ", "[debug] IncrementalCompile", "[debug] previous = ",
+        "[debug] current source = ", "[debug] > initialChanges = ", "[debug] Full compilation", "[debug] No changes",
+        "[debug] Created transactional ClassFileManager", "[debug] Removing the temporary directory", "[debug] wrote ",
+        "[debug] Packaging ", "[debug] Input file mappings:", "[debug] Done packaging."
+      )
+      prefixes.exists(line.startsWith) || line == "[debug] " || line == "[debug] \t"
+    }
+
+    private def serviceMessage(line: String): Option[ServiceMessage] =
+      if (!line.startsWith("##teamcity[") || !line.endsWith("]")) None
+      else try Some(ServiceMessage.parse(line)) catch { case _: ParseException => None }
   }
-  private final case class CompilationLifecycleEvent(started: Boolean, compiler: String, flowId: String, lineIndex: Int)
-  private final case class CompilationLifecycleInterval(compiler: String, flowId: String, startLineIndex: Int, finishLineIndex: Int)
-  private final case class DependencyLifecycleEvent(opened: Boolean, flowId: String, lineIndex: Int)
-  private final case class ForbiddenMatch(pattern: ExpectedPattern, outputLine: String) { def diagnosticText: String = s"${pattern.diagnosticText}${System.lineSeparator()}  matched output: $outputLine" }
-  private final case class OutputMatch(pattern: ExpectedPattern, outputLineNumber: Int, outputLine: String) { def diagnosticText: String = s"${pattern.diagnosticText}${System.lineSeparator()}  matched output line $outputLineNumber: $outputLine" }
-  private sealed trait RequiredPatternMatch
-  private object RequiredPatternMatch {
-    final case class Matched(bindings: Map[String, String]) extends RequiredPatternMatch
-    final case class ConflictingFlowId(token: String, concreteFlowId: String, alreadyBoundTo: String) extends RequiredPatternMatch { def diagnosticText: String = s"$token cannot bind to '$concreteFlowId': it is already bound to $alreadyBoundTo" }
-    case object NotMatched extends RequiredPatternMatch
-  }
-  private final case class RequiredMatchCandidate(outputMatch: OutputMatch, bindings: Map[String, String])
-  private final case class RequiredMatchBranch(matches: Vector[OutputMatch], bindings: Map[String, String], flowIdConflict: Option[RequiredPatternMatch.ConflictingFlowId]) {
-    def prepend(outputMatch: OutputMatch): RequiredMatchBranch = copy(matches = outputMatch +: matches)
-    def withFallbackConflict(conflict: Option[RequiredPatternMatch.ConflictingFlowId]): RequiredMatchBranch = copy(flowIdConflict = flowIdConflict.orElse(conflict))
-  }
-  private object RequiredMatchBranch {
-    def best(first: RequiredMatchBranch, second: RequiredMatchBranch): RequiredMatchBranch = if (second.matches.size > first.matches.size || (second.matches.size == first.matches.size && second.flowIdConflict.nonEmpty && first.flowIdConflict.isEmpty)) second else first
-  }
-  private final case class RequiredMatchResult(group: CompiledGroup, outputLineCount: Int, branch: RequiredMatchBranch) {
-    def matches: Vector[OutputMatch] = branch.matches
-    def matchedCount: Int = matches.size
-    def isComplete: Boolean = matchedCount == group.patterns.size
-    def lastMatch: Option[OutputMatch] = matches.lastOption
-    def flowIdBindings: Map[String, String] = branch.bindings
-    def flowIdConflict: Option[RequiredPatternMatch.ConflictingFlowId] = branch.flowIdConflict
-    def firstMissingPattern: Option[ExpectedPattern] = group.patterns.lift(matchedCount)
-  }
-  private final case class GroupMatch(group: CompiledGroup, occurrences: Vector[RequiredMatchResult]) { def flowIds: Set[String] = occurrences.flatMap(_.flowIdBindings.values).toSet }
-  private final case class ScopeMatch(scopeName: String, groups: Vector[GroupMatch]) { def flowIds: Set[String] = groups.flatMap(_.flowIds).toSet }
-  private sealed trait ScopeSearch
-  private object ScopeSearch {
-    final case class Complete(matches: Vector[ScopeMatch]) extends ScopeSearch
-    final case class NoCompleteMatch(result: RequiredMatchResult, minimumOccurrences: Int) extends ScopeSearch
+
+  private object CandidateRenderer {
+    private val FlowAttribute = "flowId='([^']+)'".r
+    private val DurationAttribute = "duration='[0-9]+(?:\\.[0-9]+)?'".r
+    private val TimestampAttribute = "timestamp='[^']+'".r
+    private val NumericBuildFlow = "^(-?[0-9]+)(:.+)$".r
+    private val DetailsAttribute = "details='((?:(?:\\|.)|[^'])*+)'".r
+    private val CompilerProject = ".*\\[([^]]+)\\]$".r
+
+    def render(lines: Vector[String], context: TranscriptContext): Vector[String] = {
+      if (lines.isEmpty) return Vector("[[expect-empty]]")
+      val buildNames = semanticBuildNames(lines, context)
+      val flowNames = semanticTestFlowNames(lines)
+      val result = Vector.newBuilder[String]
+      var index = 0
+      while (index < lines.size) {
+        val original = lines(index)
+        if (NoiseRecognizers.matches("sbt-task-summary", original)) result += "[[noise:sbt-task-summary]]"
+        else if (NoiseRecognizers.matches("parallel-scalatest-native-summary", original)) {
+          result += "[[noise:parallel-scalatest-native-summary]]"
+        }
+        else {
+          result += renderLine(original, context, buildNames, flowNames)
+          if (isCompilationAnnouncement(original)) {
+            // This explicit strict block accepts either a cold two-line bridge compilation or a warm-cache absence.
+            result += "[[noise:sbt-compiler-bridge]]"
+            index += NoiseRecognizers.compilerBridgeLength(lines, index + 1)
+          }
+        }
+        index += 1
+      }
+      result.result()
+    }
+
+    private def renderLine(
+      original: String,
+      context: TranscriptContext,
+      buildNames: mutable.LinkedHashMap[String, String],
+      flowNames: mutable.LinkedHashMap[String, String]
+    ): String = {
+      var line = original
+      context.paths.toVector.sortBy { case (_, value) => -value.length }.foreach { case (name, value) =>
+        line = line.replace(value, s"{{path:$name}}")
+      }
+      line = line.replace(context.loggerVersion, "{{logger-version}}")
+      line = FlowAttribute.replaceAllIn(line, matched => {
+        val value = matched.group(1)
+        val rendered = value match {
+          case "teamcity-sbt-dependency-resolution" => value
+          case NumericBuildFlow(buildId, suffix) =>
+            val fallback = if (buildNames.isEmpty) "root" else s"build-${buildNames.size + 1}"
+            s"{{build-id:${buildNames.getOrElseUpdate(buildId, fallback)}}}$suffix"
+          case other =>
+            val fallback = if (flowNames.isEmpty) "test" else s"test-${flowNames.size + 1}"
+            s"{{flow:${flowNames.getOrElseUpdate(other, fallback)}}}"
+        }
+        s"flowId='$rendered'"
+      })
+      line = DurationAttribute.replaceAllIn(line, "duration='{{duration:test}}'")
+      line = TimestampAttribute.replaceAllIn(line, "timestamp='{{timestamp:event}}'")
+      line = line.replaceAll("(?i)(finished in )[0-9]+(?:\\.[0-9]+)?(?= ms)", "$1{{duration:task}}")
+      line = line.replaceAll("(took )[0-9]+(?:\\.[0-9]+)?(?= sec)", "$1{{duration:task}}")
+      line = line.replaceAll("((?:Scala|Java) (?:compilation|analysis)(?: \\+ analysis)? took )[0-9]+(?:\\.[0-9]+)?(?= s)", "$1{{duration:compile}}")
+      line = line.replaceAll("(after )[0-9]+(?:\\.[0-9]+)?(?= ms)", "$1{{duration:dependency}}")
+      line = line.replaceAll("(?<![0-9])[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}", "{{timestamp:log}}")
+      line = line.replaceAll("pool-[0-9]+-thread-[0-9]+", "{{thread:test}}")
+      line = line.replaceAll("(Running cached compiler )[0-9a-fA-F]{6,16}", "$1{{hash:compiler}}")
+      line = line.replaceAll("(JavacTool@)[0-9a-fA-F]{6,16}", "$1{{hash:javac}}")
+      line = line.replaceAll("sbt_([0-9a-fA-F]{6,16})", "sbt_{{hash:bg-job}}")
+      line = line.replaceAll("local cache hit (https?://[^ '\\]]+)", "{{dependency-outcome}} $1{{dependency-metadata}}")
+      line = line.replaceAll("downloaded (https?://[^ ']+) \\([^']+\\)", "{{dependency-outcome}} $1{{dependency-metadata}}")
+      tokenizeFrameworkTail(line)
+    }
+
+    private def semanticBuildNames(lines: Vector[String], context: TranscriptContext): mutable.LinkedHashMap[String, String] = {
+      val names = mutable.LinkedHashMap.empty[String, String]
+      val used = mutable.HashSet.empty[String]
+      lines.foreach { line =>
+        serviceMessage(line).filter(_.getMessageName == "compilationStarted").foreach { message =>
+          val attributes = message.getAttributes.asScala
+          for {
+            case NumericBuildFlow(buildId, _) <- attributes.get("flowId")
+            compiler <- attributes.get("compiler")
+            case CompilerProject(project) <- Some(compiler)
+            if !names.contains(buildId)
+          } {
+            val base = if (project == context.workDir.getName || project == "root") "root" else kebab(project)
+            val unique = uniqueName(base, used)
+            names.getOrElseUpdate(buildId, unique)
+          }
+        }
+      }
+      names
+    }
+
+    private def semanticTestFlowNames(lines: Vector[String]): mutable.LinkedHashMap[String, String] = {
+      val messages = lines.flatMap(serviceMessage)
+      val allFlows = messages.flatMap(message => Option(message.getFlowId))
+        .filterNot(_.contains(':')).filterNot(_ == "teamcity-sbt-dependency-resolution").distinct
+      val names = mutable.LinkedHashMap.empty[String, String]
+      if (allFlows.size == 1) names += allFlows.head -> "test"
+      else {
+        val used = mutable.HashSet.empty[String]
+        messages.filter(_.getMessageName == "testSuiteStarted").foreach { message =>
+          val attributes = message.getAttributes.asScala
+          for (flow <- attributes.get("flowId"); suite <- attributes.get("name") if !names.contains(flow)) {
+            val simple = suite.split('.').lastOption.getOrElse(suite).stripSuffix("Suite").stripSuffix("Test")
+            val prefix = if (suite.startsWith("suites.")) "suite-" else if (suite.startsWith("tests.")) "direct-" else "suite-"
+            names += flow -> uniqueName(prefix + kebab(simple), used)
+          }
+        }
+        allFlows.filterNot(names.contains).foreach { flow =>
+          names += flow -> uniqueName(if (names.isEmpty) "test" else s"test-${names.size + 1}", used)
+        }
+      }
+      names
+    }
+
+    private def tokenizeFrameworkTail(line: String): String = DetailsAttribute.replaceAllIn(line, matched => {
+      val details = matched.group(1)
+      val framework =
+        if (details.startsWith("org.scalatest.")) Some("scalatest")
+        else if (details.startsWith("org.specs2.")) Some("specs2")
+        else if (details.startsWith("java.lang.AssertionError") || details.startsWith("junit.")) Some("junit")
+        else None
+      val replacement = framework.flatMap(name => splitFrameworkTail(details).map { case (prefix, tail) =>
+        s"details='$prefix{{framework-stack-tail:$name}}'"
+      }).getOrElse(matched.matched)
+      java.util.regex.Matcher.quoteReplacement(replacement)
+    })
+
+    private def splitFrameworkTail(details: String): Option[(String, String)] = {
+      val parts = details.split("\\|n", -1).toVector
+      val userFrames = parts.zipWithIndex.collect {
+        case (frame, index) if frame.startsWith("\tat ") && !isFrameworkFrame(frame.stripPrefix("\tat ")) => index
+      }
+      userFrames.lastOption.filter(_ < parts.size - 1).map { lastUser =>
+        parts.take(lastUser + 1).mkString("|n") -> ("|n" + parts.drop(lastUser + 1).mkString("|n"))
+      }
+    }
+
+    private def isFrameworkFrame(frame: String): Boolean = Vector(
+      "org.scalatest.", "org.specs2.", "org.junit.", "junit.", "com.novocode.junit.", "sbt.", "scala.",
+      "java.", "java.base/", "jdk.internal.", "sun.reflect."
+    ).exists(frame.startsWith)
+
+    private def isCompilationAnnouncement(line: String): Boolean = {
+      val text = if (line.startsWith("[info] ")) Some(line) else serviceMessage(line).flatMap { message =>
+        Option(message.getAttributes.get("text"))
+      }
+      text.exists(_.matches("^\\[info\\] compiling .+ Scala source.*$"))
+    }
+
+    private def serviceMessage(line: String): Option[ServiceMessage] =
+      if (!line.startsWith("##teamcity[") || !line.endsWith("]")) None
+      else try Some(ServiceMessage.parse(line)) catch { case _: ParseException => None }
+
+    private def kebab(value: String): String = value
+      .replaceAll("([a-z0-9])([A-Z])", "$1-$2")
+      .replaceAll("[^A-Za-z0-9]+", "-")
+      .stripPrefix("-").stripSuffix("-").toLowerCase
+
+    private def uniqueName(base: String, used: mutable.Set[String]): String = {
+      var candidate = base
+      var suffix = 2
+      while (!used.add(candidate)) {
+        candidate = s"$base-$suffix"
+        suffix += 1
+      }
+      candidate
+    }
   }
 }

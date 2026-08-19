@@ -1,7 +1,0 @@
-##teamcity\[compilationStarted compiler='Scala compiler \|\[[^|]+\|\]' flowId='<flowId1>'\]
-##teamcity\[compilationFinished compiler='Scala compiler \|\[[^|]+\|\]' flowId='<flowId1>'\]
-##teamcity\[testStarted name='ListFlatSpec.A List should have length.* flowId='<flowId2>'\]
-##teamcity\[testFinished name='ListFlatSpec.A List should have length.* flowId='<flowId2>'\]
-##teamcity\[testStarted name='ListFlatSpec.A List should contains.* flowId='<flowId2>'\]
-##teamcity\[testFailed name='ListFlatSpec.* flowId='<flowId2>'\]
-##teamcity\[testFinished name='ListFlatSpec.A List should contains.* flowId='<flowId2>'\]

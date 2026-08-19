@@ -1,4 +1,0 @@
-##teamcity\[inspectionType .*
-##teamcity\[inspection .*SEVERITY='ERROR'.*
-\[error\].*BrokenHelloWorld\.scala:2:.*[Ii]nvalid literal number
-one error found

@@ -1,0 +1,3 @@
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] not up to date. inChanged = true, force = true']
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] Updating ...']
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] Done updating ']

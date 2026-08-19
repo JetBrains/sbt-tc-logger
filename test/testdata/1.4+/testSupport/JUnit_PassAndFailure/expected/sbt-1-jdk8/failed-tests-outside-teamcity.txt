@@ -1,0 +1,7 @@
+[error] Test thisis.a.test.ATest.testMeToo failed: java.lang.AssertionError: comparing unequal ints is WRONG expected:<3> but was:<1>, took {{duration:task}} sec
+[error]     at thisis.a.test.ATest.testMeToo(ATest.scala:15)
+[error]     ...
+[error] Failed: Total 2, Failed 1, Errors 0, Passed 1
+[error] Failed tests:
+[error] 	thisis.a.test.ATest
+[error] (Test / test) sbt.TestsFailedException: Tests unsuccessful

@@ -1,3 +1,0 @@
-##teamcity\[compilationStarted compiler='Scala compiler \|\[[^|]+\|\]' flowId='<flowId1>'\]
-##teamcity\[message status='NORMAL' flowId='<flowId1>' text='\|\[debug\|] \|\[zinc\|] .*'\]
-##teamcity\[compilationFinished compiler='Scala compiler \|\[[^|]+\|\]' flowId='<flowId1>'\]

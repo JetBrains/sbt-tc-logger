@@ -1,4 +1,0 @@
-^\[debug\] generic debug message$
-^\[info\] generic info message$
-^\[warn\] generic warning message$
-^\[error\] generic error message$

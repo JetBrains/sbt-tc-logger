@@ -59,7 +59,7 @@ object SbtProcessRunner {
   ): Seq[String] =
     commandLinePrefix ++ sbtOptions ++ sbtCommands
 
-  private def runProcess(
+  private[integrationTests] def runProcess(
     commands: Seq[String],
     directory: File,
     envVars: Seq[String],
@@ -70,6 +70,9 @@ object SbtProcessRunner {
   ): ProcessRunResult = {
     val builder = new ProcessBuilder(commands*)
     builder.directory(directory)
+    // There is no deterministic way to merge two independently drained streams after the fact. Let the OS-backed
+    // ProcessBuilder pipe preserve the order in which the nested JVM wrote stdout and stderr instead.
+    builder.redirectErrorStream(true)
     val environment = builder.environment()
     // Remove inherited variables first so callers can model an absent value while still overriding other parent settings.
     environmentVariablesToRemove.foreach(environment.remove)
@@ -83,11 +86,9 @@ object SbtProcessRunner {
 
     val processOutput: StringBuilder = new StringBuilder()
 
-    val stdinThread = inThread {
+    val outputThread = inThread {
       Source.fromInputStream(process.getInputStream).getLines().foreach { line =>
-        processOutput.synchronized {
-          processOutput.append(line).append("\n")
-        }
+        processOutput.append(line).append("\n")
 
         val hasError = line.startsWith("[error]")
         if (hasError && !errorsExpected) {
@@ -95,18 +96,7 @@ object SbtProcessRunner {
           process.destroy()
         }
         else if (verbose) {
-          System.out.println(s"stdout: ${diagnosticLineNormaliser(line)}")
-        }
-      }
-    }
-
-    val stderrThread = inThread {
-      Source.fromInputStream(process.getErrorStream).getLines().foreach { line =>
-        processOutput.synchronized {
-          processOutput.append(line).append("\n")
-        }
-        if (verbose) {
-          System.err.println("stderr: " + line)
+          System.out.println(s"output: ${diagnosticLineNormaliser(line)}")
         }
       }
     }
@@ -120,8 +110,7 @@ object SbtProcessRunner {
 
     process.waitFor()
 
-    stdinThread.join()
-    stderrThread.join()
+    outputThread.join()
 
     ProcessRunResult(
       exitCode = process.exitValue(),

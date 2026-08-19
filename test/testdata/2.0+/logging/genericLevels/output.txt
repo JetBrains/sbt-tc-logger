@@ -1,4 +1,0 @@
-##teamcity\[message status='NORMAL' flowId='<flowId1>' text='\|\[debug\|\] generic debug message'\]
-##teamcity\[message status='NORMAL' flowId='<flowId1>' text='\|\[info\|\] generic info message'\]
-##teamcity\[message status='WARNING' flowId='<flowId1>' text='\|\[warn\|\] generic warning message'\]
-##teamcity\[message status='ERROR' flowId='<flowId1>' text='\|\[error\|\] generic error message'\]

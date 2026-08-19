@@ -1,0 +1,5 @@
+##teamcity[compilationStarted compiler='Scala compiler |[project-no-build-file|]' flowId='{{build-id:root}}:compile:compiler']
+##teamcity[inspectionType id='SbtCompileProblem' name='sbt compile problem' description='Compile problems' category='Compile problems']
+##teamcity[message status='WARNING' flowId='{{build-id:root}}:compile:compiler' text='|[warn|] there was 1 deprecation warning; re-run with -deprecation for details']
+##teamcity[message status='WARNING' flowId='{{build-id:root}}:compile:compiler' text='|[warn|] one warning found']
+##teamcity[compilationFinished compiler='Scala compiler |[project-no-build-file|]' flowId='{{build-id:root}}:compile:compiler']

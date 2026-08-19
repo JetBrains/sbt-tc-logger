@@ -1,6 +1,6 @@
 package jetbrains.buildServer.sbtlogger
 
-import jetbrains.buildServer.sbtlogger.utils.{SbtExitCodeExpectation, SbtLoggerOutputTestCase}
+import jetbrains.buildServer.sbtlogger.utils.{SbtLoggerOutputTestCase, SbtProcessResultExpectation}
 import org.junit.Test
 
 /** Scenarios supported by SBT 1.9.0 and later, beyond the supported SBT 1.4 baseline runtime. */
@@ -10,9 +10,11 @@ trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
   @Test
   def testReporting_IntegrationTest_TestQuickPassAndFailureReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
+      scenarioId = "integration-test-quick",
       fixture = "testSupport/IntegrationTest_TestQuick",
-      sbtCommands = Seq("it:testQuick"),
-      expectedExitCode = SbtExitCodeExpectation.Zero
+      setupCommands = Seq.empty,
+      behaviorCommands = Seq("it:testQuick"),
+      expectedResult = SbtProcessResultExpectation.Success
     ))
 
   // TW-34982 and TW-36108 (GitHub #3)
@@ -22,10 +24,12 @@ trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
   @Test
   def testReporting_Jacoco_JUnitAndCoverageReported(): Unit =
     runCase(SbtLoggerOutputTestCase(
+      scenarioId = "jacoco",
       fixture = "jacoco",
       fixtureRootRelativePath = Some("test/testdata/1.9+"),
-      sbtCommands = Seq("jacoco"),
+      setupCommands = Seq.empty,
+      behaviorCommands = Seq("jacoco"),
+      expectedResult = SbtProcessResultExpectation.Success,
       sbtOptions = Seq("--info"), // sbt-jacoco logs its report summary at info level.
-      expectedExitCode = SbtExitCodeExpectation.Zero
     ))
 }

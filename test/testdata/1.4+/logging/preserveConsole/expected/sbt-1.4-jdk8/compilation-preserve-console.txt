@@ -1,0 +1,10 @@
+[info] compiling 1 Scala source to {{path:work-dir}}/target/scala-2.13/classes ...
+[[noise:sbt-compiler-bridge]]
+##teamcity[inspectionType id='SbtCompileProblem' name='sbt compile problem' description='Compile problems' category='Compile problems']
+##teamcity[inspection SEVERITY='ERROR' line='2' typeId='SbtCompileProblem' message='invalid literal number' file='${BASE}/src/main/scala/BrokenHelloWorld.scala']
+[error] {{path:work-dir}}/src/main/scala/BrokenHelloWorld.scala:2:35: invalid literal number
+[error]   def main(args: Array[String]) = 123println("Hello, World!")
+[error]                                   ^
+[error] one error found
+[error] (Compile / compileIncremental) Compilation failed
+[[noise:sbt-task-summary]]

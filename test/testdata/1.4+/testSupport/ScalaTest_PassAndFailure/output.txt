@@ -1,6 +1,0 @@
-##teamcity\[compilationStarted compiler='Scala compiler \|\[[^|]+\|\]' flowId='<flowId1>'\]
-##teamcity\[compilationFinished compiler='Scala compiler \|\[[^|]+\|\]' flowId='<flowId1>'\]
-##teamcity\[testStarted name='ExampleSpec.A Stack should pop values.* flowId='<flowId2>'\]
-##teamcity\[testFinished name='ExampleSpec.A Stack should pop values.* flowId='<flowId2>'\]
-##teamcity\[testStarted name='ExampleSpec.A Stack should throw.* flowId='<flowId2>'\]
-##teamcity\[testFinished name='ExampleSpec.A Stack should throw.* flowId='<flowId2>'\]

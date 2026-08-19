@@ -162,7 +162,11 @@ lazy val integrationTests: Project = (project in file("test"))
     // Nested sbt processes share an isolated global base, so run cases sequentially.
     Test / parallelExecution := false,
 
-    libraryDependencies ++= junitTestFrameworkDependencies,
+    libraryDependencies ++= junitTestFrameworkDependencies ++ Seq(
+      // Exact transcripts are validated as raw wire text, but every TeamCity-looking line must still be syntactically valid.
+      "org.jetbrains.teamcity" % "serviceMessages" % "2026.1.3" % Test,
+    ),
+    resolvers += "jetbrains-teamcity-repository" at "https://download.jetbrains.com/teamcity-repository",
   )
 
 // JUnit runs the outer harness; the current launcher for each supported SBT line boots fixture-selected sbt versions.
@@ -177,3 +181,9 @@ addCommandAlias("testSbt1_12_Jdk17", ";project integrationTests;testOnly jetbrai
 addCommandAlias("testSbt2_0_Jdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt2_0_Jdk17 jetbrains.buildServer.sbtlogger.SbtDetailedDependencyResolution_TestSbt2_0_Jdk17")
 // JUnit's category filter keeps every non-matrix integration test in the shared auxiliary bucket.
 addCommandAlias("testOther", ";project integrationTests;testOnly -- --exclude-categories=jetbrains.buildServer.sbtlogger.SbtRuntimeMatrix")
+
+// Candidate commands are deliberately target-only. Reviewing and copying a candidate into testdata is a separate step.
+addCommandAlias("generateSbt1_4_Jdk8OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_4_Jdk8;session clear")
+addCommandAlias("generateSbt1_12_Jdk8OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_12_Jdk8;session clear")
+addCommandAlias("generateSbt1_12_Jdk17OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_12_Jdk17 jetbrains.buildServer.sbtlogger.SbtDetailedDependencyResolution_TestSbt1_12_Jdk17;session clear")
+addCommandAlias("generateSbt2_0_Jdk17OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt2_0_Jdk17 jetbrains.buildServer.sbtlogger.SbtDetailedDependencyResolution_TestSbt2_0_Jdk17;session clear")
