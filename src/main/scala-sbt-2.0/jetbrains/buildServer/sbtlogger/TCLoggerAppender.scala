@@ -23,22 +23,20 @@ import jetbrains.buildServer.sbtlogger.LogAppender
 import scala.Option
 
 /** SBT 2 appender boundary used by the shared TeamCity logger. */
-class TCLoggerAppender(appender: LogAppender, scope: String, onActivity: () => Unit)
+class TCLoggerAppender(appender: LogAppender, scope: String, isCompilerTask: Boolean)
   extends ConsoleAppender(s"tc-logger-$scope", TCLoggerAppender.properties, ConsoleAppender.noSuppressedMessage) {
 
   override def appendLog(level: Level.Value, message: => String): Unit = {
     val text = message
-    if appender.shouldLog(text) then
-      onActivity()
-      appender.log(level, text, scope)
+    if isCompilerTask then appender.logCompilerTask(level, text, scope)
+    else appender.log(level, text, scope)
   }
 
   override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
     val objectEvent = event
     val text = renderObjectEvent(objectEvent)
-    if appender.shouldLog(text) then
-      onActivity()
-      appender.log(level, text, scope)
+    if isCompilerTask then appender.logCompilerTask(level, text, scope)
+    else appender.log(level, text, scope)
   }
 
   /**

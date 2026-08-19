@@ -98,7 +98,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
           LogManager.withLoggers(
             // MainAppender applies the effective task log level only to a ConsoleAppender screen. TCLoggerAppender
             // subclasses it so client-mode task events are delivered once without a visible SBT console line.
-            screen = (key, _) => new TCLoggerAppender(tcLogAppender, flowIdFor(key), compilerActivity(key)),
+            screen = (key, _) => new TCLoggerAppender(tcLogAppender, flowIdFor(key), isCompilerTask(key)),
             relay = _ => TCLoggerAppender.muted("relay"),
             extra = configuredExtraAppenders
           )
@@ -207,20 +207,8 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     s"$project:$configuration:$phase"
   }
 
-  private def compilerActivity(key: ScopedKey[?]): () => Unit = {
-    val task = key.scope.task.toOption.map(_.label).getOrElse("general")
-    if !CompilerTaskNames.contains(task) then () => ()
-    else {
-      val scope = key.scope
-      val project = getScopeId(scope.project)
-      val configuration = scope.config.toOption.map(_.name).getOrElse("global")
-      val projectName = scope.project.toOption.collect { case project: ProjectRef => project.project }
-      if configuration == Test.name then
-        () => tcLogAppender.compilationTestBlockStart(compilerFlowId(project, configuration), projectName)
-      else
-        () => tcLogAppender.compilationBlockStart(compilerFlowId(project, configuration), projectName)
-    }
-  }
+  private def isCompilerTask(key: ScopedKey[?]): Boolean =
+    CompilerTaskNames.contains(key.scope.task.toOption.map(_.label).getOrElse("general"))
 
   private def phaseForTask(task: String): String =
     if ResolverTaskNames.contains(task) then "dependency"

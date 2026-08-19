@@ -56,8 +56,9 @@ class TCCompilerReporter(
     reportedProblems.exists(_.severity() == xsbti.Severity.Warn)
   }
 
-  // SBT invokes this after compilation.  The normal TeamCity logger replaces
-  // the summary with structured diagnostics; observer mode leaves it intact.
+  // Zinc invokes this while compilation is still active. In structured mode
+  // TCLogAppender renders the collected typed-problem counts after the explicit
+  // compiler lifecycle closes, so that the summary cannot create another node.
   override def printSummary(): Unit = {
     if (!reportCompilerOutput) delegate.printSummary()
   }
@@ -77,8 +78,10 @@ class TCCompilerReporter(
       reportedProblems += problem
     }
     logInspection(problem)
-    if (reportCompilerOutput) appender.log(logLevel(problem.severity()), formatProblem(problem), flowId)
-    else delegate.log(problem)
+    if (reportCompilerOutput) {
+      appender.recordCompilerProblem(flowId, problem)
+      appender.log(logLevel(problem.severity()), formatProblem(problem), flowId)
+    } else delegateLog(problem)
   }
 
   private def declareInspectionType(): Unit = synchronized {
