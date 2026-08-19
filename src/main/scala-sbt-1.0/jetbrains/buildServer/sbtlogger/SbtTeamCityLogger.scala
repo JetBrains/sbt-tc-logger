@@ -47,7 +47,8 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     val transformedProjectSettings = extractedStructure.allProjectRefs.flatMap { projectRef =>
       val project = projectScope(projectRef)
       transformSettings(project, projectRef.build, rootProject, SbtTeamCityLogger.projectSettings) ++
-        (if (tcFound) transformSettings(project, projectRef.build, rootProject, lifecycleSettings(getScopeId(project.project), projectRef.project)) else Nil)
+        (if (tcFound) transformSettings(project, projectRef.build, rootProject, compilerReporterSettings(getScopeId(project.project), projectRef.project)) else Nil) ++
+        (if (tcFound && !preserveConsole) transformSettings(project, projectRef.build, rootProject, lifecycleSettings(getScopeId(project.project), projectRef.project)) else Nil)
     }
     reapply(session.appendRaw(transformedProjectSettings), state)
   }
@@ -80,7 +81,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   override lazy val projectSettings =
     if (tcFound) {
-      val testSettings = if (testResultLoggerFound) Seq(
+      val testSettings = if (!preserveConsole && testResultLoggerFound) Seq(
         testResultLogger in (Test, test) := silentTestResultLogger,
         testResultLogger in (Test, testQuick) := (testResultLogger in (Test, test)).value,
         testResultLogger in (IntegrationTest, testQuick) := silentTestResultLogger
@@ -117,7 +118,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     commands += tcLoggerStatusCommand
   )
 
-  /** compileIncremental and compiler diagnostics run after compileInputs, so they form the compiler activity gate. */
+  /** Compile lifecycle is a presentation feature and is deliberately absent in preserve-console observer mode. */
   private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[_]] = Seq(
     update.toSettingKey ~= { original =>
       original
@@ -175,16 +176,20 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     (compile in Test).toSettingKey ~= { original =>
       original.andFinally(tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName)))
     }
-  ) ++
+  )
+
+  private def compilerReporterSettings(scope: String, projectName: String): Seq[Def.Setting[_]] =
     inConfig(Compile)(Seq(reporterSettings(
       tcLogAppender,
       compilerFlowId(scope, Compile.name),
-      () => tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))
+      () => tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName)),
+      reportCompilerOutput = !preserveConsole
     ))) ++
     inConfig(Test)(Seq(reporterSettings(
       tcLogAppender,
       compilerFlowId(scope, Test.name),
-      () => tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))
+      () => tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName)),
+      reportCompilerOutput = !preserveConsole
     )))
 
   def tcLoggerStatusCommand: Command = Command.command("sbt-teamcity-logger") { state =>

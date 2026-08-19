@@ -32,11 +32,16 @@ object apiAdapter {
 
   def projectScope(project: Reference): Scope = Scope(Select(project), Zero, Zero, Zero)
 
-  def reporterSettings(tcLogAppender: TCLogAppender, flowId: String, ensureCompilationStarted: () => Unit): Def.Setting[?] = {
+  def reporterSettings(
+    tcLogAppender: TCLogAppender,
+    flowId: String,
+    ensureCompilationStarted: () => Unit,
+    reportCompilerOutput: Boolean
+  ): Def.Setting[?] = {
     import sbt.Keys.compile
     compile / Unhide.compilerReporter := Def.uncached {
       val defaultReporter = (compile / Unhide.compilerReporter).value
-      new TCCompilerReporter(defaultReporter, tcLogAppender, flowId, ensureCompilationStarted)
+      new TCCompilerReporter(defaultReporter, tcLogAppender, flowId, ensureCompilationStarted, reportCompilerOutput)
     }
   }
 

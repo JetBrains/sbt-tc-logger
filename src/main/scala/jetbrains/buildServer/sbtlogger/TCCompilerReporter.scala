@@ -36,7 +36,8 @@ class TCCompilerReporter(
   delegate: xsbti.Reporter,
   appender: TCLogAppender,
   flowId: String,
-  ensureCompilationStarted: () => Unit
+  ensureCompilationStarted: () => Unit,
+  reportCompilerOutput: Boolean
 ) extends ReporterAdapter(delegate) {
 
   private val reportedProblems = mutable.ArrayBuffer.empty[Problem]
@@ -55,24 +56,29 @@ class TCCompilerReporter(
     reportedProblems.exists(_.severity() == xsbti.Severity.Warn)
   }
 
-  // SBT invokes this after compilation.  The structured diagnostics above are
-  // more useful than its generic "one error found" summary.
-  override def printSummary(): Unit = ()
+  // SBT invokes this after compilation.  The normal TeamCity logger replaces
+  // the summary with structured diagnostics; observer mode leaves it intact.
+  override def printSummary(): Unit = {
+    if (!reportCompilerOutput) delegate.printSummary()
+  }
 
   override def problems(): Array[Problem] = synchronized {
     reportedProblems.toArray
   }
 
-  override def comment(pos: Position, msg: String): Unit = ()
+  override def comment(pos: Position, msg: String): Unit = {
+    if (!reportCompilerOutput) delegate.comment(pos, msg)
+  }
 
   override def log(problem: Problem): Unit = {
-    ensureCompilationStarted()
+    if (reportCompilerOutput) ensureCompilationStarted()
     declareInspectionType()
     synchronized {
       reportedProblems += problem
     }
     logInspection(problem)
-    appender.log(logLevel(problem.severity()), formatProblem(problem), flowId)
+    if (reportCompilerOutput) appender.log(logLevel(problem.severity()), formatProblem(problem), flowId)
+    else delegate.log(problem)
   }
 
   private def declareInspectionType(): Unit = synchronized {

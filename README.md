@@ -83,7 +83,7 @@ To be sure that plugin was installed correctly you can use `sbt-teamcity-logger`
 
 By default the plugin replaces SBT's task-console renderer so TeamCity receives one structured representation of each SBT logger event. SBT's backing logs (for example, `last`) remain available. `println`, external-process output, and build-load output produced before the plugin is applied are not SBT logger events and remain raw by design.
 
-If a build intentionally owns a custom `logManager`, start SBT with `-Dteamcity.sbt.logger.preserveConsole=true`. This preserves that manager instead of replacing it. Existing compiler/test diagnostics remain structured, but ordinary task log messages are then left to the custom manager rather than mirrored as TeamCity `message` events.
+If a build must keep SBT's normal log manager, start SBT with `-Dteamcity.sbt.logger.preserveConsole=true`. This observer mode preserves ordinary task, compiler, and test-result output: the logger does not replace `logManager`, suppress the default compiler reporter, or install its silent test-result logger. It still reports compiler problems as TeamCity inspections and publishes test events, but does not create TeamCity dependency or `Scala compiler` blocks.
 
 ## Development, Testing, and Contributing
 

@@ -1,0 +1,7 @@
+##teamcity\[testSuiteStarted name='thisis.a.test.ATest' flowId='<flowId1>'\]
+##teamcity\[testStarted name='thisis.a.test.ATest.testMeToo' captureStandardOutput='true' flowId='<flowId1>'\]
+##teamcity\[testFailed name='thisis.a.test.ATest.testMeToo' details='.*' flowId='<flowId1>'\]
+##teamcity\[testFinished name='thisis.a.test.ATest.testMeToo' duration='.*' flowId='<flowId1>'\]
+##teamcity\[testStarted name='thisis.a.test.ATest.testMe' captureStandardOutput='true' flowId='<flowId1>'\]
+##teamcity\[testFinished name='thisis.a.test.ATest.testMe' duration='.*' flowId='<flowId1>'\]
+##teamcity\[testSuiteFinished name='thisis.a.test.ATest' flowId='<flowId1>'\]
