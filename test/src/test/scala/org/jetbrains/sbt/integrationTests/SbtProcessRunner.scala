@@ -51,13 +51,13 @@ object SbtProcessRunner {
     )
   }
 
-  /** Builds the non-interactive nested-sbt command line with exactly one trailing command argument. */
+  /** Builds the non-interactive nested-sbt command line with one launcher argument per sbt command. */
   private[integrationTests] def buildCommandLine(
     commandLinePrefix: Seq[String],
     sbtOptions: Seq[String],
     sbtCommands: Seq[String]
   ): Seq[String] =
-    commandLinePrefix ++ sbtOptions :+ sbtCommands.mkString(";", ";", "")
+    commandLinePrefix ++ sbtOptions ++ sbtCommands
 
   private def runProcess(
     commands: Seq[String],

@@ -5,6 +5,7 @@ import org.jetbrains.sbt.integrationTests.*
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Base runner for sbt TeamCity logger output integration tests.
@@ -12,6 +13,59 @@ import java.io.File
  * @param runtime sbt runtime used by every case in this suite instance.
  */
 abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
+
+  protected final def detailedDependencyResolution_CoursierOutcomesReported(): Unit = {
+    val result = runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/success",
+      sbtCommands = Seq("clean", "update", "update"),
+      sbtOptions = Seq("-Dteamcity.sbt.logger.detailedDependencyResolution=true"),
+      verifyOutput = false,
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent),
+      isolateSbtServer = true
+    ))
+    SbtOutputVerifier.assertDetailedDependencyResolution(result.processOutput)
+  }
+
+  protected final def detailedDependencyResolution_CoursierFailureIsWarningAndCloses(): Unit = {
+    val result = runCase(SbtLoggerOutputTestCase(
+      fixture = "dependencyResolution/updateFailure",
+      sbtCommands = Seq("update"),
+      sbtOptions = Seq("-Dteamcity.sbt.logger.detailedDependencyResolution=true"),
+      verifyOutput = false,
+      failurePropagation = SbtFailurePropagationExpectation.ProcessExitNonZero,
+      expectedExitCode = SbtExitCodeExpectation.NonZero,
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent),
+      isolateSbtServer = true
+    ))
+    SbtOutputVerifier.assertDetailedDependencyFailure(result.processOutput)
+  }
+
+  protected final def detailedDependencyResolution_DebugKeepsNativeLogging(): Unit = {
+    val result = runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/success",
+      sbtCommands = Seq("clean", "update"),
+      sbtOptions = Seq("--debug", "-Dteamcity.sbt.logger.detailedDependencyResolution=true"),
+      verifyOutput = false,
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent),
+      isolateSbtServer = true
+    ))
+    SbtOutputVerifier.assertNoDetailedDependencyResolution(result.processOutput)
+  }
+
+  protected final def detailedDependencyResolution_PreserveConsoleDisablesDetailedMode(): Unit = {
+    val result = runCase(SbtLoggerOutputTestCase(
+      fixture = "compilation/success",
+      sbtCommands = Seq("clean", "update"),
+      sbtOptions = Seq(
+        "-Dteamcity.sbt.logger.preserveConsole=true",
+        "-Dteamcity.sbt.logger.detailedDependencyResolution=true"
+      ),
+      verifyOutput = false,
+      compilationLifecycle = Some(SbtCompilationLifecycleExpectation.Absent),
+      isolateSbtServer = true
+    ))
+    SbtOutputVerifier.assertNoDetailedDependencyResolution(result.processOutput)
+  }
 
   /** Runs the TW-35693 fixture after a runtime-qualified suite has opted into it. */
   protected final def runScalaTestErrorLikeOutputNotCompilationFailureCase(): Unit =
@@ -46,7 +100,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
    * intentionally compile or test a broken project. Each case can explicitly require a zero or non-zero process exit
    * when the command result itself is part of the regression contract.
    */
-  private[sbtlogger] final def runCase(testCase: SbtLoggerOutputTestCase): Unit = {
+  private[sbtlogger] final def runCase(testCase: SbtLoggerOutputTestCase): SbtProcessRunner.ProcessRunResult = {
     val runResult = runSbtAndTest(
       runtime = runtime,
       fixtureRootRelativePath = testCase.fixtureRootRelativePath.getOrElse(runtime.testDataRelativePath),
@@ -59,7 +113,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       compilationLifecycle = testCase.compilationLifecycle,
       dependencyLifecycle = testCase.dependencyLifecycle,
       teamCityEnvironment = testCase.teamCityEnvironment,
-      expectNoTeamCityMessages = testCase.expectNoTeamCityMessages
+      expectNoTeamCityMessages = testCase.expectNoTeamCityMessages,
+      isolateSbtServer = testCase.isolateSbtServer
     )
 
     testCase.expectedExitCode match {
@@ -74,6 +129,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       runResult.exitCode,
       runResult.processOutput
     )
+    runResult
   }
 
   private def runSbtAndTest(
@@ -88,7 +144,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     compilationLifecycle: Option[SbtCompilationLifecycleExpectation],
     dependencyLifecycle: Option[SbtDependencyLifecycleExpectation],
     teamCityEnvironment: Boolean = true,
-    expectNoTeamCityMessages: Boolean = false
+    expectNoTeamCityMessages: Boolean = false,
+    isolateSbtServer: Boolean = false
   ): SbtProcessRunner.ProcessRunResult = {
     val root = IntegrationTestLayout.repoRoot()
     val sourceWorkingDir = SbtFixtureWorkspace.sourceFixtureDirectory(root, fixtureRootRelativePath, testRepo)
@@ -101,7 +158,11 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     )
     val plugin = SbtLoggerPlugin.UnderTest
     val pluginJar = plugin.packagedJar(root, runtime.sbtBinaryVersion)
-    val sbtGlobalBase = SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion)
+    val isolatedSessionId = Option.when(isolateSbtServer)(s"detail-${SbtLoggerOutputTestBase.isolatedSbtSessionCounter.incrementAndGet()}")
+    val sbtGlobalBase = isolatedSessionId match {
+      case Some(sessionId) => SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion, sessionId)
+      case None => SbtIntegrationTestLayout.sbtGlobalBase(root, runtime.id, runtime.launcherVersion)
+    }
     val sbtVersion = Version(runtime.sbtVersion)
     val javaHome = CurrentEnvironment.javaHomeFor(runtime.jdk)
     val javaBin = CurrentEnvironment.javaExecutableFor(runtime.jdk)
@@ -123,8 +184,12 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
 
     // Recent SBT versions use a Unix-domain socket for their server. Keep it in a short directory to avoid exceeding
     // the platform's socket-path limit when the test harness isolates its global base under the repository.
-    val sbtGlobalServerDirectory =
-      Option.when(sbtVersion >= Version("1.4.0"))(SbtIntegrationTestLayout.sbtGlobalServerDirectory(runtime.id, runtime.launcherVersion))
+    val sbtGlobalServerDirectory = Option.when(sbtVersion >= Version("1.4.0")) {
+      isolatedSessionId match {
+        case Some(sessionId) => SbtIntegrationTestLayout.sbtGlobalServerDirectory(runtime.id, runtime.launcherVersion, sessionId)
+        case None => SbtIntegrationTestLayout.sbtGlobalServerDirectory(runtime.id, runtime.launcherVersion)
+      }
+    }
 
     // SBT 2 caches task results across fixture workspaces by default. Give each
     // copied fixture its own local cache so its compile/test task is executed and
@@ -203,4 +268,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     else
       newPathEntry
   }
+}
+
+private object SbtLoggerOutputTestBase {
+  val isolatedSbtSessionCounter = new AtomicInteger
 }
