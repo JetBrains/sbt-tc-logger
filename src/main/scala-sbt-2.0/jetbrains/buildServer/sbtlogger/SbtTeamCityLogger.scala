@@ -126,25 +126,15 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   /** Compile lifecycle is a presentation feature and is deliberately absent in preserve-console observer mode. */
   private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[?]] = Seq(
-    Compile / compile := Def.uncached {
-      // Start before evaluating the original task so that compile-input and compiler log messages share this flow.
-      tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))
-      val result = (Compile / compile).result.value
-      tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName))
-      result match {
-        case sbt.Result.Value(value) => value
-        case sbt.Result.Inc(cause) => throw cause
-      }
+    (Compile / compile).toSettingKey ~= { original =>
+      original
+        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))))
+        .andFinally(tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName)))
     },
-    Test / compile := Def.uncached {
-      // See the Compile wrapper above: Test compilation has the same task/logging structure.
-      tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))
-      val result = (Test / compile).result.value
-      tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName))
-      result match {
-        case sbt.Result.Value(value) => value
-        case sbt.Result.Inc(cause) => throw cause
-      }
+    (Test / compile).toSettingKey ~= { original =>
+      original
+        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))))
+        .andFinally(tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName)))
     }
   )
 
