@@ -1,7 +1,3 @@
-##teamcity[compilationStarted compiler='Scala compiler in Test |[junit-test-quick|]' flowId='{{build-id:root}}:test:compiler']
-##teamcity[compilationStarted compiler='Scala compiler |[junit-test-quick|]' flowId='{{build-id:root}}:compile:compiler']
-##teamcity[compilationFinished compiler='Scala compiler |[junit-test-quick|]' flowId='{{build-id:root}}:compile:compiler']
-##teamcity[compilationFinished compiler='Scala compiler in Test |[junit-test-quick|]' flowId='{{build-id:root}}:test:compiler']
 ##teamcity[testSuiteStarted name='thisis.a.test.ATest' flowId='{{flow:test}}']
 ##teamcity[message status='ERROR' flowId='{{build-id:root}}:test:general:testQuick' text='|[error|] Test thisis.a.test.ATest.testMeToo failed: java.lang.AssertionError: comparing unequal ints is WRONG expected:<3> but was:<1>, took {{duration:task}} sec']
 ##teamcity[message status='ERROR' flowId='{{build-id:root}}:test:general:testQuick' text='|[error|]     at thisis.a.test.ATest.testMeToo(ATest.scala:15)']

@@ -110,7 +110,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
             // subclasses it so client-mode task events are delivered once without a visible SBT console line.
             screen = (key, _) =>
               if !showTestTaskOutput && isTestTask(key) then TCLoggerAppender.muted("test-task")
-              else new TCLoggerAppender(tcLogAppender, flowIdFor(key), isCompilerTask(key)),
+              else new TCLoggerAppender(tcLogAppender, flowIdFor(key), isCompilerTask(key), compilationStartFor(key)),
             relay = _ => TCLoggerAppender.muted("relay"),
             extra = configuredExtraAppenders
           )
@@ -127,17 +127,24 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     commands += tcLoggerStatusCommand
   )
 
-  /** Compile lifecycle is a presentation feature and is deliberately absent in preserve-console observer mode. */
+  /**
+   * Compile lifecycle is a presentation feature and is deliberately absent in preserve-console observer mode.
+   *
+   * TODO: Support compilable custom configurations by enumerating configurations that define `compileIncremental`,
+   * then installing their reporter, lifecycle finalizers, lazy appender start, flow ID, and configuration-aware title.
+   */
   private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[?]] = Seq(
+    (Compile / compileIncremental).toSettingKey ~= { original =>
+      original.andFinally(tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName)))
+    },
+    (Test / compileIncremental).toSettingKey ~= { original =>
+      original.andFinally(tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName)))
+    },
     (Compile / compile).toSettingKey ~= { original =>
-      original
-        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName))))
-        .andFinally(tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName)))
+      original.andFinally(tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName)))
     },
     (Test / compile).toSettingKey ~= { original =>
-      original
-        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName))))
-        .andFinally(tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName)))
+      original.andFinally(tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName)))
     }
   )
 
@@ -246,6 +253,18 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   private def isCompilerTask(key: ScopedKey[?]): Boolean =
     key.scope.task.toOption.exists(CompilerTaskKeys.contains)
+
+  private def compilationStartFor(key: ScopedKey[?]): Option[() => Unit] =
+    val isCompileIncremental = key.scope.task.toOption.contains(compileIncremental.key)
+    val configuration = key.scope.config.toOption.map(_.name)
+    if !isCompileIncremental || !configuration.exists(name => name == Compile.name || name == Test.name) then None
+    else
+      val flowId = flowIdFor(key)
+      val projectName = key.scope.project.toOption.collect { case ProjectRef(_, name) => name }
+      if configuration.contains(Test.name) then
+        Some(tcLogAppender.compilationTestBlockStartCallback(flowId, projectName))
+      else
+        Some(tcLogAppender.compilationBlockStartCallback(flowId, projectName))
 
   private def isTestTask(key: ScopedKey[?]): Boolean =
     key.scope.task.toOption.exists(TestTaskKeys.contains)

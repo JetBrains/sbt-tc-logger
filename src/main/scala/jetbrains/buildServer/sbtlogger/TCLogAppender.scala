@@ -21,6 +21,7 @@ import jetbrains.buildServer.messages.serviceMessages.MapSerializerUtil
 
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 import scala.collection.mutable
 
@@ -29,6 +30,7 @@ class TCLogAppender extends LogAppender {
   val CompilerName = "Scala compiler"
 
   private val activeCompilationFlows = ConcurrentHashMap.newKeySet[String]()
+  private val compilationFlowGenerations = new ConcurrentHashMap[String, AtomicLong]()
   private val compilerProblemCounts = new ConcurrentHashMap[String, CompilerProblemCounts]()
   private val detailedDependencyReporter = new DetailedDependencyReporter
 
@@ -124,31 +126,68 @@ class TCLogAppender extends LogAppender {
   def detailedDependencyDownloaded(projectName: String, configuration: String, url: String, success: Boolean): Unit =
     detailedDependencyReporter.downloaded(projectName, configuration, url, success)
 
+  private[sbtlogger] def compilationBlockStartCallback(flowId: String, projectName: Option[String]): () => Unit =
+    guardedCompilationStart(flowId, projectName, inTest = false)
+
+  private[sbtlogger] def compilationTestBlockStartCallback(flowId: String, projectName: Option[String]): () => Unit =
+    guardedCompilationStart(flowId, projectName, inTest = true)
+
   def compilationBlockStart(flowId: String, projectName: Option[String]): Unit = {
-    if (activeCompilationFlows.add(flowId)) {
-      compilerProblemCounts.remove(flowId)
-      printServerMessage("compilationStarted", "compiler" -> compilerName(projectName), "flowId" -> flowId)
+    val generation = compilationGeneration(flowId)
+    generation.synchronized {
+      startCompilationBlock(flowId, projectName, inTest = false)
     }
   }
 
   def compilationBlockEnd(flowId: String, projectName: Option[String]): Unit = {
-    if (activeCompilationFlows.remove(flowId)) {
-      flushCompilerSummary(flowId)
-      printServerMessage("compilationFinished", "compiler" -> compilerName(projectName), "flowId" ->  flowId)
+    val generation = compilationGeneration(flowId)
+    generation.synchronized {
+      finishCompilationBlock(flowId, projectName, inTest = false)
+      generation.incrementAndGet()
     }
   }
 
   def compilationTestBlockStart(flowId: String, projectName: Option[String]): Unit = {
-    if (activeCompilationFlows.add(flowId)) {
-      compilerProblemCounts.remove(flowId)
-      printServerMessage("compilationStarted", "compiler" -> compilerName(projectName, inTest = true), "flowId" -> flowId)
+    val generation = compilationGeneration(flowId)
+    generation.synchronized {
+      startCompilationBlock(flowId, projectName, inTest = true)
     }
   }
 
   def compilationTestBlockEnd(flowId: String, projectName: Option[String]): Unit = {
+    val generation = compilationGeneration(flowId)
+    generation.synchronized {
+      finishCompilationBlock(flowId, projectName, inTest = true)
+      generation.incrementAndGet()
+    }
+  }
+
+  private def guardedCompilationStart(
+    flowId: String,
+    projectName: Option[String],
+    inTest: Boolean
+  ): () => Unit = {
+    val generation = compilationGeneration(flowId)
+    val expectedGeneration = generation.get()
+    () => generation.synchronized {
+      if (generation.get() == expectedGeneration) startCompilationBlock(flowId, projectName, inTest)
+    }
+  }
+
+  private def compilationGeneration(flowId: String): AtomicLong =
+    compilationFlowGenerations.computeIfAbsent(flowId, _ => new AtomicLong())
+
+  private def startCompilationBlock(flowId: String, projectName: Option[String], inTest: Boolean): Unit = {
+    if (activeCompilationFlows.add(flowId)) {
+      compilerProblemCounts.remove(flowId)
+      printServerMessage("compilationStarted", "compiler" -> compilerName(projectName, inTest), "flowId" -> flowId)
+    }
+  }
+
+  private def finishCompilationBlock(flowId: String, projectName: Option[String], inTest: Boolean): Unit = {
     if (activeCompilationFlows.remove(flowId)) {
       flushCompilerSummary(flowId)
-      printServerMessage("compilationFinished", "compiler" -> compilerName(projectName, inTest = true), "flowId" -> flowId)
+      printServerMessage("compilationFinished", "compiler" -> compilerName(projectName, inTest), "flowId" -> flowId)
     }
   }
 

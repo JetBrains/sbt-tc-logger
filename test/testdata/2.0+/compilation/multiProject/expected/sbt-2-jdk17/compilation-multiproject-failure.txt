@@ -1,8 +1,4 @@
 [[unordered]]
-[[lane:root]]
-##teamcity[compilationStarted compiler='Scala compiler |[root|]' flowId='{{build-id:root}}:compile:compiler']
-##teamcity[compilationFinished compiler='Scala compiler |[root|]' flowId='{{build-id:root}}:compile:compiler']
-[[/lane]]
 [[lane:project1]]
 ##teamcity[compilationStarted compiler='Scala compiler |[project1|]' flowId='{{build-id:project1}}:compile:compiler']
 ##teamcity[inspectionType id='SbtCompileProblem' name='sbt compile problem' description='Compile problems' category='Compile problems']

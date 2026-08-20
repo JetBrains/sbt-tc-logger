@@ -1,7 +1,7 @@
-##teamcity[compilationStarted compiler='Scala compiler |[compiler-log-level-debug|]' flowId='{{build-id:root}}:compile:compiler']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] not up to date. inChanged = true, force = false']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] Updating ...']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] Done updating ']
+##teamcity[compilationStarted compiler='Scala compiler |[compiler-log-level-debug|]' flowId='{{build-id:root}}:compile:compiler']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:compiler' text='|[debug|] |[zinc|] IncrementalCompile -----------']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:compiler' text='|[debug|] IncrementalCompile.incrementalCompile']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:compiler' text='|[debug|] previous = Stamps for: 0 products, 0 sources, 0 libraries']

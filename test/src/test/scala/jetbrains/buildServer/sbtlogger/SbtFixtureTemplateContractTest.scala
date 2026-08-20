@@ -12,12 +12,15 @@ class SbtFixtureTemplateContractTest {
 
   private val commonScenarios = Set(
     "compilation-failure",
+    "compilation-concurrent-main-test",
     "compilation-multiproject-failure",
     "compilation-multiproject-failure-debug",
     "compilation-preserve-console",
     "compilation-subproject",
     "compilation-success",
+    "compilation-up-to-date",
     "compilation-warnings",
+    "compile-incremental",
     "compile-inputs",
     "compile-outside-teamcity",
     "compiler-log-level-debug",

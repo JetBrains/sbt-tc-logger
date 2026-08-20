@@ -1,5 +1,3 @@
-##teamcity[compilationStarted compiler='Scala compiler |[root|]' flowId='{{build-id:root}}:compile:compiler']
-##teamcity[compilationFinished compiler='Scala compiler |[root|]' flowId='{{build-id:root}}:compile:compiler']
 ##teamcity[testSuiteStarted name='thisis.a.test.IntegrationATest' flowId='{{flow:test}}']
 ##teamcity[message status='ERROR' flowId='{{build-id:root}}:it:general:testQuick' text='|[error|] Test thisis.a.test.IntegrationATest.testFails failed: java.lang.AssertionError: integration test failure expected:<3> but was:<1>, took {{duration:task}} sec']
 ##teamcity[message status='ERROR' flowId='{{build-id:root}}:it:general:testQuick' text='|[error|]     at thisis.a.test.IntegrationATest.testFails(IntegrationATest.scala:11)']

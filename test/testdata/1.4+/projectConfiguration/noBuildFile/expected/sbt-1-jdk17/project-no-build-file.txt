@@ -1,2 +1,1 @@
-##teamcity[compilationStarted compiler='Scala compiler |[project-no-build-file|]' flowId='{{build-id:root}}:compile:compiler']
-##teamcity[compilationFinished compiler='Scala compiler |[project-no-build-file|]' flowId='{{build-id:root}}:compile:compiler']
+[[expect-empty]]

@@ -1,7 +1,3 @@
-##teamcity[compilationStarted compiler='Scala compiler in Test |[specs2-test-only|]' flowId='{{build-id:root}}:test:compiler']
-##teamcity[compilationStarted compiler='Scala compiler |[specs2-test-only|]' flowId='{{build-id:root}}:compile:compiler']
-##teamcity[compilationFinished compiler='Scala compiler |[specs2-test-only|]' flowId='{{build-id:root}}:compile:compiler']
-##teamcity[compilationFinished compiler='Scala compiler in Test |[specs2-test-only|]' flowId='{{build-id:root}}:test:compiler']
 ##teamcity[testSuiteStarted name='org.jetbrains.teamcity.ExampleSpec' flowId='{{flow:test}}']
 ##teamcity[testStarted name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::contain 11 characters' captureStandardOutput='true' flowId='{{flow:test}}']
 ##teamcity[testFinished name='org.jetbrains.teamcity.ExampleSpec.The |'Hello world|' string should::contain 11 characters' duration='{{duration:test}}' flowId='{{flow:test}}']

@@ -1,0 +1,6 @@
+##teamcity[compilationStarted compiler='Scala compiler |[compile-incremental|]' flowId='{{build-id:root}}:compile:compiler']
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:compiler' text='|[info|] compiling 1 Scala source to {{path:work-dir}}/target/out/jvm/scala-2.12.20/compile-incremental/classes ...']
+[[noise:sbt-compiler-bridge]]
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:compiler' text='|[info|] done compiling']
+##teamcity[compilationFinished compiler='Scala compiler |[compile-incremental|]' flowId='{{build-id:root}}:compile:compiler']
+[[noise:sbt-task-summary]]

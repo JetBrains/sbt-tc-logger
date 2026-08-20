@@ -33,22 +33,49 @@ import sbt.util.{Level, LogExchange, ShowLines}
  * task output is disabled. That discards only ordinary task log events: structured test lifecycle messages and a
  * separately selected configured test-result logger remain independent paths.
  */
-class TCLoggerAppender(appender: LogAppender, flowId: String, isCompilerTask: Boolean)
+class TCLoggerAppender(
+  appender: LogAppender,
+  flowId: String,
+  isCompilerTask: Boolean,
+  compilationStart: Option[() => Unit] = None
+)
   extends ConsoleAppender(s"tc-logger-$flowId", TCLoggerAppender.properties, ConsoleAppender.noSuppressedMessage) {
+
+  def this(appender: LogAppender, flowId: String, isCompilerTask: Boolean) =
+    this(appender, flowId, isCompilerTask, None)
+
+  private val compilationStartLock = new Object
+  private var compilationStartRequested = false
 
   override def appendLog(level: Level.Value, message: => String): Unit = {
     val text = message
-    if (isCompilerTask) appender.logCompilerTask(level, text, flowId)
+    if (isCompilerTask) {
+      requestCompilationStart()
+      appender.logCompilerTask(level, text, flowId)
+    }
     else appender.log(level, text, flowId)
   }
 
   override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
     val objectEvent = event
     renderObjectEvent(objectEvent).foreach { text =>
-      if (isCompilerTask) appender.logCompilerTask(level, text, flowId)
+      if (isCompilerTask) {
+        requestCompilationStart()
+        appender.logCompilerTask(level, text, flowId)
+      }
       else appender.log(level, text, flowId)
     }
   }
+
+  private def requestCompilationStart(): Unit =
+    compilationStartLock.synchronized {
+      compilationStart.foreach { start =>
+        if (!compilationStartRequested) {
+          start()
+          compilationStartRequested = true
+        }
+      }
+    }
 
   private def renderObjectEvent(event: ObjectEvent[?]): Option[String] = {
     LogExchange.stringCodec(event.contentType) match {

@@ -1,6 +1,4 @@
 ##teamcity[compilationStarted compiler='Scala compiler in Test |[scalatest-long-names|]' flowId='{{build-id:root}}:test:compiler']
-##teamcity[compilationStarted compiler='Scala compiler |[scalatest-long-names|]' flowId='{{build-id:root}}:compile:compiler']
-##teamcity[compilationFinished compiler='Scala compiler |[scalatest-long-names|]' flowId='{{build-id:root}}:compile:compiler']
 ##teamcity[inspectionType id='SbtCompileProblem' name='sbt compile problem' description='Compile problems' category='Compile problems']
 ##teamcity[message status='WARNING' flowId='{{build-id:root}}:test:compiler' text='|[warn|] 3 deprecations (since 3.1.0); re-run with -deprecation for details']
 ##teamcity[message status='WARNING' flowId='{{build-id:root}}:test:compiler' text='|[warn|] one warning found']

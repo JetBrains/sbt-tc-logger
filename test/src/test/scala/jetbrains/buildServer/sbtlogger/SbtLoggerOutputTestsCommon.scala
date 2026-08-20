@@ -39,6 +39,14 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     "compilation-success", "compilation/success",
     setup = Seq("clean"), behavior = Seq("compile"), success = true, options = Seq("--info"))
 
+  @Test def compilation_DirectCompileIncrementalReported(): Unit = run(
+    "compile-incremental", "compilation/success",
+    setup = Seq("clean"), behavior = Seq("Compile / compileIncremental"), success = true, options = Seq("--info"))
+
+  @Test def compilation_UpToDateInfoDoesNotCreateEmptyBlock(): Unit = run(
+    "compilation-up-to-date", "compilation/success",
+    setup = Seq("clean"), behavior = Seq("compile", "compile"), success = true, options = Seq("--info"))
+
   // A direct update is intentionally in the ordinary corpus: its exact golden proves detailed reporting stays absent.
   @Test def dependencyResolution_DirectUpdateIsSilentByDefault(): Unit = run(
     "dependency-update-default", "compilation/success",
@@ -87,9 +95,13 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     "compilation-multiproject-failure-debug", "compilation/multiProject",
     behavior = Seq("compile"), success = false, options = Seq("--debug"))
 
-  @Test def testCompilation_FailureReported(): Unit = run(
+  @Test def testCompilation_ConcurrentProjectsKeepMainBeforeOwnTest(): Unit = run(
+    "compilation-concurrent-main-test", "compilation/concurrentMainTest",
+    behavior = Seq("Test / compile"), success = true, options = Seq("--info"))
+
+  @Test def testCompilation_MainCompletesBeforeFailureIsReported(): Unit = run(
     "test-compilation-failure", "compilation/testFailure",
-    behavior = Seq("Test / compile"), success = false)
+    behavior = Seq("Test / compile"), success = false, options = Seq("--info"))
 
   @Test def projectConfiguration_NoBuildFileCompiles(): Unit = run(
     "project-no-build-file", "projectConfiguration/noBuildFile",

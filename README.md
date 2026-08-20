@@ -14,7 +14,7 @@ The plugin reports the following events so TeamCity can display structured SBT b
 
 - `message` — each SBT logger event exactly once, with its original `[debug]`, `[info]`, `[warn]`, or `[error]` prefix and TeamCity severity.
 - `blockOpened` and `blockClosed` — dependency-resolution phases, displayed as `Dependency resolution [project]` (and the Test equivalent).
-- `compilationStarted` and `compilationFinished` — the start and end of actual Scala/Java compilation for main and test sources, displayed as `Scala compiler [project]`.
+- `compilationStarted` and `compilationFinished` — the start and end of visible Scala/Java compiler output for main and test sources, displayed as `Scala compiler [project]`. Up-to-date and no-source compilations do not create empty compiler blocks.
 - `inspectionType` and `inspection` — compiler problems, including their severity, source file, and line, so TeamCity can show them as build inspections.
 - `testSuiteStarted` and `testSuiteFinished` — the lifecycle and outcome of each test suite, including suite-level errors.
 - `testStarted` and `testFinished` — the lifecycle, duration, and captured standard output of each test.

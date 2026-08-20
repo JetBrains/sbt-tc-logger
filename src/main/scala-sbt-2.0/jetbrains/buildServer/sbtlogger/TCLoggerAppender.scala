@@ -34,22 +34,46 @@ import scala.Option
  * task output is disabled. That discards only ordinary task log events: structured test lifecycle messages and a
  * separately selected configured test-result logger remain independent paths.
  */
-class TCLoggerAppender(appender: LogAppender, scope: String, isCompilerTask: Boolean)
+class TCLoggerAppender(
+  appender: LogAppender,
+  scope: String,
+  isCompilerTask: Boolean,
+  compilationStart: Option[() => Unit] = None
+)
   extends ConsoleAppender(s"tc-logger-$scope", TCLoggerAppender.properties, ConsoleAppender.noSuppressedMessage) {
+
+  def this(appender: LogAppender, scope: String, isCompilerTask: Boolean) =
+    this(appender, scope, isCompilerTask, None)
+
+  private val compilationStartLock = new Object
+  private var compilationStartRequested = false
 
   override def appendLog(level: Level.Value, message: => String): Unit = {
     val text = message
-    if isCompilerTask then appender.logCompilerTask(level, text, scope)
+    if isCompilerTask then
+      requestCompilationStart()
+      appender.logCompilerTask(level, text, scope)
     else appender.log(level, text, scope)
   }
 
   override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
     val objectEvent = event
     renderObjectEvent(objectEvent).foreach { text =>
-      if isCompilerTask then appender.logCompilerTask(level, text, scope)
+      if isCompilerTask then
+        requestCompilationStart()
+        appender.logCompilerTask(level, text, scope)
       else appender.log(level, text, scope)
     }
   }
+
+  private def requestCompilationStart(): Unit =
+    compilationStartLock.synchronized {
+      compilationStart.foreach { start =>
+        if !compilationStartRequested then
+          start()
+          compilationStartRequested = true
+      }
+    }
 
   /**
    * SBT 2 transports a number of log events as typed objects rather than as strings.

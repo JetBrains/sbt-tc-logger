@@ -1,6 +1,4 @@
 ##teamcity[compilationStarted compiler='Scala compiler in Test |[junit-test-only-configured-hidden|]' flowId='{{build-id:root}}:test:compiler']
-##teamcity[compilationStarted compiler='Scala compiler |[junit-test-only-configured-hidden|]' flowId='{{build-id:root}}:compile:compiler']
-##teamcity[compilationFinished compiler='Scala compiler |[junit-test-only-configured-hidden|]' flowId='{{build-id:root}}:compile:compiler']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:test:compiler' text='|[info|] compiling 1 Scala source to {{path:work-dir}}/target/scala-2.13/test-classes ...']
 [[noise:sbt-compiler-bridge]]
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:test:compiler' text='|[info|] done compiling']
