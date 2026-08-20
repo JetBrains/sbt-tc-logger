@@ -21,7 +21,18 @@ import jetbrains.buildServer.sbtlogger.LogAppender
 import sbt.internal.util.{Appender, ConsoleAppender, ObjectEvent}
 import sbt.util.{Level, LogExchange, ShowLines}
 
-/** Native SBT 1.4+ appender boundary used by the shared TeamCity logger. */
+/**
+ * Redirects ordinary SBT screen-appender events to TeamCity `message` service messages.
+ *
+ * Each event retains its SBT severity and receives the task's TeamCity flow ID. This lets TeamCity render the
+ * message with its correct status and associate concurrent project/configuration/task output with the right flow.
+ * Replacing the SBT console appender also means the log event is delivered once, as a TeamCity message, rather than
+ * as both raw console output and a TeamCity-rendered line.
+ *
+ * [[SbtTeamCityLogger]] replaces this appender with [[TCLoggerAppender.muted]] for standard test-task keys when
+ * task output is disabled. That discards only ordinary task log events: structured test lifecycle messages and a
+ * separately selected configured test-result logger remain independent paths.
+ */
 class TCLoggerAppender(appender: LogAppender, flowId: String, isCompilerTask: Boolean)
   extends ConsoleAppender(s"tc-logger-$flowId", TCLoggerAppender.properties, ConsoleAppender.noSuppressedMessage) {
 
@@ -52,6 +63,12 @@ object TCLoggerAppender {
   private def properties: ConsoleAppender.Properties =
     ConsoleAppender("tc-logger-properties", sbt.internal.util.ConsoleOut.NullConsoleOut).properties
 
+  /**
+   * Creates a null screen appender for a selectively muted task stream.
+   *
+   * No TeamCity `message` service messages are emitted for events sent to this appender. Other TeamCity reporting
+   * paths, including structured test lifecycle events, are unaffected.
+   */
   def muted(kind: String): Appender =
     ConsoleAppender(s"teamcity-muted-$kind-${System.nanoTime()}", sbt.internal.util.ConsoleOut.NullConsoleOut)
 }
