@@ -74,7 +74,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     BuiltinCommands.reapply(session, Project.structure(state), state)
 
   lazy val tcLogAppender = new TCLogAppender()
-  lazy val tcTestListener = new TCReportListener(tcLogAppender)
+  lazy val tcTestListener = new TCTestReportListener(tcLogAppender)
 
   val tcVersion: Option[String] = sys.env.get("TEAMCITY_VERSION")
   val tcFound: Boolean = tcVersion.isDefined
