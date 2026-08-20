@@ -34,9 +34,10 @@ class TCLoggerAppender(appender: LogAppender, scope: String, isCompilerTask: Boo
 
   override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
     val objectEvent = event
-    val text = renderObjectEvent(objectEvent)
-    if isCompilerTask then appender.logCompilerTask(level, text, scope)
-    else appender.log(level, text, scope)
+    renderObjectEvent(objectEvent).foreach { text =>
+      if isCompilerTask then appender.logCompilerTask(level, text, scope)
+      else appender.log(level, text, scope)
+    }
   }
 
   /**
@@ -45,15 +46,15 @@ class TCLoggerAppender(appender: LogAppender, scope: String, isCompilerTask: Boo
    * Calling `toString` on the payload loses that renderer and produces implementation identities such as
    * `sbt.Defaults$$anon$3@42e5f4b` for compiler problems.
    */
-  private def renderObjectEvent(event: ObjectEvent[?]): String = {
+  private def renderObjectEvent(event: ObjectEvent[?]): Option[String] = {
     val shownLines = LogExchange.stringCodec(event.contentType)
     shownLines match {
       // The registered renderer is associated with the event's string content type,
       // so its value type is only known dynamically at this boundary.
       case Some(renderer) =>
-        renderer.asInstanceOf[ShowLines[Any]].showLines(event.message).mkString("\n")
+        ObjectEventRenderer.combine(renderer.asInstanceOf[ShowLines[Any]].showLines(event.message))
       case None =>
-        event.message.toString
+        Some(event.message.toString)
     }
   }
 }

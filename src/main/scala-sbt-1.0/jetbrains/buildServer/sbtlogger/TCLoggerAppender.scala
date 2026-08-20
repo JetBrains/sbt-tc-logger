@@ -33,16 +33,17 @@ class TCLoggerAppender(appender: LogAppender, flowId: String, isCompilerTask: Bo
 
   override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
     val objectEvent = event
-    val text = renderObjectEvent(objectEvent)
-    if (isCompilerTask) appender.logCompilerTask(level, text, flowId)
-    else appender.log(level, text, flowId)
+    renderObjectEvent(objectEvent).foreach { text =>
+      if (isCompilerTask) appender.logCompilerTask(level, text, flowId)
+      else appender.log(level, text, flowId)
+    }
   }
 
-  private def renderObjectEvent(event: ObjectEvent[?]): String = {
+  private def renderObjectEvent(event: ObjectEvent[?]): Option[String] = {
     LogExchange.stringCodec(event.contentType) match {
       case Some(renderer) =>
-        renderer.asInstanceOf[ShowLines[Any]].showLines(event.message).mkString("\n")
-      case None => event.message.toString
+        ObjectEventRenderer.combine(renderer.asInstanceOf[ShowLines[Any]].showLines(event.message))
+      case None => Some(event.message.toString)
     }
   }
 }
