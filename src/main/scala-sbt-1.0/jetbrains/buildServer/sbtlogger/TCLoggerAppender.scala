@@ -78,15 +78,27 @@ class TCLoggerAppender(
     }
 
   private def renderObjectEvent(event: ObjectEvent[?]): Option[String] = {
-    LogExchange.stringCodec(event.contentType) match {
+    val renderedObject = LogExchange.stringCodec(event.contentType) match {
       case Some(renderer) =>
         ObjectEventRenderer.combine(renderer.asInstanceOf[ShowLines[Any]].showLines(event.message))
       case None => Some(event.message.toString)
     }
+    if (TCLoggerAppender.renderObjectEventDetails) {
+      renderedObject.map(_ + TCLoggerAppender.objectEventDetails(event))
+    }
+    else renderedObject
   }
 }
 
 object TCLoggerAppender {
+  private val RenderObjectEventDetailsProperty = "teamcity.sbt.logger.renderObjectEventDetails"
+
+  private def renderObjectEventDetails: Boolean =
+    java.lang.Boolean.getBoolean(RenderObjectEventDetailsProperty)
+
+  private def objectEventDetails(event: ObjectEvent[?]): String =
+    s" (ObjectEvent details: channelName=${event.channelName}, execId=${event.execId}, contentType=${event.contentType})"
+
   private def properties: ConsoleAppender.Properties =
     ConsoleAppender("tc-logger-properties", sbt.internal.util.ConsoleOut.NullConsoleOut).properties
 

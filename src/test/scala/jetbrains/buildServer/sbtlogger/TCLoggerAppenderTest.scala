@@ -2,8 +2,9 @@ package jetbrains.buildServer.sbtlogger
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
-import org.junit.Assert.{assertFalse, assertTrue}
+import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 import org.junit.Test
+import sbt.internal.util.ObjectEvent
 import sbt.util.Level
 import sbt.jetbrains.buildServer.sbtlogger.TCLoggerAppender
 
@@ -51,6 +52,55 @@ class TCLoggerAppenderTest {
     new TCLoggerAppender(new NoOpLogAppender, "compiler-flow", isCompilerTask = true)
   }
 
+  @Test
+  def objectEventDetailsAreDisabledByDefault(): Unit = {
+    withObjectEventDetailsOption(None) {
+      assertEquals("event payload", renderedObjectEvent)
+    }
+  }
+
+  @Test
+  def objectEventDetailsAreAppendedWhenEnabled(): Unit = {
+    withObjectEventDetailsOption(Some("true")) {
+      assertEquals(
+        "event payload (ObjectEvent details: channelName=Some(channel), execId=Some(execution), contentType=plain)",
+        renderedObjectEvent
+      )
+    }
+  }
+
+  private def renderedObjectEvent: String = {
+    val delegate = new CapturingLogAppender
+    val appender = new TCLoggerAppender(delegate, "flow", isCompilerTask = false)
+    val event = new ObjectEvent[String](
+      Level.Info,
+      "event payload",
+      Some("channel"),
+      Some("execution"),
+      "plain",
+      null
+    )
+    appender.appendObjectEvent(Level.Info, event)
+    delegate.loggedMessage
+  }
+
+  private def withObjectEventDetailsOption(value: Option[String])(body: => Unit): Unit = {
+    val property = "teamcity.sbt.logger.renderObjectEventDetails"
+    val previousValue = Option(System.getProperty(property))
+    try {
+      value match {
+        case Some(currentValue) => System.setProperty(property, currentValue)
+        case None => System.clearProperty(property)
+      }
+      body
+    } finally {
+      previousValue match {
+        case Some(previous) => System.setProperty(property, previous)
+        case None => System.clearProperty(property)
+      }
+    }
+  }
+
   private class NoOpLogAppender extends LogAppender {
     override def log(level: Level.Value, message: => String, flowId: String): Unit = ()
     override def log(level: String, message: => String, flowId: String): Unit = ()
@@ -67,5 +117,12 @@ class TCLoggerAppenderTest {
     override def testFailed(name: String, details: String, flowId: String): Unit = ()
     override def testSkipped(name: String, flowId: String): Unit = ()
     override def testCancelled(name: String, flowId: String): Unit = ()
+  }
+
+  private class CapturingLogAppender extends NoOpLogAppender {
+    var loggedMessage: String = _
+
+    override def log(level: Level.Value, message: => String, flowId: String): Unit =
+      loggedMessage = message
   }
 }

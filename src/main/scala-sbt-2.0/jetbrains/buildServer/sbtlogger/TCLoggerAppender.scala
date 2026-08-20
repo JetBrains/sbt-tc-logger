@@ -82,8 +82,7 @@ class TCLoggerAppender(
    * `sbt.Defaults$$anon$3@42e5f4b` for compiler problems.
    */
   private def renderObjectEvent(event: ObjectEvent[?]): Option[String] = {
-    val shownLines = LogExchange.stringCodec(event.contentType)
-    shownLines match {
+    val renderedObject = LogExchange.stringCodec(event.contentType) match {
       // The registered renderer is associated with the event's string content type,
       // so its value type is only known dynamically at this boundary.
       case Some(renderer) =>
@@ -91,10 +90,21 @@ class TCLoggerAppender(
       case None =>
         Some(event.message.toString)
     }
+    if TCLoggerAppender.renderObjectEventDetails then
+      renderedObject.map(_ + TCLoggerAppender.objectEventDetails(event))
+    else renderedObject
   }
 }
 
 object TCLoggerAppender {
+  private val RenderObjectEventDetailsProperty = "teamcity.sbt.logger.renderObjectEventDetails"
+
+  private def renderObjectEventDetails: Boolean =
+    java.lang.Boolean.getBoolean(RenderObjectEventDetailsProperty)
+
+  private def objectEventDetails(event: ObjectEvent[?]): String =
+    s" (ObjectEvent details: channelName=${event.channelName}, execId=${event.execId}, contentType=${event.contentType})"
+
   private def properties: ConsoleAppender.Properties =
     ConsoleAppender("tc-logger-properties", sbt.internal.util.ConsoleOut.NullConsoleOut).properties
 
