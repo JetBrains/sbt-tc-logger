@@ -42,7 +42,8 @@ private[sbtlogger] object SbtTranscriptBoundary {
     preserveConsole: Boolean,
     useTeamCityTestResultLogger: Boolean,
     showTestTaskOutput: Boolean,
-    detailedDependencyResolution: Boolean
+    detailedDependencyResolution: Boolean,
+    renderObjectEventDetails: Boolean
   )
 
   private val Start = "TeamCity sbt logger"
@@ -68,9 +69,12 @@ private[sbtlogger] object SbtTranscriptBoundary {
       s"  Use TeamCity test result logger: ${booleanSetting(expected.useTeamCityTestResultLogger, defaultValue = true, overridden = expected.preserveConsole)}",
       s"  Show test-task output: ${booleanSetting(expected.showTestTaskOutput, defaultValue = true, overridden = expected.preserveConsole)}",
       s"  Detailed dependency resolution: ${booleanSetting(expected.detailedDependencyResolution)}"
+    ) ++ Option.when(expected.renderObjectEventDetails)(
+      s"  Render ObjectEvent details: ${booleanSetting(expected.renderObjectEventDetails)}"
     )
-    val handshake = lines.slice(start, start + 8)
-    if (handshake.size != 8) fail(s"Incomplete logger-status handshake at output line ${start + 1}.")
+    val handshakeSize = 2 + expectedTail.size
+    val handshake = lines.slice(start, start + handshakeSize)
+    if (handshake.size != handshakeSize) fail(s"Incomplete logger-status handshake at output line ${start + 1}.")
     if (handshake.head != Start) fail(s"Malformed logger-status handshake start at output line ${start + 1}.")
     if (!handshake(1).startsWith(VersionPrefix) || handshake(1).stripPrefix(VersionPrefix).trim.isEmpty) {
       fail(s"Malformed logger version in handshake: '${handshake(1)}'.")
@@ -82,7 +86,7 @@ private[sbtlogger] object SbtTranscriptBoundary {
       )
     }
 
-    BoundedTranscript(lines.drop(start + 8), handshake(1).stripPrefix(VersionPrefix))
+    BoundedTranscript(lines.drop(start + handshakeSize), handshake(1).stripPrefix(VersionPrefix))
   }
 
   private def booleanSetting(value: Boolean, defaultValue: Boolean = false, overridden: Boolean = false): String = {

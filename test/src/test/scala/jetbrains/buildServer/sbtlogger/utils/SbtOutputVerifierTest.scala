@@ -203,7 +203,8 @@ class SbtOutputVerifierTest {
     preserveConsole = false,
     useTeamCityTestResultLogger = true,
     showTestTaskOutput = true,
-    detailedDependencyResolution = false
+    detailedDependencyResolution = false,
+    renderObjectEventDetails = false
   )
 
   private def unorderedGolden(): File = goldenFile(

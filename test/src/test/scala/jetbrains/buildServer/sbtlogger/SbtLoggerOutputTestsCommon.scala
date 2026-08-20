@@ -16,7 +16,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       "-Dteamcity.sbt.logger.preserveConsole=true",
       "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
       "-Dteamcity.sbt.logger.showTestTaskOutput=false",
-      "-Dteamcity.sbt.logger.detailedDependencyResolution=true"
+      "-Dteamcity.sbt.logger.detailedDependencyResolution=true",
+      "-Dteamcity.sbt.logger.renderObjectEventDetails=true"
     ))
 
   @Test def pluginStatus_DisabledOutsideTeamCity(): Unit = run(

@@ -85,7 +85,7 @@ class TCLoggerAppenderTest {
   }
 
   private def withObjectEventDetailsOption(value: Option[String])(body: => Unit): Unit = {
-    val property = "teamcity.sbt.logger.renderObjectEventDetails"
+    val property = SbtTeamCityLoggerSettings.RenderObjectEventDetails.propertyName
     val previousValue = Option(System.getProperty(property))
     try {
       value match {

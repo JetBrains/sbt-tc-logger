@@ -26,10 +26,6 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   override def requires: Plugins = JvmPlugin
   override def trigger: PluginTrigger = allRequirements
 
-  private val PreserveConsoleProperty = "teamcity.sbt.logger.preserveConsole"
-  private val UseTeamCityTestResultLoggerProperty = "teamcity.sbt.logger.useTeamCityTestResultLogger"
-  private val ShowTestTaskOutputProperty = "teamcity.sbt.logger.showTestTaskOutput"
-  private val DetailedDependencyResolutionProperty = "teamcity.sbt.logger.detailedDependencyResolution"
   private val ResolverTaskNames = Set(
     "update",
     "updateClassifiers",
@@ -45,7 +41,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   private val TestTaskKeys: Set[AttributeKey[?]] = Set(test.key, testOnly.key, testSelected.key, testQuick.key, testFull.key)
 
   def apply(state: State): State = {
-    if (System.getProperty(TC_LOGGER_PROPERTY_NAME) == "reloaded") return state
+    if SbtTeamCityLoggerSettings.loggerLoadState.contains("reloaded") then return state
 
     val extracted = Project.extract(state)
     import extracted.{structure => extractedStructure, *}
@@ -75,18 +71,19 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   lazy val tcLogAppender = new TCLogAppender()
   lazy val tcTestListener = new TCTestReportListener(tcLogAppender)
-  val tcVersion: Option[String] = sys.env.get("TEAMCITY_VERSION")
+  private val settings = SbtTeamCityLoggerSettings.extract()
+  val tcVersion: Option[String] = settings.teamCityVersion
   val tcFound: Boolean = tcVersion.isDefined
-  val preserveConsole: Boolean = java.lang.Boolean.getBoolean(PreserveConsoleProperty)
+  val preserveConsole: Boolean = settings.preserveConsole
   /** When enabled, replaces configured test-result loggers with TeamCity's silent, failure-preserving logger. */
-  val useTeamCityTestResultLogger: Boolean = booleanProperty(UseTeamCityTestResultLoggerProperty, defaultValue = true)
+  val useTeamCityTestResultLogger: Boolean = settings.useTeamCityTestResultLogger
   /** Controls ordinary screen output from standard test tasks; structured TeamCity test events are unaffected. */
-  val showTestTaskOutput: Boolean = booleanProperty(ShowTestTaskOutputProperty, defaultValue = true)
-  val detailedDependencyResolution: Boolean = java.lang.Boolean.getBoolean(DetailedDependencyResolutionProperty)
+  val showTestTaskOutput: Boolean = settings.showTestTaskOutput
+  val detailedDependencyResolution: Boolean = settings.detailedDependencyResolution
 
-  val TC_LOGGER_PROPERTY_NAME = "TEAMCITY_SBT_LOGGER_VERSION"
+  val TC_LOGGER_PROPERTY_NAME = SbtTeamCityLoggerSettings.LoggerLoadStateProperty
 
-  val tcLoggerVersion: String = System.getProperty(TC_LOGGER_PROPERTY_NAME)
+  val tcLoggerVersion: String = SbtTeamCityLoggerSettings.loggerLoadState.orNull
   if tcLoggerVersion == null then System.setProperty(TC_LOGGER_PROPERTY_NAME, "loaded")
   else if tcLoggerVersion == "loaded" then System.setProperty(TC_LOGGER_PROPERTY_NAME, "reloaded")
 
@@ -214,10 +211,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
         println("  TeamCity: not detected")
         println("  Status: inactive")
     }
-    println(s"  Preserve SBT console: ${booleanSetting(PreserveConsoleProperty, preserveConsole)}")
-    println(s"  Use TeamCity test result logger: ${booleanSetting(UseTeamCityTestResultLoggerProperty, useTeamCityTestResultLogger, defaultValue = true, overridden = preserveConsole)}")
-    println(s"  Show test-task output: ${booleanSetting(ShowTestTaskOutputProperty, showTestTaskOutput, defaultValue = true, overridden = preserveConsole)}")
-    println(s"  Detailed dependency resolution: ${booleanSetting(DetailedDependencyResolutionProperty, detailedDependencyResolution)}")
+    settings.headerLines.foreach(println)
     state
   }
 
@@ -225,20 +219,6 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     Option(getClass.getPackage)
       .flatMap(loggerPackage => Option(loggerPackage.getImplementationVersion))
       .getOrElse("unknown")
-
-  private def booleanProperty(property: String, defaultValue: Boolean): Boolean =
-    Option(System.getProperty(property)).fold(defaultValue)(java.lang.Boolean.parseBoolean)
-
-  private def booleanSetting(
-    property: String,
-    value: Boolean,
-    defaultValue: Boolean = false,
-    overridden: Boolean = false
-  ): String =
-    val annotations =
-      (if System.getProperty(property) == null && value == defaultValue then Seq("default") else Nil) ++
-        (if overridden then Seq("overridden by preserveConsole") else Nil)
-    s"$value${if annotations.nonEmpty then s" (${annotations.mkString("; ")})" else ""}"
 
   private def getScopeId(scope: ScopeAxis[Reference]): String = scope.hashCode().toString
 

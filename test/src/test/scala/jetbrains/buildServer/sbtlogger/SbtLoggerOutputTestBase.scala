@@ -151,6 +151,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     )
     // The status command reports configured values; the transcript separately proves preserve-console suppresses the adapter.
     val detailedDependencies = propertyEnabled(testCase.sbtOptions, "teamcity.sbt.logger.detailedDependencyResolution")
+    val renderObjectEventDetails = propertyEnabled(testCase.sbtOptions, "teamcity.sbt.logger.renderObjectEventDetails")
     val bounded = SbtTranscriptBoundary.extract(
       runResult.processOutput,
       SbtTranscriptBoundary.ExpectedHandshake(
@@ -158,7 +159,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
         preserveConsole = preserveConsole,
         useTeamCityTestResultLogger = useTeamCityTestResultLogger,
         showTestTaskOutput = showTestTaskOutput,
-        detailedDependencyResolution = detailedDependencies
+        detailedDependencyResolution = detailedDependencies,
+        renderObjectEventDetails = renderObjectEventDetails
       )
     )
     val context = TranscriptContext(root, workingDir, sbtGlobalBase, sbtIvyHome, javaHome, bounded.loggerVersion)

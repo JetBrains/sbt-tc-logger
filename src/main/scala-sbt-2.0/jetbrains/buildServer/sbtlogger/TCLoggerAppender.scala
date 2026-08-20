@@ -18,7 +18,7 @@ package sbt.jetbrains.buildServer.sbtlogger
 
 import sbt.internal.util.{Appender, ConsoleAppender, ObjectEvent}
 import sbt.util.{Level, LogExchange, ShowLines}
-import jetbrains.buildServer.sbtlogger.LogAppender
+import jetbrains.buildServer.sbtlogger.{LogAppender, SbtTeamCityLoggerSettings}
 
 import scala.Option
 
@@ -90,18 +90,13 @@ class TCLoggerAppender(
       case None =>
         Some(event.message.toString)
     }
-    if TCLoggerAppender.renderObjectEventDetails then
+    if SbtTeamCityLoggerSettings.RenderObjectEventDetails.isEnabled then
       renderedObject.map(_ + TCLoggerAppender.objectEventDetails(event))
     else renderedObject
   }
 }
 
 object TCLoggerAppender {
-  private val RenderObjectEventDetailsProperty = "teamcity.sbt.logger.renderObjectEventDetails"
-
-  private def renderObjectEventDetails: Boolean =
-    java.lang.Boolean.getBoolean(RenderObjectEventDetailsProperty)
-
   private def objectEventDetails(event: ObjectEvent[?]): String =
     s" (ObjectEvent details: channelName=${event.channelName}, execId=${event.execId}, contentType=${event.contentType})"
 

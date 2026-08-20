@@ -6,3 +6,4 @@ TeamCity sbt logger
   Use TeamCity test result logger: false (overridden by preserveConsole)
   Show test-task output: false (overridden by preserveConsole)
   Detailed dependency resolution: true
+  Render ObjectEvent details: true
