@@ -37,11 +37,16 @@ object apiAdapter {
     printNoTests = TestResultLogger.Null
   )
 
-  /** Runs a configured result logger on a direct TeamCity sink, independently of the test task's screen appender. */
-  def redirectTestResultLogger(delegate: TestResultLogger, appender: TCLogAppender, flowId: String): TestResultLogger =
+  /** Runs a configured result logger on a filtered TeamCity sink, independently of the test task's screen appender. */
+  def redirectTestResultLogger(
+    delegate: TestResultLogger,
+    appender: TCLogAppender,
+    flowId: String,
+    screenLevel: Level.Value
+  ): TestResultLogger =
     new TestResultLogger:
       override def run(log: Logger, results: Tests.Output, taskName: String): Unit =
-        delegate.run(new DirectTeamCityLogger(appender, flowId), results, taskName)
+        delegate.run(new DirectTeamCityLogger(appender, flowId, screenLevel), results, taskName)
 
   def projectScope(project: Reference): Scope = Scope(Select(project), Zero, Zero, Zero)
 
@@ -72,13 +77,21 @@ object apiAdapter {
     }
   }
 
-  private final class DirectTeamCityLogger(appender: TCLogAppender, flowId: String) extends Logger:
+  private final class DirectTeamCityLogger(
+    appender: TCLogAppender,
+    flowId: String,
+    screenLevel: Level.Value
+  ) extends Logger:
     override def trace(error: => Throwable): Unit =
       val buffer = new StringWriter
       error.printStackTrace(new PrintWriter(buffer))
       appender.log(Level.Error, buffer.toString, flowId)
 
-    override def success(message: => String): Unit = appender.log(Level.Info, message, flowId)
+    override def success(message: => String): Unit =
+      if isEnabled(Level.Info) then appender.log(Level.Info, message, flowId)
 
-    override def log(level: Level.Value, message: => String): Unit = appender.log(level, message, flowId)
+    override def log(level: Level.Value, message: => String): Unit =
+      if isEnabled(level) then appender.log(level, message, flowId)
+
+    private def isEnabled(level: Level.Value): Boolean = level.compare(screenLevel) >= 0
 }

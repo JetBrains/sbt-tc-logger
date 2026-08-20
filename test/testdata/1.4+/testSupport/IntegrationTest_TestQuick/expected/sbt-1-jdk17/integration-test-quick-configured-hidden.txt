@@ -10,7 +10,6 @@
 ##teamcity[testStarted name='thisis.a.test.IntegrationATest.testPasses' captureStandardOutput='true' flowId='{{flow:test}}']
 ##teamcity[testFinished name='thisis.a.test.IntegrationATest.testPasses' duration='{{duration:test}}' flowId='{{flow:test}}']
 ##teamcity[testSuiteFinished name='thisis.a.test.IntegrationATest' flowId='{{flow:test}}']
-##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:testQuick' text='|[debug|] Summary for JUnit not available.']
 ##teamcity[message status='ERROR' flowId='{{build-id:root}}:compile:general:testQuick' text='|[error|] Failed: Total 2, Failed 1, Errors 0, Passed 1']
 ##teamcity[message status='ERROR' flowId='{{build-id:root}}:compile:general:testQuick' text='|[error|] Failed tests:']
 ##teamcity[message status='ERROR' flowId='{{build-id:root}}:compile:general:testQuick' text='|[error|] 	thisis.a.test.IntegrationATest']

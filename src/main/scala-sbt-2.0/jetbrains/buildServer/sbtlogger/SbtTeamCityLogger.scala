@@ -57,7 +57,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
           val scopeId = getScopeId(project.project)
           val resultLoggerSettings =
             if testResultLoggerFound then
-              testResultLoggerSettings(extractedStructure, projectRef, resolvedProject.configurations, scopeId)
+              testResultLoggerSettings(extractedStructure, state, projectRef, resolvedProject.configurations, scopeId)
             else Nil
           transformSettings(project, projectRef.build, rootProject, resultLoggerSettings) ++
             transformSettings(project, projectRef.build, rootProject, lifecycleSettings(scopeId, projectRef.project)) ++
@@ -252,20 +252,36 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   private def testResultLoggerSettings(
     structure: sbt.internal.BuildStructure,
+    state: State,
     projectRef: ProjectRef,
     configurations: Seq[Configuration],
     scopeId: String
   ): Seq[Def.Setting[?]] = configurations.flatMap { configuration =>
     settingWhenDefined(structure, projectRef, configuration, test.key,
-      configuration / test / testResultLogger ~= controlledTestResultLogger(resultFlowId(scopeId, configuration, test.key))) ++
+      configuration / test / testResultLogger ~= controlledTestResultLogger(
+        resultFlowId(scopeId, configuration, test.key),
+        taskScreenLogLevel(structure, state, projectRef, configuration, test.key)
+      )) ++
       settingWhenDefined(structure, projectRef, configuration, testOnly.key,
-        configuration / testOnly / testResultLogger ~= controlledTestResultLogger(resultFlowId(scopeId, configuration, testOnly.key))) ++
+        configuration / testOnly / testResultLogger ~= controlledTestResultLogger(
+          resultFlowId(scopeId, configuration, testOnly.key),
+          taskScreenLogLevel(structure, state, projectRef, configuration, testOnly.key)
+        )) ++
       settingWhenDefined(structure, projectRef, configuration, testSelected.key,
-        configuration / testSelected / testResultLogger ~= controlledTestResultLogger(resultFlowId(scopeId, configuration, testSelected.key))) ++
+        configuration / testSelected / testResultLogger ~= controlledTestResultLogger(
+          resultFlowId(scopeId, configuration, testSelected.key),
+          taskScreenLogLevel(structure, state, projectRef, configuration, testSelected.key)
+        )) ++
       settingWhenDefined(structure, projectRef, configuration, testQuick.key,
-        configuration / testQuick / testResultLogger ~= controlledTestResultLogger(resultFlowId(scopeId, configuration, testQuick.key))) ++
+        configuration / testQuick / testResultLogger ~= controlledTestResultLogger(
+          resultFlowId(scopeId, configuration, testQuick.key),
+          taskScreenLogLevel(structure, state, projectRef, configuration, testQuick.key)
+        )) ++
       settingWhenDefined(structure, projectRef, configuration, testFull.key,
-        configuration / testFull / testResultLogger ~= controlledTestResultLogger(resultFlowId(scopeId, configuration, testFull.key)))
+        configuration / testFull / testResultLogger ~= controlledTestResultLogger(
+          resultFlowId(scopeId, configuration, testFull.key),
+          taskScreenLogLevel(structure, state, projectRef, configuration, testFull.key)
+        ))
   }
 
   private def settingWhenDefined(
@@ -279,10 +295,23 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     val scopedKey = Def.ScopedKey(scope, testResultLogger.key)
     if structure.data.get(scopedKey).isDefined then Seq(setting) else Nil
 
-  private def controlledTestResultLogger(flowId: String)(configured: TestResultLogger): TestResultLogger =
+  private def controlledTestResultLogger(
+    flowId: String,
+    screenLevel: Level.Value
+  )(configured: TestResultLogger): TestResultLogger =
     if useTeamCityTestResultLogger then silentTestResultLogger
     else if showTestTaskOutput then configured
-    else redirectTestResultLogger(configured, tcLogAppender, flowId)
+    else redirectTestResultLogger(configured, tcLogAppender, flowId, screenLevel)
+
+  private def taskScreenLogLevel(
+    structure: sbt.internal.BuildStructure,
+    state: State,
+    projectRef: ProjectRef,
+    configuration: Configuration,
+    taskKey: AttributeKey[?]
+  ): Level.Value =
+    val scope = Scope(Select(projectRef), Select(configuration), Select(taskKey), Zero)
+    LogManager.getOr(logLevel.key, structure.data, scope, state, Level.Info)
 
   private def resultFlowId(project: String, configuration: Configuration, taskKey: AttributeKey[?]): String =
     s"$project:${configuration.name}:general:${taskKey.label}"
