@@ -61,6 +61,39 @@ class SbtFixtureWorkspaceTest {
     }
 
   @Test
+  def sbt2LocalCacheSettingsAreGeneratedInsideTheCopiedFixture(): Unit =
+    withTemporaryDirectory { root =>
+      val source = fixture(root, "sbt.version=@SBT_VERSION@\n")
+      val copied = SbtFixtureWorkspace.copyFixtureToWorkDirectory(root, "2.0.6-jdk17", "fixture", source, "2.0.6")
+
+      val settingsFile = SbtFixtureWorkspace.writeSbt2LocalCacheSettings(copied)
+      val content = Files.readString(settingsFile.toPath)
+      val expectedCachePath = FileUtils.normalisedAbsolutePath(new File(copied, ".sbt-tc-logger-cache"))
+
+      Assert.assertEquals(
+        "Expected the generated cache setting to stay inside the copied fixture",
+        new File(copied, SbtFixtureWorkspace.Sbt2LocalCacheSettingsFileName).getAbsoluteFile,
+        settingsFile
+      )
+      Assert.assertTrue(
+        "Expected the generated file to explain SBT 2 cross-workspace caching",
+        content.contains("SBT 2 caches task results across workspaces")
+      )
+      Assert.assertTrue(
+        "Expected the generated file to explain its per-run lifecycle",
+        content.contains("the harness recreates it for each run")
+      )
+      Assert.assertTrue(
+        "Expected the generated file to configure the scenario-local cache",
+        content.contains(s"Global / localCacheDirectory := file(\"$expectedCachePath\")")
+      )
+      Assert.assertFalse(
+        "Expected the immutable source fixture to remain untouched",
+        new File(source, SbtFixtureWorkspace.Sbt2LocalCacheSettingsFileName).exists()
+      )
+    }
+
+  @Test
   def copiedFixtureRejectsAMissingBuildPropertiesFile(): Unit =
     withTemporaryDirectory { root =>
       val source = new File(root, "source")

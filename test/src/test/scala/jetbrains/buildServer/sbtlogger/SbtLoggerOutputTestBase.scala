@@ -91,6 +91,9 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       testCase.scenarioId
     )
     val sbtVersion = Version(runtime.sbtVersion)
+    if (sbtVersion >= Version("2.0.0")) {
+      SbtFixtureWorkspace.writeSbt2LocalCacheSettings(workingDir)
+    }
     val javaHome = CurrentEnvironment.javaHomeFor(runtime.jdk)
     val javaBin = CurrentEnvironment.javaExecutableFor(runtime.jdk)
     val sbtBootDirectory = SbtIntegrationTestLayout.sbtBootDirectory(root, runtime.id)
@@ -115,13 +118,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       SbtLauncher.sbtLauncher(root, runtime.launcherVersion).getAbsolutePath
     )
 
-    // SBT 2 task-cache keys cross workspace boundaries unless each copied scenario owns its cache directory.
-    val localCacheCommand = Option.when(sbtVersion >= Version("2.0.0")) {
-      s"set Global / localCacheDirectory := file(\"${new File(workingDir, ".sbt-tc-logger-cache").getAbsolutePath}\")"
-    }
     val effectiveCommands =
       Seq(SbtLoggerPlugin.UnderTest.loadCommand(pluginJar)) ++
-        localCacheCommand ++
         testCase.setupCommands ++
         Seq("sbt-teamcity-logger") ++
         testCase.behaviorCommands
@@ -141,6 +139,16 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     )
 
     val preserveConsole = propertyEnabled(testCase.sbtOptions, "teamcity.sbt.logger.preserveConsole")
+    val useTeamCityTestResultLogger = propertyEnabled(
+      testCase.sbtOptions,
+      "teamcity.sbt.logger.useTeamCityTestResultLogger",
+      defaultValue = true
+    )
+    val showTestTaskOutput = propertyEnabled(
+      testCase.sbtOptions,
+      "teamcity.sbt.logger.showTestTaskOutput",
+      defaultValue = true
+    )
     // The status command reports configured values; the transcript separately proves preserve-console suppresses the adapter.
     val detailedDependencies = propertyEnabled(testCase.sbtOptions, "teamcity.sbt.logger.detailedDependencyResolution")
     val bounded = SbtTranscriptBoundary.extract(
@@ -148,6 +156,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       SbtTranscriptBoundary.ExpectedHandshake(
         teamCityVersion = Option.when(testCase.teamCityEnvironment)("9.0.TEST"),
         preserveConsole = preserveConsole,
+        useTeamCityTestResultLogger = useTeamCityTestResultLogger,
+        showTestTaskOutput = showTestTaskOutput,
         detailedDependencyResolution = detailedDependencies
       )
     )
@@ -170,11 +180,11 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     runResult
   }
 
-  private def propertyEnabled(options: Seq[String], name: String): Boolean =
+  private def propertyEnabled(options: Seq[String], name: String, defaultValue: Boolean = false): Boolean =
     options.reverseIterator.collectFirst {
       case option if option == s"-D$name" => true
       case option if option.startsWith(s"-D$name=") => option.substring(option.indexOf('=') + 1).toBoolean
-    }.getOrElse(false)
+    }.getOrElse(defaultValue)
 
   private def environmentVariables(
     sbtHome: File,

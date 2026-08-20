@@ -40,6 +40,8 @@ private[sbtlogger] object SbtTranscriptBoundary {
   final case class ExpectedHandshake(
     teamCityVersion: Option[String],
     preserveConsole: Boolean,
+    useTeamCityTestResultLogger: Boolean,
+    showTestTaskOutput: Boolean,
     detailedDependencyResolution: Boolean
   )
 
@@ -63,10 +65,12 @@ private[sbtlogger] object SbtTranscriptBoundary {
       expected.teamCityVersion.fold("  TeamCity: not detected")(version => s"  TeamCity: $version"),
       if (expected.teamCityVersion.isDefined) "  Status: active" else "  Status: inactive",
       s"  Preserve SBT console: ${booleanSetting(expected.preserveConsole)}",
+      s"  Use TeamCity test result logger: ${booleanSetting(expected.useTeamCityTestResultLogger, defaultValue = true, overridden = expected.preserveConsole)}",
+      s"  Show test-task output: ${booleanSetting(expected.showTestTaskOutput, defaultValue = true, overridden = expected.preserveConsole)}",
       s"  Detailed dependency resolution: ${booleanSetting(expected.detailedDependencyResolution)}"
     )
-    val handshake = lines.slice(start, start + 6)
-    if (handshake.size != 6) fail(s"Incomplete logger-status handshake at output line ${start + 1}.")
+    val handshake = lines.slice(start, start + 8)
+    if (handshake.size != 8) fail(s"Incomplete logger-status handshake at output line ${start + 1}.")
     if (handshake.head != Start) fail(s"Malformed logger-status handshake start at output line ${start + 1}.")
     if (!handshake(1).startsWith(VersionPrefix) || handshake(1).stripPrefix(VersionPrefix).trim.isEmpty) {
       fail(s"Malformed logger version in handshake: '${handshake(1)}'.")
@@ -78,10 +82,15 @@ private[sbtlogger] object SbtTranscriptBoundary {
       )
     }
 
-    BoundedTranscript(lines.drop(start + 6), handshake(1).stripPrefix(VersionPrefix))
+    BoundedTranscript(lines.drop(start + 8), handshake(1).stripPrefix(VersionPrefix))
   }
 
-  private def booleanSetting(value: Boolean): String = if (value) "true" else "false (default)"
+  private def booleanSetting(value: Boolean, defaultValue: Boolean = false, overridden: Boolean = false): String = {
+    val annotations =
+      (if (value == defaultValue) Seq("default") else Nil) ++
+        (if (overridden) Seq("overridden by preserveConsole") else Nil)
+    s"$value${if (annotations.nonEmpty) s" (${annotations.mkString("; ")})" else ""}"
+  }
 
   private def fail(message: String): Nothing = throw new AssertionError(message)
 }
@@ -450,11 +459,6 @@ private[sbtlogger] object SbtOutputVerifier {
       case Noise("sbt-compiler-bridge", _) =>
         val consumed = NoiseRecognizers.compilerBridgeLength(actual, index)
         if (consumed == 2) Vector(index + consumed -> bindings) else Vector(index -> bindings)
-      case Noise("parallel-scalatest-native-summary", _) =>
-        // ScalaTest 3.2 on SBT 1 may race its redundant native summary with the structured listener, yielding all or
-        // none of these lines. Each reviewed golden caps the number of optional atoms and exact TeamCity events remain mandatory.
-        val consumed = index < actual.size && NoiseRecognizers.matches("parallel-scalatest-native-summary", actual(index))
-        if (consumed) Vector(index + 1 -> bindings) else Vector(index -> bindings)
       case _ if index < actual.size => atom.tryMatch(actual(index), bindings, context).toVector.map(index + 1 -> _)
       case _ => Vector.empty
     }
@@ -517,8 +521,7 @@ private[sbtlogger] object SbtOutputVerifier {
       "zinc-debug-message",
       "framework-stack-tail",
       "dependency-resource-outcome",
-      "sbt-compiler-bridge",
-      "parallel-scalatest-native-summary"
+      "sbt-compiler-bridge"
     )
 
     private val SbtTaskSummary =
@@ -562,20 +565,6 @@ private[sbtlogger] object SbtOutputVerifier {
           attributes.get("text").exists(text =>
             text.matches("^\\[[^]]+\\] (?:local cache hit|downloaded(?: in [0-9.]+ ?(?:ms|s))?|failed download attempt(?: in [0-9.]+ ?(?:ms|s))?) https?://[^ ]+$")
           )
-      }
-      case "parallel-scalatest-native-summary" => serviceMessage(line).exists { message =>
-        val attributes = message.getAttributes.asScala
-        val allowedText = Set(
-          "[info] NonParallelTest:",
-          "[info] ParallelTest:",
-          "[info] - should Write Passing Tests",
-          "[info] - should Write Failing Tests *** FAILED ***",
-          "[info]   Test failed (NonParallelTest.scala:12)"
-        )
-        message.getMessageName == "message" &&
-          attributes.get("status").contains("NORMAL") &&
-          attributes.get("flowId").exists(_.matches("-?[0-9]+:test:general:(?:test|testQuick)")) &&
-          attributes.get("text").exists(allowedText.contains)
       }
       case "sbt-compiler-bridge" => false // This strict recognizer is a two-line optional block, handled by the matcher.
     }
@@ -642,9 +631,6 @@ private[sbtlogger] object SbtOutputVerifier {
       while (index < lines.size) {
         val original = lines(index)
         if (NoiseRecognizers.matches("sbt-task-summary", original)) result += "[[noise:sbt-task-summary]]"
-        else if (NoiseRecognizers.matches("parallel-scalatest-native-summary", original)) {
-          result += "[[noise:parallel-scalatest-native-summary]]"
-        }
         else {
           result += renderLine(original, context, buildNames, flowNames)
           if (isCompilationAnnouncement(original)) {

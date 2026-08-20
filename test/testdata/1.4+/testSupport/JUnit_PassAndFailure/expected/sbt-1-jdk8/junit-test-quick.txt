@@ -12,3 +12,4 @@
 ##teamcity[testStarted name='thisis.a.test.ATest.testMe' captureStandardOutput='true' flowId='{{flow:test}}']
 ##teamcity[testFinished name='thisis.a.test.ATest.testMe' duration='{{duration:test}}' flowId='{{flow:test}}']
 ##teamcity[testSuiteFinished name='thisis.a.test.ATest' flowId='{{flow:test}}']
+##teamcity[message status='ERROR' flowId='{{build-id:root}}:test:general:testQuick' text='|[error|] (Test / testQuick) sbt.TestsFailedException: Tests unsuccessful']

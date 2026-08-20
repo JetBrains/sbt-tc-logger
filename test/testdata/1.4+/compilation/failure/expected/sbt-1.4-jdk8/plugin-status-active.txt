@@ -3,4 +3,6 @@ TeamCity sbt logger
   TeamCity: 9.0.TEST
   Status: active
   Preserve SBT console: false (default)
+  Use TeamCity test result logger: true (default)
+  Show test-task output: true (default)
   Detailed dependency resolution: false (default)

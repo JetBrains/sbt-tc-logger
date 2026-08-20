@@ -106,8 +106,7 @@ class SbtOutputVerifierTest {
       "sbt-debug-line" -> "[debug] Evaluating tasks: Compile / compile",
       "zinc-debug-message" -> "##teamcity[message status='NORMAL' flowId='1:compile:compiler' text='|[debug|] |[zinc|] IncrementalCompile -----------']",
       "framework-stack-tail" -> "\tat org.scalatest.Suite.run(Suite.scala:1)",
-      "dependency-resource-outcome" -> "##teamcity[message status='NORMAL' flowId='teamcity-sbt-dependency-resolution' text='|[root / global|] local cache hit https://repo1.maven.org/a.jar']",
-      "parallel-scalatest-native-summary" -> "##teamcity[message status='NORMAL' flowId='17:test:general:test' text='|[info|] NonParallelTest:']"
+      "dependency-resource-outcome" -> "##teamcity[message status='NORMAL' flowId='teamcity-sbt-dependency-resolution' text='|[root / global|] local cache hit https://repo1.maven.org/a.jar']"
     )
     samples.foreach { case (name, accepted) =>
       verify(Vector(accepted), goldenFile(s"[[noise:$name]]"))
@@ -142,26 +141,6 @@ class SbtOutputVerifierTest {
     verify(Vector("other", "compile-started", "compile-finished"), golden)
     verify(Vector("compile-started") ++ coldBridge ++ Vector("other", "compile-finished"), golden)
     expectAssertionError(verify(Vector("compile-started", coldBridge.head, "other", "compile-finished"), golden))
-  }
-
-  @Test def parallelScalaTestNativeSummaryIsStrictOptionalAndCappedByTheGolden(): Unit = {
-    val summary = "##teamcity[message status='NORMAL' flowId='17:test:general:test' text='|[info|] NonParallelTest:']"
-    val parallelSummary = "##teamcity[message status='NORMAL' flowId='17:test:general:test' text='|[info|] ParallelTest:']"
-    val golden = goldenFile(
-      "[[unordered]]",
-      "[[lane:events]]", "event", "[[/lane]]",
-      "[[lane:native-summary]]",
-      "[[noise:parallel-scalatest-native-summary]]",
-      "[[noise:parallel-scalatest-native-summary]]",
-      "[[/lane]]",
-      "[[/unordered]]"
-    )
-
-    verify(Vector("event"), golden)
-    verify(Vector(summary, "event", summary), golden)
-    verify(Vector(parallelSummary, "event"), golden)
-    expectAssertionError(verify(Vector(summary, summary, summary, "event"), golden))
-    expectAssertionError(verify(Vector("##teamcity[message status='NORMAL' flowId='17:test:general:test' text='fixture output']", "event"), golden))
   }
 
   @Test def explicitEmptyTranscriptIsRequiredAndEnforced(): Unit = {
@@ -200,7 +179,7 @@ class SbtOutputVerifierTest {
 
   @Test def handshakeBoundsTranscriptAndCapturesVersion(): Unit = {
     val bounded = SbtTranscriptBoundary.extract(
-      "startup\nTeamCity sbt logger\n  Version: v1\n  TeamCity: 9.0.TEST\n  Status: active\n  Preserve SBT console: false (default)\n  Detailed dependency resolution: false (default)\nafter\n",
+      "startup\nTeamCity sbt logger\n  Version: v1\n  TeamCity: 9.0.TEST\n  Status: active\n  Preserve SBT console: false (default)\n  Use TeamCity test result logger: true (default)\n  Show test-task output: true (default)\n  Detailed dependency resolution: false (default)\nafter\n",
       activeHandshake
     )
     Assert.assertEquals("v1", bounded.loggerVersion)
@@ -210,11 +189,11 @@ class SbtOutputVerifierTest {
   @Test def handshakeRejectsMissingMalformedAndPreBoundaryTeamCityOutput(): Unit = {
     expectAssertionError(SbtTranscriptBoundary.extract("startup\n", activeHandshake))
     expectAssertionError(SbtTranscriptBoundary.extract(
-      "TeamCity sbt logger\n  Version: \n  TeamCity: 9.0.TEST\n  Status: active\n  Preserve SBT console: false (default)\n  Detailed dependency resolution: false (default)\n",
+      "TeamCity sbt logger\n  Version: \n  TeamCity: 9.0.TEST\n  Status: active\n  Preserve SBT console: false (default)\n  Use TeamCity test result logger: true (default)\n  Show test-task output: true (default)\n  Detailed dependency resolution: false (default)\n",
       activeHandshake
     ))
     expectAssertionError(SbtTranscriptBoundary.extract(
-      "##teamcity[message text='too early']\nTeamCity sbt logger\n  Version: v1\n  TeamCity: 9.0.TEST\n  Status: active\n  Preserve SBT console: false (default)\n  Detailed dependency resolution: false (default)\n",
+      "##teamcity[message text='too early']\nTeamCity sbt logger\n  Version: v1\n  TeamCity: 9.0.TEST\n  Status: active\n  Preserve SBT console: false (default)\n  Use TeamCity test result logger: true (default)\n  Show test-task output: true (default)\n  Detailed dependency resolution: false (default)\n",
       activeHandshake
     ))
   }
@@ -222,6 +201,8 @@ class SbtOutputVerifierTest {
   private val activeHandshake = SbtTranscriptBoundary.ExpectedHandshake(
     teamCityVersion = Some("9.0.TEST"),
     preserveConsole = false,
+    useTeamCityTestResultLogger = true,
+    showTestTaskOutput = true,
     detailedDependencyResolution = false
   )
 

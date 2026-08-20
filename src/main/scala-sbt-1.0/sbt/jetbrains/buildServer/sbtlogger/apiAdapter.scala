@@ -19,12 +19,30 @@ package sbt.jetbrains.buildServer.sbtlogger
 
 import jetbrains.buildServer.sbtlogger.TCCompilerReporter.FilePosition
 import jetbrains.buildServer.sbtlogger.{TCCompilerReporter, TCLogAppender}
-import sbt.{Def, Reference, Scope, Select, Zero}
+import sbt.util.{Level, Logger}
+import sbt.{Def, Reference, Scope, Select, TestResultLogger, Tests, Zero}
 import xsbti.Problem
+
+import java.io.{PrintWriter, StringWriter}
 
 object apiAdapter {
 
   type SessionSettings = sbt.internal.SessionSettings
+
+  /** Suppresses SBT's final test-result text without suppressing its failed/error result exception. */
+  val silentTestResultLogger: TestResultLogger = TestResultLogger.Default.copy(
+    printSummary = TestResultLogger.Null,
+    printStandard = TestResultLogger.Null,
+    printFailures = TestResultLogger.Null,
+    printNoTests = TestResultLogger.Null
+  )
+
+  /** Runs a configured result logger on a direct TeamCity sink, independently of the test task's screen appender. */
+  def redirectTestResultLogger(delegate: TestResultLogger, appender: TCLogAppender, flowId: String): TestResultLogger =
+    new TestResultLogger {
+      override def run(log: Logger, results: Tests.Output, taskName: String): Unit =
+        delegate.run(new DirectTeamCityLogger(appender, flowId), results, taskName)
+    }
 
   def projectScope(project: Reference): Scope = Scope(Select(project), Zero, Zero, Zero)
 
@@ -53,5 +71,17 @@ object apiAdapter {
     def delegateLog(problem: Problem): Unit = {
       delegate.log(problem)
     }
+  }
+
+  private final class DirectTeamCityLogger(appender: TCLogAppender, flowId: String) extends Logger {
+    override def trace(error: => Throwable): Unit = {
+      val buffer = new StringWriter
+      error.printStackTrace(new PrintWriter(buffer))
+      appender.log(Level.Error, buffer.toString, flowId)
+    }
+
+    override def success(message: => String): Unit = appender.log(Level.Info, message, flowId)
+
+    override def log(level: Level.Value, message: => String): Unit = appender.log(level, message, flowId)
   }
 }

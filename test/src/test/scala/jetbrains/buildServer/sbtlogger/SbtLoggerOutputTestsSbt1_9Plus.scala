@@ -14,7 +14,7 @@ trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
       fixture = "testSupport/IntegrationTest_TestQuick",
       setupCommands = Seq.empty,
       behaviorCommands = Seq("it:testQuick"),
-      expectedResult = SbtProcessResultExpectation.Success
+      expectedResult = SbtProcessResultExpectation.Failure
     ))
 
   // TW-34982 and TW-36108 (GitHub #3)

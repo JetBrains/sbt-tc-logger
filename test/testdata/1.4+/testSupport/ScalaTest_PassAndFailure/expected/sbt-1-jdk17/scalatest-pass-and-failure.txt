@@ -17,3 +17,4 @@
 ##teamcity[testStarted name='ExampleSpec.A Stack should throw NoSuchElementException if an empty stack is popped' captureStandardOutput='true' flowId='{{flow:test}}']
 ##teamcity[testFinished name='ExampleSpec.A Stack should throw NoSuchElementException if an empty stack is popped' duration='{{duration:test}}' flowId='{{flow:test}}']
 ##teamcity[testSuiteFinished name='ExampleSpec' flowId='{{flow:test}}']
+##teamcity[message status='ERROR' flowId='{{build-id:root}}:test:general:test' text='|[error|] (Test / test) sbt.TestsFailedException: Tests unsuccessful']

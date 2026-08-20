@@ -22,11 +22,16 @@ class SbtFixtureTemplateContractTest {
     "compile-outside-teamcity",
     "compiler-log-level-debug",
     "compiler-log-level-error",
+    "custom-result-logger-no-task-output",
     "dependency-update-default",
     "dependency-update-failure-default",
     "failed-tests-outside-teamcity",
     "java-sources-compile-run",
+    "junit-configured-result-no-task-output",
+    "junit-configured-result-task-output",
     "junit-pass-and-failure",
+    "junit-teamcity-result-no-task-output",
+    "junit-test-only",
     "junit-test-quick",
     "logging-custom-manager-preserved",
     "logging-custom-manager-replaced",
@@ -45,7 +50,23 @@ class SbtFixtureTemplateContractTest {
     "tests-preserve-console"
   )
   private val sbt1_9PlusScenarios = Set("integration-test-quick", "jacoco")
+  private val sbt2PlusScenarios = Set(
+    "junit-test-full",
+    "junit-test-full-configured-hidden"
+  )
   private val jdk11PlusScenarios = Set("scalatest-error-like-output")
+  private val modernFrameworkScenarios = Set(
+    "modern-junit4",
+    "modern-jupiter",
+    "modern-munit",
+    "modern-scalatest"
+  )
+  private val testControlMatrixScenarios = Set(
+    "custom-result-logger-teamcity-hidden",
+    "integration-test-quick-configured-hidden",
+    "junit-test-only-configured-hidden",
+    "junit-test-quick-configured-hidden"
+  )
   private val detailedDependencyScenarios = Set(
     "dependency-detailed-debug-disabled",
     "dependency-detailed-failure",
@@ -59,9 +80,11 @@ class SbtFixtureTemplateContractTest {
     SbtTestsRuntime.Sbt1_4_Jdk8.outputProfile -> commonScenarios,
     SbtTestsRuntime.Sbt1_12_Jdk8.outputProfile -> (commonScenarios ++ sbt1_9PlusScenarios),
     SbtTestsRuntime.Sbt1_12_Jdk17.outputProfile ->
-      (commonScenarios ++ sbt1_9PlusScenarios ++ jdk11PlusScenarios ++ detailedDependencyScenarios),
+      (commonScenarios ++ sbt1_9PlusScenarios ++ jdk11PlusScenarios ++ modernFrameworkScenarios ++
+        testControlMatrixScenarios ++ detailedDependencyScenarios),
     SbtTestsRuntime.Sbt2_0_Jdk17.outputProfile ->
-      (commonScenarios ++ sbt1_9PlusScenarios ++ jdk11PlusScenarios ++ detailedDependencyScenarios)
+      (commonScenarios ++ sbt1_9PlusScenarios ++ sbt2PlusScenarios ++ jdk11PlusScenarios ++ modernFrameworkScenarios ++
+        testControlMatrixScenarios ++ detailedDependencyScenarios)
   )
 
   @Test def everyDeclaredSbtVersionUsesTheTemplate(): Unit = {

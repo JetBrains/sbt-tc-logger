@@ -14,6 +14,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     behavior = Seq("sbt-teamcity-logger"), success = true,
     options = Seq(
       "-Dteamcity.sbt.logger.preserveConsole=true",
+      "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
+      "-Dteamcity.sbt.logger.showTestTaskOutput=false",
       "-Dteamcity.sbt.logger.detailedDependencyResolution=true"
     ))
 
@@ -71,7 +73,10 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
   @Test def testReporting_MinimalModePreservesDefaultResultLoggerAndReportsEvents(): Unit = run(
     "tests-preserve-console", "testSupport/JUnit_PassAndFailure",
     behavior = Seq("test"), success = false,
-    options = Seq("-Dteamcity.sbt.logger.preserveConsole=true"))
+    options = Seq(
+      "-Dteamcity.sbt.logger.preserveConsole=true",
+      "-Dteamcity.sbt.logger.showTestTaskOutput=false"
+    ))
 
   // Aggregate compiles are genuinely concurrent; their goldens use ordered lanes instead of imposing a total order.
   @Test def compilation_MultiProject_FailuresReported(): Unit = run(
@@ -92,11 +97,41 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testReporting_JUnit_PassAndFailureReported(): Unit = run(
     "junit-pass-and-failure", "testSupport/JUnit_PassAndFailure",
-    behavior = Seq("test"), success = true)
+    behavior = Seq("test"), success = false)
 
   @Test def testReporting_JUnit_TestQuickPassAndFailureReported(): Unit = run(
     "junit-test-quick", "testSupport/JUnit_PassAndFailure",
-    behavior = Seq("testQuick"), success = true)
+    behavior = Seq("testQuick"), success = false)
+
+  @Test def testReporting_JUnit_TestOnlyPassAndFailureReported(): Unit = run(
+    "junit-test-only", "testSupport/JUnit_PassAndFailure",
+    behavior = Seq("testOnly thisis.a.test.ATest"), success = false)
+
+  @Test def testReporting_TeamCityResultLoggerCanHideTestTaskOutput(): Unit = run(
+    "junit-teamcity-result-no-task-output", "testSupport/JUnit_PassAndFailure",
+    behavior = Seq("test"), success = false,
+    options = Seq("-Dteamcity.sbt.logger.showTestTaskOutput=false"))
+
+  @Test def testReporting_ConfiguredResultLoggerCanBeRestored(): Unit = run(
+    "junit-configured-result-task-output", "testSupport/JUnit_PassAndFailure",
+    behavior = Seq("test"), success = false,
+    options = Seq("-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false"))
+
+  @Test def testReporting_ConfiguredResultLoggerRemainsVisibleWithoutTestTaskOutput(): Unit = run(
+    "junit-configured-result-no-task-output", "testSupport/JUnit_PassAndFailure",
+    behavior = Seq("test"), success = false,
+    options = Seq(
+      "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
+      "-Dteamcity.sbt.logger.showTestTaskOutput=false"
+    ))
+
+  @Test def testReporting_CustomResultLoggerKeepsItsFailureSemantics(): Unit = run(
+    "custom-result-logger-no-task-output", "testSupport/JUnit_CustomResultLogger",
+    behavior = Seq("test"), success = true,
+    options = Seq(
+      "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
+      "-Dteamcity.sbt.logger.showTestTaskOutput=false"
+    ))
 
   @Test def compilation_WarningsReportedAsInspections(): Unit = run(
     "compilation-warnings", "compilation/warnings",
@@ -116,7 +151,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testReporting_ScalaTest_PassAndFailureReported(): Unit = run(
     "scalatest-pass-and-failure", "testSupport/ScalaTest_PassAndFailure",
-    behavior = Seq("test"), success = true)
+    behavior = Seq("test"), success = false)
 
   @Test def projectExecution_JavaSourcesCompileAndRun(): Unit = run(
     "java-sources-compile-run", "projectExecution/javaSources",
@@ -140,7 +175,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testReporting_ScalaTest_ParallelEventsReported(): Unit = run(
     "scalatest-parallel-events", "testSupport/ScalaTest_ParallelEvents",
-    behavior = Seq("test"), success = true, options = Seq("--info"))
+    behavior = Seq("test"), success = false,
+    options = Seq("--info", "-Dteamcity.sbt.logger.showTestTaskOutput=false"))
 
   private def run(
     scenarioId: String,

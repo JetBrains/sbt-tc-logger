@@ -3,6 +3,7 @@ package org.jetbrains.sbt.integrationTests
 import org.jetbrains.sbt.integrationTests.FileUtils.normalisePathSeparator
 
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 
 /**
@@ -21,6 +22,7 @@ object SbtFixtureWorkspace {
    * the source fixture. This keeps one reusable fixture corpus for each compatible SBT range.
    */
   val SbtVersionTemplate = "@SBT_VERSION@"
+  val Sbt2LocalCacheSettingsFileName = "teamcity-integration-cache.sbt"
 
   /**
    * Returns the values of every line-oriented `sbt.version` declaration in source order.
@@ -48,6 +50,28 @@ object SbtFixtureWorkspace {
     renderSbtVersionTemplate(target, sbtVersion)
 
     target
+  }
+
+  /**
+   * Writes an SBT 2-only setting into a copied fixture before its first project load.
+   *
+   * SBT 2 automatically caches task results across workspaces. A scenario-local cache ensures compile and test tasks
+   * execute instead of reusing another fixture's result, while loading the setting from the build avoids a second
+   * settings reapplication caused by issuing `set Global / localCacheDirectory` after startup.
+   */
+  def writeSbt2LocalCacheSettings(workspace: File): File = {
+    val settingsFile = new File(workspace, Sbt2LocalCacheSettingsFileName).getAbsoluteFile
+    val cachePath = normalisePathSeparator(new File(workspace, ".sbt-tc-logger-cache").getAbsolutePath)
+      .replace("\"", "\\\"")
+    val content =
+      s"""// Generated in this copied fixture because SBT 2 caches task results across workspaces by default.
+         |// The scenario-local cache makes compile and test tasks execute so their logger service messages are covered.
+         |// Keep this file for every settings reapplication in this SBT process; the harness recreates it for each run.
+         |Global / localCacheDirectory := file("$cachePath")
+         |""".stripMargin
+
+    Files.writeString(settingsFile.toPath, content, StandardCharsets.UTF_8)
+    settingsFile
   }
 
   private def renderSbtVersionTemplate(fixture: File, sbtVersion: String): Unit = {

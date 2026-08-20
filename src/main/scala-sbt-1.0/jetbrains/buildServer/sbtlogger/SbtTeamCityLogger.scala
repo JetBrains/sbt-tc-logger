@@ -10,7 +10,6 @@
 
 package jetbrains.buildServer.sbtlogger
 
-import sbt.Configurations.IntegrationTest
 import sbt.Keys._
 import sbt.internal.LogManager
 import sbt.internal.util.AttributeKey
@@ -28,6 +27,8 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   override def trigger: PluginTrigger = allRequirements
 
   private val PreserveConsoleProperty = "teamcity.sbt.logger.preserveConsole"
+  private val UseTeamCityTestResultLoggerProperty = "teamcity.sbt.logger.useTeamCityTestResultLogger"
+  private val ShowTestTaskOutputProperty = "teamcity.sbt.logger.showTestTaskOutput"
   private val DetailedDependencyResolutionProperty = "teamcity.sbt.logger.detailedDependencyResolution"
   private val ResolverTaskNames = Set(
     "update",
@@ -41,6 +42,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     "ivySbt"
   )
   private val CompilerTaskKeys: Set[AttributeKey[_]] = Set(compile.key, compileIncremental.key)
+  private val TestTaskKeys: Set[AttributeKey[_]] = Set(test.key, testOnly.key, testQuick.key)
 
   def apply(state: State): State = {
     val sbtLoggerVersion = System.getProperty(TC_LOGGER_PROPERTY_NAME)
@@ -48,13 +50,17 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
     val extracted = Project.extract(state)
     import extracted.{structure => extractedStructure, _}
-    val transformedProjectSettings = extractedStructure.allProjectRefs.flatMap { projectRef =>
+    val transformedProjectSettings = extractedStructure.allProjectPairs.flatMap { case (resolvedProject, projectRef) =>
       val project = projectScope(projectRef)
       transformSettings(project, projectRef.build, rootProject, SbtTeamCityLogger.projectSettings) ++
         (if (tcFound) transformSettings(project, projectRef.build, rootProject, compilerReporterSettings(getScopeId(project.project), projectRef.project)) else Nil) ++
         (if (tcFound && !preserveConsole) {
           val scopeId = getScopeId(project.project)
-          transformSettings(project, projectRef.build, rootProject, lifecycleSettings(scopeId, projectRef.project)) ++
+          val resultLoggerSettings = if (testResultLoggerFound) {
+            testResultLoggerSettings(extractedStructure, projectRef, resolvedProject.configurations, scopeId)
+          } else Nil
+          transformSettings(project, projectRef.build, rootProject, resultLoggerSettings) ++
+            transformSettings(project, projectRef.build, rootProject, lifecycleSettings(scopeId, projectRef.project)) ++
             transformSettings(project, projectRef.build, rootProject, detailedDependencySettings(projectRef, projectRef.project, extracted, state))
         } else Nil)
     }
@@ -73,6 +79,10 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   val tcVersion: Option[String] = sys.env.get("TEAMCITY_VERSION")
   val tcFound: Boolean = tcVersion.isDefined
   val preserveConsole: Boolean = java.lang.Boolean.getBoolean(PreserveConsoleProperty)
+  /** When enabled, replaces configured test-result loggers with TeamCity's silent, failure-preserving logger. */
+  val useTeamCityTestResultLogger: Boolean = booleanProperty(UseTeamCityTestResultLoggerProperty, defaultValue = true)
+  /** Controls ordinary screen output from standard test tasks; structured TeamCity test events are unaffected. */
+  val showTestTaskOutput: Boolean = booleanProperty(ShowTestTaskOutputProperty, defaultValue = true)
   val detailedDependencyResolution: Boolean = java.lang.Boolean.getBoolean(DetailedDependencyResolutionProperty)
 
   val TC_LOGGER_PROPERTY_NAME = "TEAMCITY_SBT_LOGGER_VERSION"
@@ -88,20 +98,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     case _: java.lang.NoSuchMethodError => false
   }
 
-  override lazy val projectSettings =
-    if (tcFound) {
-      val testSettings = if (!preserveConsole && testResultLoggerFound) Seq(
-        testResultLogger in (Test, test) := silentTestResultLogger,
-        testResultLogger in (Test, testQuick) := (testResultLogger in (Test, test)).value,
-        testResultLogger in (IntegrationTest, testQuick) := silentTestResultLogger
-      ) else Nil
-
-      loggerOnSettings ++ testSettings
-    } else loggerOffSettings
-
-  private lazy val silentTestResultLogger: TestResultLogger = new TestResultLogger {
-    def run(log: Logger, results: Tests.Output, taskName: String): Unit = ()
-  }
+  override lazy val projectSettings = if (tcFound) loggerOnSettings else loggerOffSettings
 
   private lazy val loggerOnSettings: Seq[Def.Setting[_]] = {
     val ordinaryTaskLogging = if (preserveConsole) Nil else Seq(
@@ -110,7 +107,9 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
         LogManager.withLoggers(
           // MainAppender applies the effective task log level only to a ConsoleAppender screen. TCLoggerAppender
           // subclasses it so client-mode task events are delivered once without a visible SBT console line.
-          screen = (key, _) => new TCLoggerAppender(tcLogAppender, flowIdFor(key), isCompilerTask(key)),
+          screen = (key, _) =>
+            if (!showTestTaskOutput && isTestTask(key)) TCLoggerAppender.muted("test-task")
+            else new TCLoggerAppender(tcLogAppender, flowIdFor(key), isCompilerTask(key)),
           relay = _ => TCLoggerAppender.muted("relay"),
           extra = configuredExtraAppenders
         )
@@ -217,6 +216,8 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
         println("  Status: inactive")
     }
     println(s"  Preserve SBT console: ${booleanSetting(PreserveConsoleProperty, preserveConsole)}")
+    println(s"  Use TeamCity test result logger: ${booleanSetting(UseTeamCityTestResultLoggerProperty, useTeamCityTestResultLogger, defaultValue = true, overridden = preserveConsole)}")
+    println(s"  Show test-task output: ${booleanSetting(ShowTestTaskOutputProperty, showTestTaskOutput, defaultValue = true, overridden = preserveConsole)}")
     println(s"  Detailed dependency resolution: ${booleanSetting(DetailedDependencyResolutionProperty, detailedDependencyResolution)}")
     state
   }
@@ -226,8 +227,20 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
       .flatMap(loggerPackage => Option(loggerPackage.getImplementationVersion))
       .getOrElse("unknown")
 
-  private def booleanSetting(property: String, value: Boolean): String =
-    s"$value${if (System.getProperty(property) == null) " (default)" else ""}"
+  private def booleanProperty(property: String, defaultValue: Boolean): Boolean =
+    Option(System.getProperty(property)).fold(defaultValue)(java.lang.Boolean.parseBoolean)
+
+  private def booleanSetting(
+    property: String,
+    value: Boolean,
+    defaultValue: Boolean = false,
+    overridden: Boolean = false
+  ): String = {
+    val annotations =
+      (if (System.getProperty(property) == null && value == defaultValue) Seq("default") else Nil) ++
+        (if (overridden) Seq("overridden by preserveConsole") else Nil)
+    s"$value${if (annotations.nonEmpty) s" (${annotations.mkString("; ")})" else ""}"
+  }
 
   private def getScopeId(scope: ScopeAxis[Reference]): String = scope.hashCode().toString
 
@@ -242,6 +255,42 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   private def isCompilerTask(key: ScopedKey[_]): Boolean =
     key.scope.task.toOption.exists(CompilerTaskKeys.contains)
+
+  private def isTestTask(key: ScopedKey[_]): Boolean =
+    key.scope.task.toOption.exists(TestTaskKeys.contains)
+
+  private def testResultLoggerSettings(
+    structure: sbt.internal.BuildStructure,
+    projectRef: ProjectRef,
+    configurations: Seq[Configuration],
+    scopeId: String
+  ): Seq[Def.Setting[_]] = configurations.flatMap { configuration =>
+    settingWhenDefined(structure, projectRef, configuration, test.key,
+      testResultLogger in (configuration, test) ~= controlledTestResultLogger(resultFlowId(scopeId, configuration, test.key))) ++
+      settingWhenDefined(structure, projectRef, configuration, testOnly.key,
+        testResultLogger in (configuration, testOnly) ~= controlledTestResultLogger(resultFlowId(scopeId, configuration, testOnly.key))) ++
+      settingWhenDefined(structure, projectRef, configuration, testQuick.key,
+        testResultLogger in (configuration, testQuick) ~= controlledTestResultLogger(resultFlowId(scopeId, configuration, testQuick.key)))
+  }
+
+  private def settingWhenDefined(
+    structure: sbt.internal.BuildStructure,
+    projectRef: ProjectRef,
+    configuration: Configuration,
+    taskKey: AttributeKey[_],
+    setting: => Def.Setting[_]
+  ): Seq[Def.Setting[_]] = {
+    val scope = Scope(Select(projectRef), Select(configuration), Select(taskKey), Zero)
+    if (structure.data.get(scope, testResultLogger.key).isDefined) Seq(setting) else Nil
+  }
+
+  private def controlledTestResultLogger(flowId: String)(configured: TestResultLogger): TestResultLogger =
+    if (useTeamCityTestResultLogger) silentTestResultLogger
+    else if (showTestTaskOutput) configured
+    else redirectTestResultLogger(configured, tcLogAppender, flowId)
+
+  private def resultFlowId(project: String, configuration: Configuration, taskKey: AttributeKey[_]): String =
+    s"$project:${configuration.name}:general:${taskKey.label}"
 
   private def phaseForTask(task: String): String =
     if (ResolverTaskNames.contains(task)) "dependency"

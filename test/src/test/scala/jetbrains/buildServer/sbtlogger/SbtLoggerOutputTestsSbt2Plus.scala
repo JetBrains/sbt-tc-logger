@@ -14,8 +14,22 @@ trait SbtLoggerOutputTestsSbt2Plus { this: SbtLoggerOutputTestBase =>
       fixture = "testSupport/IntegrationTest_TestQuick",
       setupCommands = Seq.empty,
       behaviorCommands = Seq("IntegrationTest / testQuick"),
-      expectedResult = SbtProcessResultExpectation.Success
+      expectedResult = SbtProcessResultExpectation.Failure
     ))
+
+  @Test
+  def testReporting_JUnit_TestFullPassAndFailureReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      scenarioId = "junit-test-full",
+      fixture = "testSupport/JUnit_PassAndFailure",
+      setupCommands = Seq.empty,
+      behaviorCommands = Seq("testFull"),
+      expectedResult = SbtProcessResultExpectation.Failure
+    ))
+
+  @Test
+  def testReporting_JUnitTestFull_ConfiguredResultWithoutTaskOutput(): Unit =
+    runTestFullConfiguredResultWithoutTaskOutputCase("junit-test-full-configured-hidden")
 
   // TW-34982 and TW-36108 (GitHub #3)
   // The expected test-suite messages prove that JaCoCo instrumentation retains normal JUnit TeamCity reporting.
@@ -30,5 +44,18 @@ trait SbtLoggerOutputTestsSbt2Plus { this: SbtLoggerOutputTestBase =>
       behaviorCommands = Seq("jacoco"),
       expectedResult = SbtProcessResultExpectation.Success,
       sbtOptions = Seq("--info"), // sbt-jacoco logs its report summary at info level.
+    ))
+
+  private def runTestFullConfiguredResultWithoutTaskOutputCase(scenarioId: String): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      scenarioId = scenarioId,
+      fixture = "testSupport/JUnit_PassAndFailure",
+      setupCommands = Seq.empty,
+      behaviorCommands = Seq("testFull"),
+      expectedResult = SbtProcessResultExpectation.Failure,
+      sbtOptions = Seq(
+        "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
+        "-Dteamcity.sbt.logger.showTestTaskOutput=false"
+      )
     ))
 }

@@ -5,3 +5,5 @@ class SbtLoggerOutput_TestSbt2_0_Jdk17
   extends SbtLoggerOutputTestsCommon(SbtTestsRuntime.Sbt2_0_Jdk17)
     with SbtLoggerOutputTestsSbt2Plus
     with SbtLoggerOutputTests_SinceJDK11
+    with SbtLoggerOutputTestsModernFrameworks
+    with SbtLoggerOutputTestsTestControlMatrix
