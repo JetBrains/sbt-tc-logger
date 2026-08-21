@@ -7,7 +7,6 @@ import _root_.org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCity
 import _root_.sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.{SbtPrivateKeys, SbtTestResultLoggerAdapter}
 import _root_.sbt.util.Level
 import _root_.sbt.{Def, Reference, Scope, Select, TestResultLogger, Zero}
-import _root_.xsbti.Problem
 
 /** SBT 2 compatibility boundary for APIs that differ from the SBT 1 target. */
 object SbtApiAdapter {
@@ -52,7 +51,4 @@ object SbtApiAdapter {
     if (path.isPresent) Some(FilePosition(path.get(), line)) else None
   }
 
-  abstract class ReporterAdapter(delegate: _root_.xsbti.Reporter) extends _root_.xsbti.Reporter {
-    def delegateLog(problem: Problem): Unit = delegate.log(problem)
-  }
 }

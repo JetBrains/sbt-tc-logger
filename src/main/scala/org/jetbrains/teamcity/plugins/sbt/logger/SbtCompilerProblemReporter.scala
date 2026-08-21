@@ -1,7 +1,7 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.{ReporterAdapter, toFilePosition}
+import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.toFilePosition
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
 import org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtCompilerInspectionReporter
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
@@ -22,7 +22,7 @@ final class SbtCompilerProblemReporter(
   flowId: String,
   ensureCompilationStarted: () => Unit,
   reportCompilerOutput: Boolean
-) extends ReporterAdapter(delegate) {
+) extends xsbti.Reporter {
   private val reportedProblems = mutable.ArrayBuffer.empty[Problem]
   private val inspectionReporter = new SbtCompilerInspectionReporter(writer, toFilePosition)
 
@@ -60,7 +60,7 @@ final class SbtCompilerProblemReporter(
     if (reportCompilerOutput) {
       buildEventReporter.recordCompilerProblem(flowId, problem.severity())
       buildEventReporter.log(logLevel(problem.severity()), formatProblem(problem), flowId)
-    } else delegateLog(problem)
+    } else delegate.log(problem)
   }
 
   private def logLevel(severity: xsbti.Severity): String = {
