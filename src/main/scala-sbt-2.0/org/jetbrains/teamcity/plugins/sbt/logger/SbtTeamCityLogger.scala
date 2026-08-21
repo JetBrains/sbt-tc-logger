@@ -1,14 +1,16 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import sbt.Keys.*
-import sbt.internal.LogManager
-import sbt.internal.util.AttributeKey
-import sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.TCLoggerAppender
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.apiAdapter.*
-import sbt.plugins.JvmPlugin
-import sbt.{Def, *}
-import sbt.util.Level
+import _root_.sbt.Keys.*
+import _root_.sbt.internal.LogManager
+import _root_.sbt.internal.util.AttributeKey
+import _root_.org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.*
+import _root_.org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildEventReporter, SbtCoursierDependencyEventReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
+import _root_.org.jetbrains.teamcity.plugins.sbt.logger.reporting.{SbtInitializerErrorTestFailureReporter, SbtTestReportListener}
+import _root_.org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{StandardOutputTeamCityServiceMessageWriter, TeamCityServiceMessageWriter}
+import _root_.sbt.plugins.JvmPlugin
+import _root_.sbt.{Def, *}
+import _root_.sbt.util.Level
 
 /** Native SBT 2 implementation of the TeamCity logger. */
 object SbtTeamCityLogger extends AutoPlugin with (State => State) {
@@ -38,8 +40,8 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     val transformedProjectSettings = extractedStructure.allProjectPairs.flatMap { case (resolvedProject, projectRef) =>
       val project = projectScope(projectRef)
       transformSettings(project, projectRef.build, rootProject, SbtTeamCityLogger.projectSettings) ++
-        (if (tcFound) transformSettings(project, projectRef.build, rootProject, compilerReporterSettings(getScopeId(project.project), projectRef.project)) else Nil) ++
-        (if (tcFound && !preserveConsole) {
+        (if (isRunningUnderTeamCity) transformSettings(project, projectRef.build, rootProject, compilerReporterSettings(getScopeId(project.project), projectRef.project)) else Nil) ++
+        (if (isRunningUnderTeamCity && !preserveConsole) {
           val scopeId = getScopeId(project.project)
           val resultLoggerSettings = if (testResultLoggerFound) {
             testResultLoggerSettings(extractedStructure, state, projectRef, resolvedProject.configurations, scopeId)
@@ -58,11 +60,14 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   private def reapply(session: SessionSettings, state: State): State =
     BuiltinCommands.reapply(session, Project.structure(state), state)
 
-  lazy val tcLogAppender = new TCLogAppender()
-  lazy val tcTestListener = new TCTestReportListener(tcLogAppender)
+  private lazy val teamCityServiceMessageWriter: TeamCityServiceMessageWriter = new StandardOutputTeamCityServiceMessageWriter
+  private lazy val sbtBuildEventReporter = new SbtBuildEventReporter(teamCityServiceMessageWriter)
+  private lazy val sbtDependencyResolutionReporter = new SbtDependencyResolutionReporter(teamCityServiceMessageWriter)
+  private lazy val sbtTestReportListener = new SbtTestReportListener(teamCityServiceMessageWriter)
+  private lazy val sbtInitializerErrorTestFailureReporter = new SbtInitializerErrorTestFailureReporter(teamCityServiceMessageWriter)
   private val settings = SbtTeamCityLoggerSettings.extract()
-  val tcVersion: Option[String] = settings.teamCityVersion
-  val tcFound: Boolean = tcVersion.isDefined
+  val teamCityVersion: Option[String] = settings.teamCityVersion
+  val isRunningUnderTeamCity: Boolean = teamCityVersion.isDefined
   val preserveConsole: Boolean = settings.preserveConsole
   /** When enabled, replaces configured test-result loggers with TeamCity's silent, failure-preserving logger. */
   val useTeamCityTestResultLogger: Boolean = settings.useTeamCityTestResultLogger
@@ -70,11 +75,11 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   val showTestTaskOutput: Boolean = settings.showTestTaskOutput
   val detailedDependencyResolution: Boolean = settings.detailedDependencyResolution
 
-  val TC_LOGGER_PROPERTY_NAME = SbtTeamCityLoggerSettings.LoggerLoadStateProperty
+  private val loggerLoadStateProperty = SbtTeamCityLoggerSettings.LoggerLoadStateProperty
 
-  val tcLoggerVersion: String = SbtTeamCityLoggerSettings.loggerLoadState.orNull
-  if (tcLoggerVersion == null) System.setProperty(TC_LOGGER_PROPERTY_NAME, "loaded")
-  else if (tcLoggerVersion == "loaded") System.setProperty(TC_LOGGER_PROPERTY_NAME, "reloaded")
+  private val loggerLoadState: String = SbtTeamCityLoggerSettings.loggerLoadState.orNull
+  if (loggerLoadState == null) System.setProperty(loggerLoadStateProperty, "loaded")
+  else if (loggerLoadState == "loaded") System.setProperty(loggerLoadStateProperty, "reloaded")
 
   private val testResultLoggerFound = try {
     val _: Def.Initialize[TestResultLogger] = Def.setting((Test / test / testResultLogger).value)
@@ -83,32 +88,32 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     case _: java.lang.NoSuchMethodError => false
   }
 
-  override lazy val projectSettings = if (tcFound) loggerOnSettings else loggerOffSettings
+  override lazy val projectSettings = if (isRunningUnderTeamCity) loggerOnSettings else loggerOffSettings
 
   private lazy val loggerOnSettings: Seq[Def.Setting[?]] = {
     val ordinaryTaskLogging = if (preserveConsole) Nil else Seq(
       logManager := {
         val configuredExtraAppenders = extraAppenders.value
         LogManager.withLoggers(
-          // MainAppender applies the effective task log level only to a ConsoleAppender screen. TCLoggerAppender
+          // MainAppender applies the effective task log level only to a ConsoleAppender screen. SbtTaskLogAppender
           // subclasses it so client-mode task events are delivered once without a visible SBT console line.
           screen = (key, _) =>
-            if (!showTestTaskOutput && isTestTask(key)) TCLoggerAppender.muted("test-task")
-            else new TCLoggerAppender(tcLogAppender, flowIdFor(key), isCompilerTask(key), compilationStartFor(key)),
-          relay = _ => TCLoggerAppender.muted("relay"),
+            if (!showTestTaskOutput && isTestTask(key)) SbtTaskLogAppender.muted("test-task")
+            else new SbtTaskLogAppender(sbtBuildEventReporter, flowIdFor(key), isCompilerTask(key), compilationStartFor(key), sbtInitializerErrorTestFailureReporter.reportIfInitializerError),
+          relay = _ => SbtTaskLogAppender.muted("relay"),
           extra = configuredExtraAppenders
         )
       }
     )
 
     Seq(
-      commands += tcLoggerStatusCommand,
-      Test / testListeners += tcTestListener
+      commands += teamCityLoggerStatusCommand,
+      Test / testListeners += sbtTestReportListener
     ) ++ ordinaryTaskLogging
   }
 
   private lazy val loggerOffSettings: Seq[Def.Setting[?]] = Seq(
-    commands += tcLoggerStatusCommand
+    commands += teamCityLoggerStatusCommand
   )
 
   /**
@@ -119,16 +124,16 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
    */
   private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[?]] = Seq(
     (Compile / compileIncremental).toSettingKey ~= { original =>
-      original.andFinally(tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName)))
+      original.andFinally(sbtBuildEventReporter.compilationFinished(compilerFlowId(scope, Compile.name), Some(projectName)))
     },
     (Test / compileIncremental).toSettingKey ~= { original =>
-      original.andFinally(tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName)))
+      original.andFinally(sbtBuildEventReporter.testCompilationFinished(compilerFlowId(scope, Test.name), Some(projectName)))
     },
     (Compile / compile).toSettingKey ~= { original =>
-      original.andFinally(tcLogAppender.compilationBlockEnd(compilerFlowId(scope, Compile.name), Some(projectName)))
+      original.andFinally(sbtBuildEventReporter.compilationFinished(compilerFlowId(scope, Compile.name), Some(projectName)))
     },
     (Test / compile).toSettingKey ~= { original =>
-      original.andFinally(tcLogAppender.compilationTestBlockEnd(compilerFlowId(scope, Test.name), Some(projectName)))
+      original.andFinally(sbtBuildEventReporter.testCompilationFinished(compilerFlowId(scope, Test.name), Some(projectName)))
     }
   )
 
@@ -151,15 +156,15 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   private def detailedDependencySettingsFor(projectName: String, configuration: String): Seq[Def.Setting[?]] = Seq(
     update.toSettingKey ~= { original =>
       original
-        .dependsOn(sbt.std.TaskExtra.task(tcLogAppender.detailedDependencyResolutionStarted(projectName, configuration)))
+        .dependsOn(_root_.sbt.std.TaskExtra.task(sbtDependencyResolutionReporter.started()))
         .mapN { report =>
-          if (report.stats.cached) tcLogAppender.detailedDependencyReportCacheHit(projectName, configuration)
+          if (report.stats.cached) sbtDependencyResolutionReporter.reportCacheHit(projectName, configuration)
           report
         }
-        .andFinally(tcLogAppender.detailedDependencyResolutionFinished(projectName, configuration))
+        .andFinally(sbtDependencyResolutionReporter.finished())
     },
     csrLogger.toSettingKey ~= { original =>
-      sbt.std.TaskExtra.task(Some(new DetailedCoursierLogger(tcLogAppender, projectName, configuration)))
+      _root_.sbt.std.TaskExtra.task(Some(new SbtCoursierDependencyEventReporter(sbtDependencyResolutionReporter, projectName, configuration)))
     }
   )
 
@@ -178,22 +183,24 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   private def compilerReporterSettings(scope: String, projectName: String): Seq[Def.Setting[?]] =
     inConfig(Compile)(Seq(reporterSettings(
-      tcLogAppender,
+      sbtBuildEventReporter,
+      teamCityServiceMessageWriter,
       compilerFlowId(scope, Compile.name),
-      () => tcLogAppender.compilationBlockStart(compilerFlowId(scope, Compile.name), Some(projectName)),
+      () => sbtBuildEventReporter.compilationStarted(compilerFlowId(scope, Compile.name), Some(projectName)),
       reportCompilerOutput = !preserveConsole
     ))) ++
     inConfig(Test)(Seq(reporterSettings(
-      tcLogAppender,
+      sbtBuildEventReporter,
+      teamCityServiceMessageWriter,
       compilerFlowId(scope, Test.name),
-      () => tcLogAppender.compilationTestBlockStart(compilerFlowId(scope, Test.name), Some(projectName)),
+      () => sbtBuildEventReporter.testCompilationStarted(compilerFlowId(scope, Test.name), Some(projectName)),
       reportCompilerOutput = !preserveConsole
     )))
 
-  def tcLoggerStatusCommand: Command = Command.command("sbt-teamcity-logger") { state =>
+  def teamCityLoggerStatusCommand: Command = Command.command("sbt-teamcity-logger") { state =>
     println("TeamCity sbt logger")
     println(s"  Version: $loggerVersion")
-    tcVersion match {
+    teamCityVersion match {
       case Some(version) =>
         println(s"  TeamCity: $version")
         println("  Status: active")
@@ -232,9 +239,9 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
       val flowId = flowIdFor(key)
       val projectName = key.scope.project.toOption.collect { case ProjectRef(_, name) => name }
       if (configuration.contains(Test.name))
-        Some(tcLogAppender.compilationTestBlockStartCallback(flowId, projectName))
+        Some(sbtBuildEventReporter.testCompilationStartedCallback(flowId, projectName))
       else
-        Some(tcLogAppender.compilationBlockStartCallback(flowId, projectName))
+        Some(sbtBuildEventReporter.compilationStartedCallback(flowId, projectName))
     }
   }
 
@@ -242,7 +249,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     key.scope.task.toOption.exists(TestTaskKeys.contains)
 
   private def testResultLoggerSettings(
-    structure: sbt.internal.BuildStructure,
+    structure: _root_.sbt.internal.BuildStructure,
     state: State,
     projectRef: ProjectRef,
     configurations: Seq[Configuration],
@@ -276,7 +283,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   }
 
   private def settingWhenDefined(
-    structure: sbt.internal.BuildStructure,
+    structure: _root_.sbt.internal.BuildStructure,
     projectRef: ProjectRef,
     configuration: Configuration,
     taskKey: AttributeKey[?],
@@ -293,10 +300,10 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   )(configured: TestResultLogger): TestResultLogger =
     if (useTeamCityTestResultLogger) silentTestResultLogger
     else if (showTestTaskOutput) configured
-    else redirectTestResultLogger(configured, tcLogAppender, flowId, screenLevel)
+    else adaptTestResultLoggerForTeamCity(configured, sbtBuildEventReporter, flowId, screenLevel, sbtInitializerErrorTestFailureReporter.reportIfInitializerError)
 
   private def taskScreenLogLevel(
-    structure: sbt.internal.BuildStructure,
+    structure: _root_.sbt.internal.BuildStructure,
     state: State,
     projectRef: ProjectRef,
     configuration: Configuration,

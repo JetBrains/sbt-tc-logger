@@ -1,0 +1,4 @@
+interface:
+  display_name: "Start Local TeamCity with Latest Runner and Logger"
+  short_description: "Refresh local TeamCity SBT development"
+  default_prompt: "Use $start-local-teamcity-with-latest-runner-and-logger to refresh the local TeamCity SBT environment with current logger and runner changes."

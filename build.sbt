@@ -76,7 +76,8 @@ def loggerProjectSettings(targetDirectory: String): Seq[Def.Setting[_]] = Seq(
   name := "sbt-teamcity-logger",
   sbtPlugin := true,
   // Each project is rooted at its SBT-specific source directory. Attach the
-  // common implementation explicitly so the IDE imports it into both modules.
+  // shared implementation and SBT-agnostic protocol package explicitly so the
+  // IDE imports them into both modules.
   Compile / unmanagedSourceDirectories := Seq(baseDirectory.value, SharedLoggerSources),
   // Unit tests are source-compatible across the supported SBT lines. Attach
   // the one shared root to both targets rather than making the aggregate root
@@ -88,7 +89,6 @@ def loggerProjectSettings(targetDirectory: String): Seq[Def.Setting[_]] = Seq(
   // isolated so both modules can package concurrently.
   target := WorkspaceRoot / "target" / targetDirectory,
 
-  // Library dependency to be able to use Java API for `##teamcity` service messages
   libraryDependencies ++= Seq(
     "org.jetbrains.teamcity" % "serviceMessages" % "2026.1.3",
     "junit" % "junit" % "4.13.2" % Test,

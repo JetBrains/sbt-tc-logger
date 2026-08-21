@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run SBT Logger TC Tests"
+  short_description: "Push a branch and monitor its TeamCity tests."
+  default_prompt: "Use $run-sbt-logger-teamcity-tests to run the current branch through the SBT Logger TeamCity test matrix."

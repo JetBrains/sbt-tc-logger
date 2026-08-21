@@ -1,5 +1,7 @@
 # Contributing to SBT TeamCity Logger
 
+Use the [project glossary](GLOSSARY.md) for the naming and domain vocabulary used throughout this repository.
+
 ## Prerequisites
 
 Use JDK 17 to run the repository's SBT build and integration-test harness; set `JAVA_HOME` to a JDK 17 installation before invoking `sbt`. \
@@ -11,7 +13,7 @@ Running the full integration suite also requires an exact local JDK 8 installati
 
 ## Cross-building topology
 
-This repository deliberately does not use SBT's conventional Scala-version cross-build for the logger plugin. Instead, `loggerSbt1` and `loggerSbt2` are concrete projects with fixed Scala/SBT compatibility baselines. Each owns its target-specific sources and directly attaches the shared `src/main/scala` and `src/test/scala` roots.
+This repository deliberately does not use SBT's conventional Scala-version cross-build for the logger plugin. Instead, `loggerSbt1` and `loggerSbt2` are concrete projects with fixed Scala/SBT compatibility baselines. Each owns its target-specific sources and directly attaches the shared `src/main/scala` and `src/test/scala` roots. The SBT-agnostic `…logger.serviceMessages` package lives alongside `…logger.buildLog` and `…logger.reporting` in those shared roots, so it is compiled once by each logger target without becoming a separate IntelliJ module or published artifact.
 
 This is a non-standard structure for an SBT plugin. It is intentional: IntelliJ can import both target classpaths at once, model the common code as shared sources, and expose separate SBT 1 and SBT 2 modules without a developer having to switch the active cross-build target. That gives correct target-specific dependencies and test highlighting while working on either compatibility line.
 
@@ -27,8 +29,8 @@ Write Scala 3 code with braces, rather than significant-indentation syntax. In p
 
 Use this as the main local-development build command. It publishes the compatibility variants to the local Maven repository using artifact filenames derived from their coordinates and version.
 
-The logger sources live directly under `src/`. \
-TeamCity service messages are resolved as the managed `org.jetbrains.teamcity:serviceMessages` dependency and packaged into the self-contained logger jar.
+The SBT integration and SBT-agnostic protocol sources both live under `src/`. The TeamCity protocol library is a
+logger dependency and is packaged into the self-contained logger JAR.
 
 ## Run integration tests
 
