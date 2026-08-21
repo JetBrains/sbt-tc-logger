@@ -25,7 +25,7 @@ val prepareIntegrationTestArtifacts = taskKey[File](
   "Assembles and stages logger JARs for integration tests."
 )
 
-lazy val root: Project = (project in file("."))
+lazy val root: Project = project.in(file("."))
   .aggregate(
     loggerSbt1,
     loggerSbt2,
@@ -53,7 +53,7 @@ lazy val root: Project = (project in file("."))
     prepareIntegrationTestArtifacts / aggregate := true,
   )
 
-lazy val loggerSbt1: Project = (project in file("src/main/scala-sbt-1.0"))
+lazy val loggerSbt1: Project = project.in(file("src/main/scala-sbt-1.0"))
   .settings(
     loggerProjectSettings("loggerSbt1"),
     loggerSbt1Settings,
@@ -65,7 +65,7 @@ lazy val loggerSbt1: Project = (project in file("src/main/scala-sbt-1.0"))
  * SBT 1.12 cannot provide the SBT 2 plugin conventions, so this module keeps
  * the explicit SBT API dependency and the standard SBT 2 Maven cross-version.
  */
-lazy val loggerSbt2: Project = (project in file("src/main/scala-sbt-2.0"))
+lazy val loggerSbt2: Project = project.in(file("src/main/scala-sbt-2.0"))
   .settings(
     loggerProjectSettings("loggerSbt2"),
     loggerSbt2Settings,
@@ -165,7 +165,7 @@ lazy val integrationTestArtifactPreparationSettings: Seq[Def.Setting[_]] = Seq(
  * Its sources intentionally live under `integration-tests-framework/src` and
  * are compiled only in the Test configuration.
  */
-lazy val integrationTestsFramework: Project = (project in file("integration-tests-framework"))
+lazy val integrationTestsFramework: Project = project.in(file("integration-tests-framework"))
   .settings(
     testOnlyModuleSettings,
     name := "sbt-tc-logger-integration-tests-framework",
@@ -178,7 +178,7 @@ lazy val integrationTestsFramework: Project = (project in file("integration-test
  * Integration tests load the assembled plugin jar into nested sbt runs with sbt's `apply -cp` command.
  * Its sources intentionally live under `integration-tests/src`, alongside `testData` fixtures.
  */
-lazy val integrationTests: Project = (project in file("integration-tests"))
+lazy val integrationTests: Project = project.in(file("integration-tests"))
   .dependsOn(integrationTestsFramework % "test->test")
   .settings(
     testOnlyModuleSettings,

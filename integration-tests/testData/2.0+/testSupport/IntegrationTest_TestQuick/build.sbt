@@ -1,7 +1,7 @@
 // SBT 2 no longer provides the legacy IntegrationTest configuration; recreate its `it` scope for this reproducer.
 lazy val IntegrationTest = config("it").extend(Test)
 
-lazy val root = (project in file("."))
+lazy val root = project.in(file("."))
   // Create the `it` configuration so the reproducer exercises IntegrationTest / testQuick, not Test / testQuick.
   .configs(IntegrationTest)
   .settings(inConfig(IntegrationTest)(Defaults.testSettings))

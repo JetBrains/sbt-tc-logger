@@ -1,6 +1,6 @@
 import sbt.Configurations.IntegrationTest
 
-lazy val root = (project in file("."))
+lazy val root = project.in(file("."))
   // Create the `it` configuration so the reproducer exercises `it:testQuick`, not Test / testQuick.
   .configs(IntegrationTest)
   .settings(Defaults.itSettings)

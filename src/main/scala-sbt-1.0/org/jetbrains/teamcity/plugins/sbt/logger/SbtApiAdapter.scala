@@ -39,8 +39,8 @@ object SbtApiAdapter {
     reportCompilerOutput: Boolean
   ): Def.Setting[?] = {
     import _root_.sbt.Keys.compile
-    SbtPrivateKeys.compilerReporter in compile := {
-      val defaultReporter = (SbtPrivateKeys.compilerReporter in compile).value
+    compile / SbtPrivateKeys.compilerReporter := {
+      val defaultReporter = (compile / SbtPrivateKeys.compilerReporter).value
       new SbtCompilerProblemReporter(defaultReporter, buildEventReporter, writer, flowId, ensureCompilationStarted, reportCompilerOutput)
     }
   }

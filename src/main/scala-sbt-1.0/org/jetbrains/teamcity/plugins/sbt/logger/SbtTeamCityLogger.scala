@@ -83,7 +83,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   else if (loggerLoadState == "loaded") System.setProperty(loggerLoadStateProperty, "reloaded")
 
   private val testResultLoggerFound = try {
-    val _: Def.Initialize[_root_.sbt.TestResultLogger] = Def.setting((testResultLogger in Test).value)
+    val _: Def.Initialize[_root_.sbt.TestResultLogger] = Def.setting((Test / testResultLogger).value)
     true
   } catch {
     case _: java.lang.NoSuchMethodError => false
@@ -124,16 +124,16 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
    * then installing their reporter, lifecycle finalizers, lazy appender start, flow ID, and configuration-aware title.
    */
   private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[?]] = Seq(
-    (compileIncremental in Compile).toSettingKey ~= { original =>
+    (Compile / compileIncremental).toSettingKey ~= { original =>
       original.andFinally(sbtBuildEventReporter.compilationFinished(compilerFlowId(scope, Compile.name), Some(projectName)))
     },
-    (compileIncremental in Test).toSettingKey ~= { original =>
+    (Test / compileIncremental).toSettingKey ~= { original =>
       original.andFinally(sbtBuildEventReporter.testCompilationFinished(compilerFlowId(scope, Test.name), Some(projectName)))
     },
-    (compile in Compile).toSettingKey ~= { original =>
+    (Compile / compile).toSettingKey ~= { original =>
       original.andFinally(sbtBuildEventReporter.compilationFinished(compilerFlowId(scope, Compile.name), Some(projectName)))
     },
-    (compile in Test).toSettingKey ~= { original =>
+    (Test / compile).toSettingKey ~= { original =>
       original.andFinally(sbtBuildEventReporter.testCompilationFinished(compilerFlowId(scope, Test.name), Some(projectName)))
     }
   )
@@ -148,8 +148,8 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     extracted: Extracted,
     state: State
   ): Seq[Def.Setting[?]] = {
-    val coursierEnabled = extracted.getOpt(useCoursier in projectRef)
-      .orElse(extracted.getOpt(useCoursier in Global))
+    val coursierEnabled = extracted.getOpt(projectRef / useCoursier)
+      .orElse(extracted.getOpt(Global / useCoursier))
       .getOrElse(false)
     if (!detailedDependencyResolution || !coursierEnabled) Nil
     else {
@@ -182,8 +182,8 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     configuration: Option[Configuration]
   ): Boolean = {
     val level = configuration match {
-      case Some(config) => extracted.getOpt((logLevel in (projectRef, config, update)))
-      case None => extracted.getOpt(logLevel in (projectRef, update))
+      case Some(config) => extracted.getOpt(projectRef / config / update / logLevel)
+      case None => extracted.getOpt(projectRef / update / logLevel)
     }
     level.orElse(state.get(logLevel.key)).contains(Level.Debug)
   }
@@ -263,17 +263,17 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     scopeId: String
   ): Seq[Def.Setting[?]] = configurations.flatMap { configuration =>
     settingWhenDefined(structure, projectRef, configuration, test.key,
-      testResultLogger in (configuration, test) ~= controlledTestResultLogger(
+      configuration / test / testResultLogger ~= controlledTestResultLogger(
         resultFlowId(scopeId, configuration, test.key),
         taskScreenLogLevel(structure, state, projectRef, configuration, test.key)
       )) ++
       settingWhenDefined(structure, projectRef, configuration, testOnly.key,
-        testResultLogger in (configuration, testOnly) ~= controlledTestResultLogger(
+        configuration / testOnly / testResultLogger ~= controlledTestResultLogger(
           resultFlowId(scopeId, configuration, testOnly.key),
           taskScreenLogLevel(structure, state, projectRef, configuration, testOnly.key)
         )) ++
       settingWhenDefined(structure, projectRef, configuration, testQuick.key,
-        testResultLogger in (configuration, testQuick) ~= controlledTestResultLogger(
+        configuration / testQuick / testResultLogger ~= controlledTestResultLogger(
           resultFlowId(scopeId, configuration, testQuick.key),
           taskScreenLogLevel(structure, state, projectRef, configuration, testQuick.key)
         ))
