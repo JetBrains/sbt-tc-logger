@@ -17,6 +17,10 @@ This is a non-standard structure for an SBT plugin. It is intentional: IntelliJ 
 
 The trade-off is that shared code and unit tests are compiled once per target, so they must remain source-compatible with both Scala 2.12/SBT 1 and Scala 3/SBT 2. Do not collapse these projects back into a conventional cross-build unless the IDE model can retain those properties.
 
+## Code style
+
+Write Scala 3 code with braces, rather than significant-indentation syntax. In particular, use `{ ... }` for template and control-flow bodies instead of Scala 3's `:` and `then` forms. The Scala 3 projects compile with `-no-indent`, so braceless syntax is rejected by the compiler.
+
 ## Build the logger locally
 
 `sbt publishLocal`

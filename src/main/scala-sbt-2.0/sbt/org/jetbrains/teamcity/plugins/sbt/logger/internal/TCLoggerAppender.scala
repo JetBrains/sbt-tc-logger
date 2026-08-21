@@ -16,9 +16,9 @@
 
 package sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal
 
+import _root_.org.jetbrains.teamcity.plugins.sbt.logger.{LogAppender, SbtTeamCityLogger, SbtTeamCityLoggerSettings}
 import sbt.internal.util.{Appender, ConsoleAppender, ObjectEvent}
 import sbt.util.{Level, LogExchange, ShowLines}
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.{LogAppender, SbtTeamCityLogger, SbtTeamCityLoggerSettings}
 
 import scala.Option
 
@@ -50,28 +50,29 @@ class TCLoggerAppender(
 
   override def appendLog(level: Level.Value, message: => String): Unit = {
     val text = message
-    if isCompilerTask then
+    if (isCompilerTask) {
       requestCompilationStart()
       appender.logCompilerTask(level, text, scope)
-    else appender.log(level, text, scope)
+    } else appender.log(level, text, scope)
   }
 
   override def appendObjectEvent[T](level: Level.Value, event: => ObjectEvent[T]): Unit = {
     val objectEvent = event
     renderObjectEvent(objectEvent).foreach { text =>
-      if isCompilerTask then
+      if (isCompilerTask) {
         requestCompilationStart()
         appender.logCompilerTask(level, text, scope)
-      else appender.log(level, text, scope)
+      } else appender.log(level, text, scope)
     }
   }
 
   private def requestCompilationStart(): Unit =
     compilationStartLock.synchronized {
       compilationStart.foreach { start =>
-        if !compilationStartRequested then
+        if (!compilationStartRequested) {
           start()
           compilationStartRequested = true
+        }
       }
     }
 
@@ -90,7 +91,7 @@ class TCLoggerAppender(
       case None =>
         Some(event.message.toString)
     }
-    if SbtTeamCityLoggerSettings.RenderObjectEventDetails.isEnabled then
+    if (SbtTeamCityLoggerSettings.RenderObjectEventDetails.isEnabled)
       renderedObject.map(_ + TCLoggerAppender.objectEventDetails(event))
     else renderedObject
   }

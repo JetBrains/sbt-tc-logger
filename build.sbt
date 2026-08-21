@@ -113,6 +113,8 @@ lazy val loggerSbt2Settings: Seq[Def.Setting[_]] = Seq(
   crossScalaVersions := Nil,
   pluginCrossBuild / sbtVersion := SbtVersion_2xx,
   crossVersion := CrossVersion.binaryWith("sbt2_", ""),
+  // Keep Scala 3 sources compatible with the brace-based Scala 2 syntax used by shared sources.
+  scalacOptions += "-no-indent",
   libraryDependencies += (pluginCrossBuild / sbtDependency).value % Provided,
 )
 
