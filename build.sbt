@@ -75,6 +75,7 @@ lazy val loggerSbt2: Project = project.in(file("src/main/scala-sbt-2.0"))
 def loggerProjectSettings(targetDirectory: String): Seq[Def.Setting[_]] = Seq(
   name := "sbt-teamcity-logger",
   sbtPlugin := true,
+  scalacOptions += "-deprecation",
   // Each project is rooted at its SBT-specific source directory. Attach the
   // shared implementation and SBT-agnostic protocol package explicitly so the
   // IDE imports them into both modules.
