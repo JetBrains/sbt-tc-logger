@@ -1,12 +1,12 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtCompilerInspectionReporter.FilePosition
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
-import _root_.sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.{SbtPrivateKeys, SbtTestResultLoggerAdapter}
-import _root_.sbt.util.Level
-import _root_.sbt.{Def, Reference, Scope, Select, TestResultLogger, Zero}
+import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
+import org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtCompilerInspectionReporter.FilePosition
+import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
+import sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.{SbtPrivateKeys, SbtTestResultLoggerAdapter}
+import sbt.util.Level
+import sbt.{Def, Reference, Scope, Select, TestResultLogger, Zero}
 
 /** SBT 2 compatibility boundary for APIs that differ from the SBT 1 target. */
 object SbtApiAdapter {

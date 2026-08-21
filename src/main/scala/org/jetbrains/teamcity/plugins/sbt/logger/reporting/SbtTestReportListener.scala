@@ -5,8 +5,8 @@ import java.io.{PrintWriter, StringWriter}
 
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage.*
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
-import _root_.sbt.*
-import _root_.sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
+import sbt.*
+import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
 
 /**
  * Adapts SBT test callbacks to typed TeamCity test messages.

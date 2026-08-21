@@ -1,10 +1,10 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger.buildLog
 
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.SbtTeamCityLoggerSettings
-import _root_.sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.SbtConsoleAppenderBridge
-import _root_.sbt.internal.util.{Appender, ObjectEvent}
-import _root_.sbt.util.{Level, LogExchange, ShowLines}
+import org.jetbrains.teamcity.plugins.sbt.logger.SbtTeamCityLoggerSettings
+import sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.SbtConsoleAppenderBridge
+import sbt.internal.util.{Appender, ObjectEvent}
+import sbt.util.{Level, LogExchange, ShowLines}
 
 /**
  * Redirects ordinary SBT screen-appender events to TeamCity Build Log messages.

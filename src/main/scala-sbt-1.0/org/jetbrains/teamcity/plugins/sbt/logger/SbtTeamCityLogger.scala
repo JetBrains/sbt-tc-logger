@@ -1,16 +1,16 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import _root_.sbt.Keys.*
-import _root_.sbt.internal.LogManager
-import _root_.sbt.internal.util.AttributeKey
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.*
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildEventReporter, SbtCoursierDependencyEventReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.reporting.{SbtInitializerErrorTestFailureReporter, SbtTestReportListener}
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{StandardOutputTeamCityServiceMessageWriter, TeamCityServiceMessageWriter}
-import _root_.sbt.plugins.JvmPlugin
-import _root_.sbt.{Def, *}
-import _root_.sbt.util.Level
+import sbt.Keys.*
+import sbt.internal.LogManager
+import sbt.internal.util.AttributeKey
+import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.*
+import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildEventReporter, SbtCoursierDependencyEventReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
+import org.jetbrains.teamcity.plugins.sbt.logger.reporting.{SbtInitializerErrorTestFailureReporter, SbtTestReportListener}
+import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{StandardOutputTeamCityServiceMessageWriter, TeamCityServiceMessageWriter}
+import sbt.plugins.JvmPlugin
+import sbt.{Def, *}
+import sbt.util.Level
 
 /** Native SBT 1.4+ implementation of the TeamCity logger. */
 object SbtTeamCityLogger extends AutoPlugin with (State => State) {

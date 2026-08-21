@@ -1,7 +1,7 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal
 
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
+import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
 import sbt.util.{Level, Logger}
 import sbt.{TestResultLogger, Tests}
 

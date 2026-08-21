@@ -7,8 +7,8 @@ import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityService
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{TeamCityServiceMessage, TeamCityServiceMessageWriter}
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 import org.junit.Test
-import _root_.sbt.internal.util.ObjectEvent
-import _root_.sbt.util.Level
+import sbt.internal.util.ObjectEvent
+import sbt.util.Level
 
 class SbtTaskLogAppenderTest {
   @Test
