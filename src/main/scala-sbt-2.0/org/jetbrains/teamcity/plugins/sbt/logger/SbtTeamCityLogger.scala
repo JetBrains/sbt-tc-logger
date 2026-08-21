@@ -32,7 +32,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   private val CompilerTaskKeys: Set[AttributeKey[?]] = Set(compile.key, compileIncremental.key)
   private val TestTaskKeys: Set[AttributeKey[?]] = Set(test.key, testOnly.key, testSelected.key, testQuick.key, testFull.key)
 
-  def apply(state: State): State = {
+  override def apply(state: State): State = {
     if (SbtTeamCityLoggerSettings.loggerLoadState.contains("reloaded")) return state
 
     val extracted = Project.extract(state)

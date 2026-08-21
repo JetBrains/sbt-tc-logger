@@ -15,18 +15,18 @@ import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
  * output travel through the separate Build Log path.
  */
 final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends TestReportListener {
-  def startGroup(name: String): Unit =
+  override def startGroup(name: String): Unit =
     writer.write(TestSuiteStarted(name, flowId))
 
-  def testEvent(event: TestEvent): Unit =
+  override def testEvent(event: TestEvent): Unit =
     event.detail.foreach(reportSingleTest)
 
-  def endGroup(name: String, throwable: Throwable): Unit = {
+  override def endGroup(name: String, throwable: Throwable): Unit = {
     val details = throwable.getStackTrace
     writer.write(TestSuiteFinished(name, flowId, Some(TestSuiteFailure(throwable.getMessage, s"$details"))))
   }
 
-  def endGroup(name: String, result: TestResult): Unit =
+  override def endGroup(name: String, result: TestResult): Unit =
     writer.write(TestSuiteFinished(name, flowId))
 
   private def reportSingleTest(event: _root_.sbt.testing.Event): Unit = {
