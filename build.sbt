@@ -225,15 +225,15 @@ lazy val junitTestFrameworkDependencies: Seq[ModuleID] = Seq(
   "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
 )
 
-addCommandAlias("testSbt1_4_Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_4_Jdk8")
-addCommandAlias("testSbt1_12_Jdk8", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_12_Jdk8")
-addCommandAlias("testSbt1_12_Jdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_12_Jdk17 jetbrains.buildServer.sbtlogger.SbtDetailedDependencyResolution_TestSbt1_12_Jdk17")
-addCommandAlias("testSbt2_0_Jdk17", ";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt2_0_Jdk17 jetbrains.buildServer.sbtlogger.SbtDetailedDependencyResolution_TestSbt2_0_Jdk17")
+addCommandAlias("testSbt1_4_Jdk8", ";project integrationTests;testOnly org.jetbrains.teamcity.plugins.sbt.logger.SbtLoggerOutput_TestSbt1_4_Jdk8")
+addCommandAlias("testSbt1_12_Jdk8", ";project integrationTests;testOnly org.jetbrains.teamcity.plugins.sbt.logger.SbtLoggerOutput_TestSbt1_12_Jdk8")
+addCommandAlias("testSbt1_12_Jdk17", ";project integrationTests;testOnly org.jetbrains.teamcity.plugins.sbt.logger.SbtLoggerOutput_TestSbt1_12_Jdk17 org.jetbrains.teamcity.plugins.sbt.logger.SbtDetailedDependencyResolution_TestSbt1_12_Jdk17")
+addCommandAlias("testSbt2_0_Jdk17", ";project integrationTests;testOnly org.jetbrains.teamcity.plugins.sbt.logger.SbtLoggerOutput_TestSbt2_0_Jdk17 org.jetbrains.teamcity.plugins.sbt.logger.SbtDetailedDependencyResolution_TestSbt2_0_Jdk17")
 // JUnit's category filter keeps every non-matrix integration test in the shared auxiliary bucket.
-addCommandAlias("testOther", ";project integrationTests;testOnly -- --exclude-categories=jetbrains.buildServer.sbtlogger.SbtRuntimeMatrix")
+addCommandAlias("testOther", ";project integrationTests;testOnly -- --exclude-categories=org.jetbrains.teamcity.plugins.sbt.logger.SbtRuntimeMatrix")
 
 // Candidate commands are deliberately target-only. Reviewing and copying a candidate into testdata is a separate step.
-addCommandAlias("generateSbt1_4_Jdk8OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_4_Jdk8;session clear")
-addCommandAlias("generateSbt1_12_Jdk8OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_12_Jdk8;session clear")
-addCommandAlias("generateSbt1_12_Jdk17OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_12_Jdk17 jetbrains.buildServer.sbtlogger.SbtDetailedDependencyResolution_TestSbt1_12_Jdk17;session clear")
-addCommandAlias("generateSbt2_0_Jdk17OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt2_0_Jdk17 jetbrains.buildServer.sbtlogger.SbtDetailedDependencyResolution_TestSbt2_0_Jdk17;session clear")
+addCommandAlias("generateSbt1_4_Jdk8OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly org.jetbrains.teamcity.plugins.sbt.logger.SbtLoggerOutput_TestSbt1_4_Jdk8;session clear")
+addCommandAlias("generateSbt1_12_Jdk8OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly org.jetbrains.teamcity.plugins.sbt.logger.SbtLoggerOutput_TestSbt1_12_Jdk8;session clear")
+addCommandAlias("generateSbt1_12_Jdk17OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly org.jetbrains.teamcity.plugins.sbt.logger.SbtLoggerOutput_TestSbt1_12_Jdk17 org.jetbrains.teamcity.plugins.sbt.logger.SbtDetailedDependencyResolution_TestSbt1_12_Jdk17;session clear")
+addCommandAlias("generateSbt2_0_Jdk17OutputCandidates", ";set integrationTests / Test / javaOptions += \"-Dsbt.logger.transcripts.candidate=true\";project integrationTests;testOnly org.jetbrains.teamcity.plugins.sbt.logger.SbtLoggerOutput_TestSbt2_0_Jdk17 org.jetbrains.teamcity.plugins.sbt.logger.SbtDetailedDependencyResolution_TestSbt2_0_Jdk17;session clear")

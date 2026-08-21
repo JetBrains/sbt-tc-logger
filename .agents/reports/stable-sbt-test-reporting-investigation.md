@@ -123,7 +123,7 @@ Raw logs: `teamcity-build-1606.log` through `teamcity-build-1608.log`. Structure
 ```text
 # Exact repository reporting/control sweep (the class changes for SBT 2)
 sbt --client ";project integrationTests; testOnly \
-  jetbrains.buildServer.sbtlogger.SbtLoggerOutput_TestSbt1_12_Jdk17 \
+  org.jetbrains.teamcity.plugins.sbt.logger.SbtLoggerOutput_TestSbt1_12_Jdk17 \
   -- --tests=pluginStatus_ReportsConfiguredLoggerOptions,\
 taskLogging_CustomLogManagerCanBePreservedExplicitly,testReporting_.*"
 

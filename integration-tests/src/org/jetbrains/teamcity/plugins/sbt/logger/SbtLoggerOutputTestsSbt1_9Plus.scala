@@ -1,0 +1,35 @@
+package org.jetbrains.teamcity.plugins.sbt.logger
+
+import org.jetbrains.teamcity.plugins.sbt.logger.utils.{SbtLoggerOutputTestCase, SbtProcessResultExpectation}
+import org.junit.Test
+
+/** Scenarios supported by SBT 1.9.0 and later, beyond the supported SBT 1.4 baseline runtime. */
+trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
+
+  // TW-53224 - SBT 1 addresses the IntegrationTest configuration with the historic `it:` command syntax.
+  @Test
+  def testReporting_IntegrationTest_TestQuickPassAndFailureReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      scenarioId = "integration-test-quick",
+      fixture = "testSupport/IntegrationTest_TestQuick",
+      setupCommands = Seq.empty,
+      behaviorCommands = Seq("it:testQuick"),
+      expectedResult = SbtProcessResultExpectation.Failure
+    ))
+
+  // TW-34982 and TW-36108 (GitHub #3)
+  // The expected test-suite messages prove that JaCoCo instrumentation retains normal JUnit TeamCity reporting.
+  // The expected coverage-summary messages are sbt-jacoco's ordinary log output, not a TeamCity coverage protocol:
+  // they prove that the `jacoco` task generated its local report, rather than this being an equivalent JUnit-only run.
+  @Test
+  def testReporting_Jacoco_JUnitAndCoverageReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      scenarioId = "jacoco",
+      fixture = "jacoco",
+      fixtureRootRelativePath = Some("integration-tests/testData/1.9+"),
+      setupCommands = Seq.empty,
+      behaviorCommands = Seq("jacoco"),
+      expectedResult = SbtProcessResultExpectation.Success,
+      sbtOptions = Seq("--info"), // sbt-jacoco logs its report summary at info level.
+    ))
+}
