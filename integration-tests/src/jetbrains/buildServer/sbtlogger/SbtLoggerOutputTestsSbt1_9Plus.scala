@@ -26,7 +26,7 @@ trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
     runCase(SbtLoggerOutputTestCase(
       scenarioId = "jacoco",
       fixture = "jacoco",
-      fixtureRootRelativePath = Some("test/testdata/1.9+"),
+      fixtureRootRelativePath = Some("integration-tests/testData/1.9+"),
       setupCommands = Seq.empty,
       behaviorCommands = Seq("jacoco"),
       expectedResult = SbtProcessResultExpectation.Success,

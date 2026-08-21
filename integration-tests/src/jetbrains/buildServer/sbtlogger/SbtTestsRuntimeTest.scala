@@ -10,12 +10,12 @@ class SbtTestsRuntimeTest {
   @Test
   def forSbtVersionDerivesExplicitSbt14AndJdkMetadata(): Unit = {
     assertRuntime(
-      SbtTestsRuntime.forSbtVersion("1.4.5", SbtTestJdk.Jdk8, "test/testdata/1.4+", "test-profile"),
+      SbtTestsRuntime.forSbtVersion("1.4.5", SbtTestJdk.Jdk8, "integration-tests/testData/1.4+", "test-profile"),
       id = "1.4.5-jdk8",
       outputProfile = "test-profile",
       sbtVersion = "1.4.5",
       jdk = SbtTestJdk.Jdk8,
-      testDataRelativePath = "test/testdata/1.4+",
+      testDataRelativePath = "integration-tests/testData/1.4+",
       sbtBinaryVersion = "1.0",
       launcherVersion = "1.12.15"
     )
@@ -24,12 +24,12 @@ class SbtTestsRuntimeTest {
   @Test
   def forSbtVersionDerivesExplicitSbt2AndJdkMetadata(): Unit = {
     assertRuntime(
-      SbtTestsRuntime.forSbtVersion("2.0.6", SbtTestJdk.Jdk17, "test/testdata/2.0+", "test-profile"),
+      SbtTestsRuntime.forSbtVersion("2.0.6", SbtTestJdk.Jdk17, "integration-tests/testData/2.0+", "test-profile"),
       id = "2.0.6-jdk17",
       outputProfile = "test-profile",
       sbtVersion = "2.0.6",
       jdk = SbtTestJdk.Jdk17,
-      testDataRelativePath = "test/testdata/2.0+",
+      testDataRelativePath = "integration-tests/testData/2.0+",
       sbtBinaryVersion = "2",
       launcherVersion = "2.0.6"
     )
@@ -37,18 +37,18 @@ class SbtTestsRuntimeTest {
 
   @Test
   def forSbtVersionAcceptsPrereleaseVersions(): Unit = {
-    Assert.assertEquals("1.12.15", SbtTestsRuntime.forSbtVersion("1.13.0-RC1", SbtTestJdk.Jdk17, "test/testdata/1.4+", "test-profile").launcherVersion)
-    Assert.assertEquals("2.0.6", SbtTestsRuntime.forSbtVersion("2.1.0-M2", SbtTestJdk.Jdk17, "test/testdata/2.0+", "test-profile").launcherVersion)
+    Assert.assertEquals("1.12.15", SbtTestsRuntime.forSbtVersion("1.13.0-RC1", SbtTestJdk.Jdk17, "integration-tests/testData/1.4+", "test-profile").launcherVersion)
+    Assert.assertEquals("2.0.6", SbtTestsRuntime.forSbtVersion("2.1.0-M2", SbtTestJdk.Jdk17, "integration-tests/testData/2.0+", "test-profile").launcherVersion)
   }
 
   @Test
   def catalogCoversTheSelectedRuntimeMatrix(): Unit = {
     Assert.assertEquals(
       Seq(
-        ("1.4.5-jdk8", "1.4.5", SbtTestJdk.Jdk8, "test/testdata/1.4+"),
-        ("1.12.15-jdk8", "1.12.15", SbtTestJdk.Jdk8, "test/testdata/1.4+"),
-        ("1.12.15-jdk17", "1.12.15", SbtTestJdk.Jdk17, "test/testdata/1.4+"),
-        ("2.0.6-jdk17", "2.0.6", SbtTestJdk.Jdk17, "test/testdata/2.0+")
+        ("1.4.5-jdk8", "1.4.5", SbtTestJdk.Jdk8, "integration-tests/testData/1.4+"),
+        ("1.12.15-jdk8", "1.12.15", SbtTestJdk.Jdk8, "integration-tests/testData/1.4+"),
+        ("1.12.15-jdk17", "1.12.15", SbtTestJdk.Jdk17, "integration-tests/testData/1.4+"),
+        ("2.0.6-jdk17", "2.0.6", SbtTestJdk.Jdk17, "integration-tests/testData/2.0+")
       ),
       SbtTestsRuntime.All.map(runtime => (runtime.id, runtime.sbtVersion, runtime.jdk, runtime.testDataRelativePath))
     )
@@ -121,7 +121,7 @@ class SbtTestsRuntimeTest {
   def forSbtVersionRejectsMalformedAndUnsupportedVersions(): Unit = {
     Seq("", "not-a-version", "0.13.0", "3.0.0").foreach { version =>
       val error = expectIllegalArgumentException {
-        SbtTestsRuntime.forSbtVersion(version, SbtTestJdk.Jdk17, "test/testdata/2.0+", "test-profile")
+        SbtTestsRuntime.forSbtVersion(version, SbtTestJdk.Jdk17, "integration-tests/testData/2.0+", "test-profile")
       }
       Assert.assertTrue(error.getMessage.contains("supported lines are 1.x and 2.x"))
     }

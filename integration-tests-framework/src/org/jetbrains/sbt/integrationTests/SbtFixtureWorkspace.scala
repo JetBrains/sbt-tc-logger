@@ -9,7 +9,7 @@ import java.nio.file.Files
 /**
  * Prepares per-test fixture workspaces for nested sbt runs.
  *
- * Source fixtures stay immutable under `test/testdata`; each run copies one fixture into `target/integration-tests/work`
+ * Source fixtures stay immutable under `integration-tests/testData`; each run copies one fixture into `target/integration-tests/work`
  * and skips any fixture-local `target` directories. Test-data directory names state a fixture root's minimum supported
  * SBT version; the source `project/build.properties` file contains [[SbtVersionTemplate]] and is rendered only in the
  * copied fixture with the exact nested SBT version selected by the concrete runtime.

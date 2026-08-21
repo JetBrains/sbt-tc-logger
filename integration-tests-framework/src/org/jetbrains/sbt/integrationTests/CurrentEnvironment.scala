@@ -1,7 +1,5 @@
 package org.jetbrains.sbt.integrationTests
 
-import jetbrains.buildServer.sbtlogger.SbtTestJdk
-
 import java.io.File
 import scala.io.Source
 import scala.util.{Try, Using}
@@ -34,28 +32,30 @@ object CurrentEnvironment {
     else
       throw new UnsupportedOperationException("Unknown operating system: " + OsName)
 
-  lazy val Java8Home: File = javaHomeForMajor(SbtTestJdk.Jdk8)
+  lazy val Java8Home: File = javaHomeForMajor(8)
   lazy val Java8ExecutablePath: String = javaExecutable(Java8Home).getCanonicalPath
 
-  lazy val Java17Home: File = javaHomeForMajor(SbtTestJdk.Jdk17)
+  lazy val Java17Home: File = javaHomeForMajor(17)
 
   lazy val Java17ExecutablePath: String = javaExecutable(Java17Home).getCanonicalPath
 
-  def javaExecutableFor(jdk: SbtTestJdk): String = jdk match {
-    case SbtTestJdk.Jdk8 => Java8ExecutablePath
-    case SbtTestJdk.Jdk17 => Java17ExecutablePath
+  def javaExecutableFor(majorVersion: Int): String = majorVersion match {
+    case 8 => Java8ExecutablePath
+    case 17 => Java17ExecutablePath
+    case unsupported => throw new IllegalArgumentException(s"Unsupported Java major version: $unsupported")
   }
 
-  def javaHomeFor(jdk: SbtTestJdk): File = jdk match {
-    case SbtTestJdk.Jdk8 => Java8Home
-    case SbtTestJdk.Jdk17 => Java17Home
+  def javaHomeFor(majorVersion: Int): File = majorVersion match {
+    case 8 => Java8Home
+    case 17 => Java17Home
+    case unsupported => throw new IllegalArgumentException(s"Unsupported Java major version: $unsupported")
   }
 
-  private def javaHomeForMajor(jdk: SbtTestJdk): File =
-    findJvmInstallation(jdk.majorVersion).getOrElse {
+  private def javaHomeForMajor(majorVersion: Int): File =
+    findJvmInstallation(majorVersion).getOrElse {
       throw new IllegalStateException(
-        s"Java ${jdk.majorVersion} was not found in default locations:\n${PossibleJvmLocations.mkString("\n")}. " +
-          s"Install an exact Java ${jdk.majorVersion} JDK; this test suite does not fall back to another Java version."
+        s"Java $majorVersion was not found in default locations:\n${PossibleJvmLocations.mkString("\n")}. " +
+          s"Install an exact Java $majorVersion JDK; this test suite does not fall back to another Java version."
       )
     }
 

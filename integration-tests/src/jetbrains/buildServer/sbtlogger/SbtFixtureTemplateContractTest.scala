@@ -91,7 +91,7 @@ class SbtFixtureTemplateContractTest {
   )
 
   @Test def everyDeclaredSbtVersionUsesTheTemplate(): Unit = {
-    val root = IntegrationTestLayout.repoRoot().toPath.resolve("test/testdata")
+    val root = IntegrationTestLayout.repoRoot().toPath.resolve("integration-tests/testData")
     val declarations = buildPropertiesFiles(root)
       .map(propertiesFile => root.relativize(propertiesFile) -> SbtFixtureWorkspace.sbtVersionValues(Files.readString(propertiesFile)))
       .filter { case (_, values) => values.nonEmpty }
@@ -106,7 +106,7 @@ class SbtFixtureTemplateContractTest {
   }
 
   @Test def everyScenarioProfileHasExactlyOneNonEmptyGoldenAndNoOrphans(): Unit = {
-    val root = IntegrationTestLayout.repoRoot().toPath.resolve("test/testdata")
+    val root = IntegrationTestLayout.repoRoot().toPath.resolve("integration-tests/testData")
     val expectedFiles = regularFiles(root).filter(path => path.iterator.asScala.exists(_.toString == "expected"))
     val parsed = expectedFiles.map(path => path -> goldenCoordinates(root.relativize(path)))
     val malformed = parsed.collect { case (path, Left(problem)) => s"${root.relativize(path)}: $problem" }
@@ -134,7 +134,7 @@ class SbtFixtureTemplateContractTest {
   }
 
   @Test def noLegacyRegexExpectationsRemain(): Unit = {
-    val root = IntegrationTestLayout.repoRoot().toPath.resolve("test/testdata")
+    val root = IntegrationTestLayout.repoRoot().toPath.resolve("integration-tests/testData")
     val legacy = regularFiles(root).filter { path =>
       val name = path.getFileName.toString
       name == "excludes.txt" || name.matches("output.*\\.txt")

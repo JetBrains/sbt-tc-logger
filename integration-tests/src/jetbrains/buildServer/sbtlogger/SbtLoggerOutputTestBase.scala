@@ -94,8 +94,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
     if (sbtVersion >= Version("2.0.0")) {
       SbtFixtureWorkspace.writeSbt2LocalCacheSettings(workingDir)
     }
-    val javaHome = CurrentEnvironment.javaHomeFor(runtime.jdk)
-    val javaBin = CurrentEnvironment.javaExecutableFor(runtime.jdk)
+    val javaHome = CurrentEnvironment.javaHomeFor(runtime.jdk.majorVersion)
+    val javaBin = CurrentEnvironment.javaExecutableFor(runtime.jdk.majorVersion)
     val sbtBootDirectory = SbtIntegrationTestLayout.sbtBootDirectory(root, runtime.id)
     val sbtCoursierHome = SbtIntegrationTestLayout.sbtCoursierHome(root, runtime.id)
     val sbtIvyHome = SbtIntegrationTestLayout.sbtIvyHome(root, runtime.id)

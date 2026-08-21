@@ -105,13 +105,13 @@ object SbtTestsRuntime {
   // exercises JDK 17.
   // Running all combinations adds time and maintenance cost without materially improving coverage.
   val Sbt1_4_Jdk8: SbtTestsRuntime =
-    forSbtVersion(MinimumSbt1Version, SbtTestJdk.Jdk8, "test/testdata/1.4+", "sbt-1.4-jdk8")
+    forSbtVersion(MinimumSbt1Version, SbtTestJdk.Jdk8, "integration-tests/testData/1.4+", "sbt-1.4-jdk8")
   val Sbt1_12_Jdk8: SbtTestsRuntime =
-    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk8, "test/testdata/1.4+", "sbt-1-jdk8")
+    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk8, "integration-tests/testData/1.4+", "sbt-1-jdk8")
   val Sbt1_12_Jdk17: SbtTestsRuntime =
-    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk17, "test/testdata/1.4+", "sbt-1-jdk17")
+    forSbtVersion(LatestSbt1_12Version, SbtTestJdk.Jdk17, "integration-tests/testData/1.4+", "sbt-1-jdk17")
   val Sbt2_0_Jdk17: SbtTestsRuntime =
-    forSbtVersion(LatestSbt2Version, SbtTestJdk.Jdk17, "test/testdata/2.0+", "sbt-2-jdk17")
+    forSbtVersion(LatestSbt2Version, SbtTestJdk.Jdk17, "integration-tests/testData/2.0+", "sbt-2-jdk17")
 
   val All: Seq[SbtTestsRuntime] = Seq(
     Sbt1_4_Jdk8,

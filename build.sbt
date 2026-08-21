@@ -29,6 +29,7 @@ lazy val root: Project = (project in file("."))
   .aggregate(
     loggerSbt1,
     loggerSbt2,
+    integrationTestsFramework,
     integrationTests
   )
   .settings(
@@ -154,19 +155,29 @@ lazy val integrationTestArtifactPreparationSettings: Seq[Def.Setting[_]] = Seq(
 )
 
 /**
+ * Shared Scala/JUnit utilities used by the logger integration-test harness.
+ *
+ * Its sources intentionally live under `integration-tests-framework/src` and
+ * are compiled only in the Test configuration.
+ */
+lazy val integrationTestsFramework: Project = (project in file("integration-tests-framework"))
+  .settings(
+    testOnlyModuleSettings,
+    name := "sbt-tc-logger-integration-tests-framework",
+    libraryDependencies ++= junitTestFrameworkDependencies,
+  )
+
+/**
  * Scala/JUnit integration-test harness for the TeamCity logger plugin.
  *
  * Integration tests load the assembled plugin jar into nested sbt runs with sbt's `apply -cp` command.
+ * Its sources intentionally live under `integration-tests/src`, alongside `testData` fixtures.
  */
-lazy val integrationTests: Project = (project in file("test"))
+lazy val integrationTests: Project = (project in file("integration-tests"))
+  .dependsOn(integrationTestsFramework % "test->test")
   .settings(
+    testOnlyModuleSettings,
     name := "sbt-tc-logger-integration-tests",
-    publish / skip := true,
-
-    scalaVersion := ScalaVersion_3,
-    scalacOptions += "-no-indent",
-    crossScalaVersions := Seq(scalaVersion.value),
-
     // Fork so the harness can launch nested sbt processes.
     Test / fork := true,
     // Nested sbt processes share an isolated global base, so run cases sequentially.
@@ -192,6 +203,21 @@ lazy val integrationTests: Project = (project in file("test"))
     ),
     resolvers += "jetbrains-teamcity-repository" at "https://download.jetbrains.com/teamcity-repository",
   )
+
+/**
+ * A test-only module has exactly one source root: `<module>/src`.
+ * Keep conventional main and test source roots disabled so IntelliJ imports
+ * the same model as the SBT build.
+ */
+lazy val testOnlyModuleSettings: Seq[Def.Setting[_]] = Seq(
+  publish / skip := true,
+  scalaVersion := ScalaVersion_3,
+  scalacOptions += "-no-indent",
+  Compile / unmanagedSourceDirectories := Nil,
+  Compile / managedSourceDirectories := Nil,
+  Test / unmanagedSourceDirectories := Seq(baseDirectory.value / "src"),
+  Test / managedSourceDirectories := Nil,
+)
 
 // JUnit runs the outer harness; the current launcher for each supported SBT line boots fixture-selected sbt versions.
 lazy val junitTestFrameworkDependencies: Seq[ModuleID] = Seq(
