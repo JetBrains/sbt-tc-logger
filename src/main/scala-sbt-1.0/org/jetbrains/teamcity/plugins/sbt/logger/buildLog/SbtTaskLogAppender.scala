@@ -51,7 +51,7 @@ final class SbtTaskLogAppender(
     }
   }
 
-  private def renderObjectEvent(event: ObjectEvent[_]): Option[String] = {
+  private def renderObjectEvent(event: ObjectEvent[?]): Option[String] = {
     val renderedObject = LogExchange.stringCodec(event.contentType) match {
       case Some(renderer) =>
         SbtObjectEventRenderer.combine(renderer.asInstanceOf[ShowLines[Any]].showLines(event.message))
@@ -66,7 +66,7 @@ final class SbtTaskLogAppender(
 object SbtTaskLogAppender {
   private val ignoreInitializerError: (String, String) => Unit = (_, _) => ()
 
-  private def objectEventDetails(event: ObjectEvent[_]): String =
+  private def objectEventDetails(event: ObjectEvent[?]): String =
     s" (ObjectEvent details: channelName=${event.channelName}, execId=${event.execId}, contentType=${event.contentType})"
 
   def muted(kind: String): Appender = SbtConsoleAppenderBridge.nullConsoleOutAppender(kind)

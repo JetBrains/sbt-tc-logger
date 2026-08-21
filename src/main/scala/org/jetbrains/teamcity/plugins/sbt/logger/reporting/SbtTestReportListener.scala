@@ -3,9 +3,9 @@ package org.jetbrains.teamcity.plugins.sbt.logger.reporting
 
 import java.io.{PrintWriter, StringWriter}
 
-import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage._
+import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage.*
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
-import _root_.sbt._
+import _root_.sbt.*
 import _root_.sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
 
 /**

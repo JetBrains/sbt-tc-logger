@@ -21,7 +21,7 @@ The trade-off is that shared code and unit tests are compiled once per target, s
 
 ## Code style
 
-Write Scala 3 code with braces, rather than significant-indentation syntax. In particular, use `{ ... }` for template and control-flow bodies instead of Scala 3's `:` and `then` forms. The Scala 3 projects compile with `-no-indent`, so braceless syntax is rejected by the compiler.
+Write Scala 3 code with braces, rather than significant-indentation syntax. In particular, use `{ ... }` for template and control-flow bodies instead of Scala 3's `:` and `then` forms. The Scala 3 projects compile with `-no-indent`, so braceless syntax is rejected by the compiler. The Scala 2.12 logger target compiles with `-Xsource:3`, so prefer syntax accepted by both modes in shared sources.
 
 ## Build the logger locally
 

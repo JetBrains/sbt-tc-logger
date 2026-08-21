@@ -3,7 +3,7 @@ package org.jetbrains.teamcity.plugins.sbt.logger.buildLog
 
 import java.net.URI
 
-import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage._
+import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage.*
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
 
 import scala.collection.mutable

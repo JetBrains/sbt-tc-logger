@@ -3,7 +3,7 @@ package org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages
 import java.io.{ByteArrayOutputStream, PrintStream}
 
 import jetbrains.buildServer.messages.serviceMessages.ServiceMessage
-import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage._
+import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage.*
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 

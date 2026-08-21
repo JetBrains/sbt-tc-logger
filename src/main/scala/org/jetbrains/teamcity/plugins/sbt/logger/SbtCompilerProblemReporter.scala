@@ -64,7 +64,7 @@ final class SbtCompilerProblemReporter(
   }
 
   private def logLevel(severity: xsbti.Severity): String = {
-    import xsbti.Severity._
+    import xsbti.Severity.*
     severity match {
       case Info => "INFO"
       case Warn => "WARN"

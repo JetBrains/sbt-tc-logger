@@ -1,7 +1,7 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger.reporting
 
-import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage._
+import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage.*
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
 
 /** Publishes compiler problems as TeamCity Code Inspections without creating Build Log output. */
@@ -9,7 +9,7 @@ final class SbtCompilerInspectionReporter(
   writer: TeamCityServiceMessageWriter,
   toFilePosition: xsbti.Position => Option[SbtCompilerInspectionReporter.FilePosition]
 ) {
-  import SbtCompilerInspectionReporter._
+  import SbtCompilerInspectionReporter.*
 
   private var inspectionTypeDeclared = false
 
@@ -44,7 +44,7 @@ object SbtCompilerInspectionReporter {
     CompilerInspectionType(SbtCompileProblemInspectionType, "sbt compile problem", "Compile problems", "Compile problems")
 
   private def inspectionSeverity(severity: xsbti.Severity): InspectionSeverity = {
-    import xsbti.Severity._
+    import xsbti.Severity.*
     severity match {
       case Info => InspectionSeverity.Info
       case Warn => InspectionSeverity.Warning

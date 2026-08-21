@@ -103,6 +103,9 @@ lazy val loggerSbt1Settings: Seq[Def.Setting[_]] = Seq(
   scalaVersion := ScalaVersion_212,
   crossScalaVersions := Nil,
   pluginCrossBuild / sbtVersion := SbtVersion_1xx,
+  // Keep shared Scala 2.12 and Scala 3 sources as close as the compatibility baseline permits.
+  Compile / scalacOptions ~= { options => (options :+ "-Xsource:3").distinct },
+  Test / scalacOptions ~= { options => (options :+ "-Xsource:3").distinct },
   // SBT 1 plugins must still load in Java 8 runtimes.
   Compile / scalacOptions ++= Seq("-release", "8"),
   Compile / javacOptions ++= Seq("--release", "8"),

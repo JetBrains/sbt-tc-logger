@@ -1,15 +1,15 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import _root_.sbt.Keys._
+import _root_.sbt.Keys.*
 import _root_.sbt.internal.LogManager
 import _root_.sbt.internal.util.AttributeKey
-import _root_.org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter._
+import _root_.org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.*
 import _root_.org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildEventReporter, SbtCoursierDependencyEventReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
 import _root_.org.jetbrains.teamcity.plugins.sbt.logger.reporting.{SbtInitializerErrorTestFailureReporter, SbtTestReportListener}
 import _root_.org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{StandardOutputTeamCityServiceMessageWriter, TeamCityServiceMessageWriter}
 import _root_.sbt.plugins.JvmPlugin
-import _root_.sbt.{Def, _}
+import _root_.sbt.{Def, *}
 import _root_.sbt.util.Level
 
 /** Native SBT 1.4+ implementation of the TeamCity logger. */
@@ -29,14 +29,14 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     "ivyConfiguration",
     "ivySbt"
   )
-  private val CompilerTaskKeys: Set[AttributeKey[_]] = Set(compile.key, compileIncremental.key)
-  private val TestTaskKeys: Set[AttributeKey[_]] = Set(test.key, testOnly.key, testQuick.key)
+  private val CompilerTaskKeys: Set[AttributeKey[?]] = Set(compile.key, compileIncremental.key)
+  private val TestTaskKeys: Set[AttributeKey[?]] = Set(test.key, testOnly.key, testQuick.key)
 
   def apply(state: State): State = {
     if (SbtTeamCityLoggerSettings.loggerLoadState.contains("reloaded")) return state
 
     val extracted = Project.extract(state)
-    import extracted.{structure => extractedStructure, _}
+    import extracted.{structure as extractedStructure, *}
     val transformedProjectSettings = extractedStructure.allProjectPairs.flatMap { case (resolvedProject, projectRef) =>
       val project = projectScope(projectRef)
       transformSettings(project, projectRef.build, rootProject, SbtTeamCityLogger.projectSettings) ++
@@ -54,7 +54,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     reapply(session.appendRaw(transformedProjectSettings), state)
   }
 
-  private def transformSettings(thisScope: Scope, uri: URI, rootProject: URI => String, settings: Seq[Setting[_]]): Seq[Setting[_]] =
+  private def transformSettings(thisScope: Scope, uri: URI, rootProject: URI => String, settings: Seq[Setting[?]]): Seq[Setting[?]] =
     Project.transform(Scope.resolveScope(thisScope, uri, rootProject), settings)
 
   private def reapply(session: SessionSettings, state: State): State =
@@ -91,7 +91,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   override lazy val projectSettings = if (isRunningUnderTeamCity) loggerOnSettings else loggerOffSettings
 
-  private lazy val loggerOnSettings: Seq[Def.Setting[_]] = {
+  private lazy val loggerOnSettings: Seq[Def.Setting[?]] = {
     val ordinaryTaskLogging = if (preserveConsole) Nil else Seq(
       logManager := {
         val configuredExtraAppenders = extraAppenders.value
@@ -113,7 +113,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     ) ++ ordinaryTaskLogging
   }
 
-  private lazy val loggerOffSettings: Seq[Def.Setting[_]] = Seq(
+  private lazy val loggerOffSettings: Seq[Def.Setting[?]] = Seq(
     commands += teamCityLoggerStatusCommand
   )
 
@@ -123,7 +123,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
    * TODO: Support compilable custom configurations by enumerating configurations that define `compileIncremental`,
    * then installing their reporter, lifecycle finalizers, lazy appender start, flow ID, and configuration-aware title.
    */
-  private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[_]] = Seq(
+  private def lifecycleSettings(scope: String, projectName: String): Seq[Def.Setting[?]] = Seq(
     (compileIncremental in Compile).toSettingKey ~= { original =>
       original.andFinally(sbtBuildEventReporter.compilationFinished(compilerFlowId(scope, Compile.name), Some(projectName)))
     },
@@ -147,7 +147,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     projectName: String,
     extracted: Extracted,
     state: State
-  ): Seq[Def.Setting[_]] = {
+  ): Seq[Def.Setting[?]] = {
     val coursierEnabled = extracted.getOpt(useCoursier in projectRef)
       .orElse(extracted.getOpt(useCoursier in Global))
       .getOrElse(false)
@@ -160,7 +160,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     }
   }
 
-  private def detailedDependencySettingsFor(projectName: String, configuration: String): Seq[Def.Setting[_]] = Seq(
+  private def detailedDependencySettingsFor(projectName: String, configuration: String): Seq[Def.Setting[?]] = Seq(
     update.toSettingKey ~= { original =>
       original
         .dependsOn(_root_.sbt.std.TaskExtra.task(sbtDependencyResolutionReporter.started()))
@@ -188,7 +188,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     level.orElse(state.get(logLevel.key)).contains(Level.Debug)
   }
 
-  private def compilerReporterSettings(scope: String, projectName: String): Seq[Def.Setting[_]] =
+  private def compilerReporterSettings(scope: String, projectName: String): Seq[Def.Setting[?]] =
     inConfig(Compile)(Seq(reporterSettings(
       sbtBuildEventReporter,
       teamCityServiceMessageWriter,
@@ -226,7 +226,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   private def getScopeId(scope: ScopeAxis[Reference]): String = scope.hashCode().toString
 
-  private def flowIdFor(key: ScopedKey[_]): String = {
+  private def flowIdFor(key: ScopedKey[?]): String = {
     val scope = key.scope
     val project = getScopeId(scope.project)
     val configuration = scope.config.toOption.map(_.name).getOrElse("global")
@@ -235,10 +235,10 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     s"$project:$configuration:$phase"
   }
 
-  private def isCompilerTask(key: ScopedKey[_]): Boolean =
+  private def isCompilerTask(key: ScopedKey[?]): Boolean =
     key.scope.task.toOption.exists(CompilerTaskKeys.contains)
 
-  private def compilationStartFor(key: ScopedKey[_]): Option[() => Unit] = {
+  private def compilationStartFor(key: ScopedKey[?]): Option[() => Unit] = {
     val isCompileIncremental = key.scope.task.toOption.contains(compileIncremental.key)
     val configuration = key.scope.config.toOption.map(_.name)
     if (!isCompileIncremental || !configuration.exists(name => name == Compile.name || name == Test.name)) None
@@ -252,7 +252,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     }
   }
 
-  private def isTestTask(key: ScopedKey[_]): Boolean =
+  private def isTestTask(key: ScopedKey[?]): Boolean =
     key.scope.task.toOption.exists(TestTaskKeys.contains)
 
   private def testResultLoggerSettings(
@@ -261,7 +261,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     projectRef: ProjectRef,
     configurations: Seq[Configuration],
     scopeId: String
-  ): Seq[Def.Setting[_]] = configurations.flatMap { configuration =>
+  ): Seq[Def.Setting[?]] = configurations.flatMap { configuration =>
     settingWhenDefined(structure, projectRef, configuration, test.key,
       testResultLogger in (configuration, test) ~= controlledTestResultLogger(
         resultFlowId(scopeId, configuration, test.key),
@@ -283,9 +283,9 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     structure: _root_.sbt.internal.BuildStructure,
     projectRef: ProjectRef,
     configuration: Configuration,
-    taskKey: AttributeKey[_],
-    setting: => Def.Setting[_]
-  ): Seq[Def.Setting[_]] = {
+    taskKey: AttributeKey[?],
+    setting: => Def.Setting[?]
+  ): Seq[Def.Setting[?]] = {
     val scope = Scope(Select(projectRef), Select(configuration), Select(taskKey), Zero)
     if (structure.data.get(scope, testResultLogger.key).isDefined) Seq(setting) else Nil
   }
@@ -303,13 +303,13 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     state: State,
     projectRef: ProjectRef,
     configuration: Configuration,
-    taskKey: AttributeKey[_]
+    taskKey: AttributeKey[?]
   ): Level.Value = {
     val scope = Scope(Select(projectRef), Select(configuration), Select(taskKey), Zero)
     LogManager.getOr(logLevel.key, structure.data, scope, state, Level.Info)
   }
 
-  private def resultFlowId(project: String, configuration: Configuration, taskKey: AttributeKey[_]): String =
+  private def resultFlowId(project: String, configuration: Configuration, taskKey: AttributeKey[?]): String =
     s"$project:${configuration.name}:general:${taskKey.label}"
 
   private def phaseForTask(task: String): String =

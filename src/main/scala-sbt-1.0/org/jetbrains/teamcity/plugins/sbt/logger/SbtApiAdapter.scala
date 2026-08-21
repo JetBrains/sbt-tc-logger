@@ -37,7 +37,7 @@ object SbtApiAdapter {
     flowId: String,
     ensureCompilationStarted: () => Unit,
     reportCompilerOutput: Boolean
-  ): Def.Setting[_] = {
+  ): Def.Setting[?] = {
     import _root_.sbt.Keys.compile
     SbtPrivateKeys.compilerReporter in compile := {
       val defaultReporter = (SbtPrivateKeys.compilerReporter in compile).value

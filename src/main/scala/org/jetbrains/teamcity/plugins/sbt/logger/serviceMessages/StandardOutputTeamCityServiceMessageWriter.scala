@@ -17,7 +17,7 @@ final class StandardOutputTeamCityServiceMessageWriter(output: PrintStream = Sys
 }
 
 private[serviceMessages] object TeamCityServiceMessageRenderer {
-  import TeamCityServiceMessage._
+  import TeamCityServiceMessage.*
 
   def render(message: TeamCityServiceMessage): String = message match {
     case BuildLogMessage(status, text, flowId) =>
