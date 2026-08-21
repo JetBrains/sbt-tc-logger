@@ -1,8 +1,9 @@
 import sbt.Def
 import sbtassembly.AssemblyPlugin.autoImport.*
 
-// Compile the SBT 1.4+ artifact with the latest Scala 2.12 compiler. Plugins cross-build on the Scala binary
-// version, while the integration suite proves the 1.4/JDK 8 minimum and a current SBT 1.12 runtime.
+// Compile the SBT 1.4+ artifact with the latest Scala 2.12 compiler. The two
+// plugin targets are intentionally concrete SBT projects so IntelliJ exposes
+// both target classpaths at the same time. See CONTRIBUTING.md#cross-building-topology.
 val ScalaVersion_212 = "2.12.21"
 val ScalaVersion_3 = "3.8.4"
 
@@ -11,93 +12,107 @@ val ScalaVersion_3 = "3.8.4"
 val SbtVersion_1xx = "1.4.0"
 val SbtVersion_2xx = "2.0.0"
 
+val WorkspaceRoot = file(".").getCanonicalFile
+val SharedLoggerSources = WorkspaceRoot / "src" / "main" / "scala"
+val SharedLoggerTestSources = WorkspaceRoot / "src" / "test" / "scala"
+val IntegrationTestArtifactsDirectory = WorkspaceRoot / "target" / "integration-tests" / "artifacts"
+
 ThisBuild / resolvers := Seq(
   "JetBrains Maven Central" at "https://cache-redirector.jetbrains.com/maven-central"
 )
 
-lazy val logger: Project = (project in file("."))
+val prepareIntegrationTestArtifacts = taskKey[File](
+  "Assembles and stages logger JARs for integration tests."
+)
+
+lazy val root: Project = (project in file("."))
   .aggregate(
+    loggerSbt1,
+    loggerSbt2,
     integrationTests
   )
   .settings(
     name := "sbt-teamcity-logger",
-    sbtPlugin := true,
-
-    pluginCrossBuildSettings,
-    pluginPublishingSettings,
-    integrationTestArtifactPreparationSettings,
-
-    // Library dependency to be able to use Java API for `##teamcity` service messages
-    libraryDependencies ++= Seq(
-      "org.jetbrains.teamcity" % "serviceMessages" % "2026.1.3",
-      "junit" % "junit" % "4.13.2" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test
-    ),
-    // needed for "service messages" library
-    resolvers += "jetbrains-teamcity-repository" at "https://download.jetbrains.com/teamcity-repository",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories := Nil,
+    // `src/test/scala` belongs to the two concrete plugin targets. Keeping it
+    // off this aggregate lets IntelliJ import one shared test-sources module
+    // with a dependency from each target-specific test module; see
+    // CONTRIBUTING.md#cross-building-topology for why this is intentional.
+    Test / unmanagedSourceDirectories := Nil,
+    Test / managedSourceDirectories := Nil,
+    Test / unmanagedResourceDirectories := Nil,
+    Test / managedResourceDirectories := Nil,
+    // Aggregation invokes the concrete modules' staging tasks. The root result
+    // is their shared destination, which is useful for manual invocation only.
+    prepareIntegrationTestArtifacts := {
+      IO.createDirectory(IntegrationTestArtifactsDirectory)
+      IntegrationTestArtifactsDirectory
+    },
+    prepareIntegrationTestArtifacts / aggregate := true,
   )
 
-val isSbt1 = settingKey[Boolean]("Whether the current cross-build target is SBT 1.x.")
-val isSbt2 = settingKey[Boolean]("Whether the current cross-build target is SBT 2.x.")
-def isSbt1Impl(version: String): Boolean = version.startsWith("1.")
-def isSbt2Impl(version: String): Boolean = version.startsWith("2.")
-
-lazy val pluginCrossBuildSettings: Seq[Def.Setting[_]] = Seq(
-  scalaVersion := ScalaVersion_212,
-  crossScalaVersions := Seq(
-    ScalaVersion_212, // for sbt 1.x
-    ScalaVersion_3 // for sbt 2.x
-  ),
-  pluginCrossBuild / sbtVersion := {
-    scalaBinaryVersion.value match {
-      case "2.12" => SbtVersion_1xx
-      case "3" => SbtVersion_2xx
-      case binaryVersion => sys.error(s"Unsupported Scala binary version for sbt-teamcity-logger: $binaryVersion")
-    }
-  },
-  isSbt1 := isSbt1Impl((pluginCrossBuild / sbtVersion).value),
-  isSbt2 := isSbt2Impl((pluginCrossBuild / sbtVersion).value),
-  // SBT 1 plugins must still load in Java 8 runtimes. The SBT 2 cross-build
-  // needs Java 17, so keep its default release target.
-  Compile / scalacOptions ++= {
-    if (isSbt1.value) Seq("-release", "8")
-    else Nil
-  },
-  Compile / javacOptions ++= {
-    if (isSbt1.value) Seq("--release", "8")
-    else Nil
-  },
-) ++ sbt2CompatibilitySettings
+lazy val loggerSbt1: Project = (project in file("src/main/scala-sbt-1.0"))
+  .settings(
+    loggerProjectSettings("loggerSbt1"),
+    loggerSbt1Settings,
+  )
 
 /**
- * Configures the Scala 3/SBT 2 target while this project is still hosted by SBT 1.
+ * Fixed SBT 2/Scala 3 logger target while this repository is hosted by SBT 1.
  *
- * The Scala 2.12/SBT 1 target remains a normal `sbtPlugin`. Its conventions provide the SBT API dependency and
- * discover `src/main/scala-sbt-1.0` automatically. SBT 1.12 cannot enable those conventions for an SBT 2 target,
- * so the SBT 2 target supplies the API and source directory explicitly. It nevertheless uses SBT 2's standard
- * `_sbt2_3` Maven coordinate via `CrossVersion.binaryWith`.
- *
- * Re-add the SBT 2 API as `Provided` and its source directory explicitly. Keeping the SBT 1 settings implicit avoids
- * duplicating its convention-supplied dependency and source-directory configuration.
- *
- * `sbtPlugin` remains enabled for both targets so each published artifact contains plugin-discovery metadata.
- * TODO: After moving the host in project/build.properties to SBT 2, remove this compatibility shim (the explicit
- * SBT API, source directory, and cross-version setting).
+ * SBT 1.12 cannot provide the SBT 2 plugin conventions, so this module keeps
+ * the explicit SBT API dependency and the standard SBT 2 Maven cross-version.
  */
-lazy val sbt2CompatibilitySettings: Seq[Def.Setting[_]] = Seq(
-  crossVersion := {
-    if (isSbt2.value) CrossVersion.binaryWith("sbt2_", "")
-    else CrossVersion.binary
-  },
-  libraryDependencies ++= {
-    if (isSbt2.value)
-      Seq((pluginCrossBuild / sbtDependency).value % Provided)
-    else Nil
-  },
-  Compile / unmanagedSourceDirectories ++= {
-    if (isSbt2.value) Seq(file("src/main/scala-sbt-2.0"))
-    else Nil
-  },
+lazy val loggerSbt2: Project = (project in file("src/main/scala-sbt-2.0"))
+  .settings(
+    loggerProjectSettings("loggerSbt2"),
+    loggerSbt2Settings,
+  )
+
+/** Settings shared by both concrete logger modules. */
+def loggerProjectSettings(targetDirectory: String): Seq[Def.Setting[_]] = Seq(
+  name := "sbt-teamcity-logger",
+  sbtPlugin := true,
+  // Each project is rooted at its SBT-specific source directory. Attach the
+  // common implementation explicitly so the IDE imports it into both modules.
+  Compile / unmanagedSourceDirectories := Seq(baseDirectory.value, SharedLoggerSources),
+  // Unit tests are source-compatible across the supported SBT lines. Attach
+  // the one shared root to both targets rather than making the aggregate root
+  // own it; IntelliJ then mirrors the shared-main-sources topology for tests.
+  // See CONTRIBUTING.md#cross-building-topology for the trade-off.
+  Test / unmanagedSourceDirectories := Seq(SharedLoggerTestSources),
+  Test / unmanagedResourceDirectories := Nil,
+  // Do not create target directories below source roots; each target is also
+  // isolated so both modules can package concurrently.
+  target := WorkspaceRoot / "target" / targetDirectory,
+
+  // Library dependency to be able to use Java API for `##teamcity` service messages
+  libraryDependencies ++= Seq(
+    "org.jetbrains.teamcity" % "serviceMessages" % "2026.1.3",
+    "junit" % "junit" % "4.13.2" % Test,
+    "com.github.sbt" % "junit-interface" % "0.13.3" % Test
+  ),
+  // needed for "service messages" library
+  resolvers += "jetbrains-teamcity-repository" at "https://download.jetbrains.com/teamcity-repository",
+) ++ pluginPublishingSettings ++ integrationTestArtifactPreparationSettings
+
+/** Fixed SBT 1.4+/Scala 2.12 logger target. */
+lazy val loggerSbt1Settings: Seq[Def.Setting[_]] = Seq(
+  scalaVersion := ScalaVersion_212,
+  crossScalaVersions := Nil,
+  pluginCrossBuild / sbtVersion := SbtVersion_1xx,
+  // SBT 1 plugins must still load in Java 8 runtimes.
+  Compile / scalacOptions ++= Seq("-release", "8"),
+  Compile / javacOptions ++= Seq("--release", "8"),
+)
+
+lazy val loggerSbt2Settings: Seq[Def.Setting[_]] = Seq(
+  scalaVersion := ScalaVersion_3,
+  crossScalaVersions := Nil,
+  pluginCrossBuild / sbtVersion := SbtVersion_2xx,
+  crossVersion := CrossVersion.binaryWith("sbt2_", ""),
+  libraryDependencies += (pluginCrossBuild / sbtDependency).value % Provided,
 )
 
 lazy val pluginPublishingSettings: Seq[Def.Setting[_]] = Seq(
@@ -114,17 +129,13 @@ lazy val pluginPublishingSettings: Seq[Def.Setting[_]] = Seq(
   assembly / test := sbt.protocol.testing.TestResult.Passed,
 )
 
-val prepareIntegrationTestArtifacts = taskKey[File](
-  "Assembles and stages a logger JAR for integration tests."
-)
-
 lazy val integrationTestArtifactPreparationSettings: Seq[Def.Setting[_]] = Seq(
   prepareIntegrationTestArtifacts := {
     val packagedJar = (Compile / packageBin).value
     // Test-artifact contract: one staged JAR per sbt plugin binary version. `SbtPluginUnderTest.packagedJar`
     // resolves this same path, so tests never depend on `packageBin`'s versioned output layout or filename.
     val sbtPluginBinaryVersion = (pluginCrossBuild / sbtBinaryVersion).value
-    val stagedJar = target.value / "integration-tests" / "artifacts" / s"sbt-$sbtPluginBinaryVersion.jar"
+    val stagedJar = IntegrationTestArtifactsDirectory / s"sbt-$sbtPluginBinaryVersion.jar"
     val log = streams.value.log
 
     IO.createDirectory(stagedJar.getParentFile)
@@ -149,11 +160,10 @@ lazy val integrationTestArtifactPreparationSettings: Seq[Def.Setting[_]] = Seq(
  */
 lazy val integrationTests: Project = (project in file("test"))
   .settings(
-    // Keep this helper project private and independent of published plugin cross-builds.
     name := "sbt-tc-logger-integration-tests",
     publish / skip := true,
 
-    scalaVersion := "3.8.4",
+    scalaVersion := ScalaVersion_3,
     scalacOptions += "-no-indent",
     crossScalaVersions := Seq(scalaVersion.value),
 
@@ -161,6 +171,20 @@ lazy val integrationTests: Project = (project in file("test"))
     Test / fork := true,
     // Nested sbt processes share an isolated global base, so run cases sequentially.
     Test / parallelExecution := false,
+    // Every standard or focused test invocation receives fresh staged plugin
+    // artifacts without needing a preceding `+prepare...` command.
+    Test / test := (Test / test)
+      .dependsOn(
+        loggerSbt1 / prepareIntegrationTestArtifacts,
+        loggerSbt2 / prepareIntegrationTestArtifacts
+      )
+      .value,
+    Test / testOnly := (Test / testOnly)
+      .dependsOn(
+        loggerSbt1 / prepareIntegrationTestArtifacts,
+        loggerSbt2 / prepareIntegrationTestArtifacts
+      )
+      .evaluated,
 
     libraryDependencies ++= junitTestFrameworkDependencies ++ Seq(
       // Exact transcripts are validated as raw wire text, but every TeamCity-looking line must still be syntactically valid.

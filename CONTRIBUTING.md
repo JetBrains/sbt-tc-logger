@@ -3,15 +3,23 @@
 ## Prerequisites
 
 Use JDK 17 to run the repository's SBT build and integration-test harness; set `JAVA_HOME` to a JDK 17 installation before invoking `sbt`. \
-The host remains SBT 1.12.12 while it cross-builds the logger against the compatibility baselines SBT 1.4.0/Scala 2.12.21 and SBT 2.0.0/Scala 3.8.4. \
+The host remains SBT 1.12.15 while it builds the logger as concrete SBT 1 and SBT 2 modules against the compatibility baselines SBT 1.4.0/Scala 2.12.21 and SBT 2.0.0/Scala 3.8.4. \
 Those are plugin compilation targets, not the concrete nested SBT versions exercised by integration tests.
 
 The SBT 1.x logger is compiled with Java 8 release compatibility so it remains loadable by supported SBT 1 runtimes; the SBT 2.x logger and the build itself run on JDK 17. \
 Running the full integration suite also requires an exact local JDK 8 installation. The harness deliberately rejects Java 11 or another newer version in place of JDK 8, and requires an exact JDK 17 installation for its JDK-17 matrix entries.
 
+## Cross-building topology
+
+This repository deliberately does not use SBT's conventional Scala-version cross-build for the logger plugin. Instead, `loggerSbt1` and `loggerSbt2` are concrete projects with fixed Scala/SBT compatibility baselines. Each owns its target-specific sources and directly attaches the shared `src/main/scala` and `src/test/scala` roots.
+
+This is a non-standard structure for an SBT plugin. It is intentional: IntelliJ can import both target classpaths at once, model the common code as shared sources, and expose separate SBT 1 and SBT 2 modules without a developer having to switch the active cross-build target. That gives correct target-specific dependencies and test highlighting while working on either compatibility line.
+
+The trade-off is that shared code and unit tests are compiled once per target, so they must remain source-compatible with both Scala 2.12/SBT 1 and Scala 3/SBT 2. Do not collapse these projects back into a conventional cross-build unless the IDE model can retain those properties.
+
 ## Build the logger locally
 
-`sbt +publishLocal`
+`sbt publishLocal`
 
 Use this as the main local-development build command. It publishes the compatibility variants to the local Maven repository using artifact filenames derived from their coordinates and version.
 
@@ -23,24 +31,19 @@ TeamCity service messages are resolved as the managed `org.jetbrains.teamcity:se
 Integration tests launch nested SBT with the exact, explicit JDK selected by each concrete JUnit class. The outer harness still runs on JDK 17.
 
 Integration tests load the assembled logger jar into nested sbt with sbt's `apply -cp` command. \
-Before running them, build the plugin jar:
+The test task automatically assembles and stages both primary artifacts under `target/integration-tests/artifacts/` before launching the harness.
 
-`sbt +prepareIntegrationTestArtifacts`
-
-This test-only preparation step copies the self-contained primary artifact to `target/integration-tests/artifacts/sbt-<binary-version>.jar`. It does not change the versioned filenames or target-directory layout used by normal packaging and publishing.
-
-Then run the tests:
+Run the tests:
 
 `sbt test`
 
 ### Integration test workflow
 
-1. The pre-step assembles `sbt-teamcity-logger` and stages one self-contained JAR per SBT line under `target/integration-tests/artifacts/`.
-2. `sbt test` enters the Scala/JUnit harness in the `integrationTests` project.
-3. Each JUnit test copies its fixture to a scenario-qualified directory under `target/integration-tests/work/<runtime>/`, renders its `sbt.version=@SBT_VERSION@` template with that runtime's concrete version, then starts a fresh nested SBT server for that scenario.
-4. The nested command order is: load the logger, configure the scenario cache, run setup commands, print the `sbt-teamcity-logger` status handshake, then run behavior commands. Plain SBT output before the handshake is outside the product contract, but any pre-handshake TeamCity service message fails the test.
-5. Fixture-root names express their minimum SBT version: `testdata/1.4+` is the modern SBT 1 corpus, `testdata/1.9+` is the JaCoCo extension, and `testdata/2.0+` is the SBT 2 corpus. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
-6. From the handshake through process completion, the harness compares every merged stdout/stderr line with the fixture's exact `expected/<profile>/<scenario-id>.txt` transcript. It also parses every TeamCity-looking line with TeamCity's service-message parser and checks the nested process result independently.
+1. `sbt test` assembles and stages one self-contained JAR per SBT line under `target/integration-tests/artifacts/`, then enters the Scala/JUnit harness in the `integrationTests` project.
+2. Each JUnit test copies its fixture to a scenario-qualified directory under `target/integration-tests/work/<runtime>/`, renders its `sbt.version=@SBT_VERSION@` template with that runtime's concrete version, then starts a fresh nested SBT server for that scenario.
+3. The nested command order is: load the logger, configure the scenario cache, run setup commands, print the `sbt-teamcity-logger` status handshake, then run behavior commands. Plain SBT output before the handshake is outside the product contract, but any pre-handshake TeamCity service message fails the test.
+4. Fixture-root names express their minimum SBT version: `testdata/1.4+` is the modern SBT 1 corpus, `testdata/1.9+` is the JaCoCo extension, and `testdata/2.0+` is the SBT 2 corpus. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
+5. From the handshake through process completion, the harness compares every merged stdout/stderr line with the fixture's exact `expected/<profile>/<scenario-id>.txt` transcript. It also parses every TeamCity-looking line with TeamCity's service-message parser and checks the nested process result independently.
 
 Useful targeted commands:
 
@@ -139,7 +142,7 @@ The checked-in CI configuration will be updated separately. Until then, this is 
 3. The checkout fetches complete history and tags. A shallow checkout or `--no-tags` clone makes dynver unable to find the release tag.
 4. CI verifies that the checkout is clean, `git describe --exact-match --tags HEAD` is the triggering tag, `sbt dynverAssertTagVersion` succeeds, and `sbt 'show version'` equals the tag with its leading `v` removed.
 5. CI runs the required test matrix, including the SBT 1.x and SBT 2.x integration tests.
-6. Only after those checks pass, CI cross-publishes both logger variants with the same derived version. The CI publishing step must use cross publication (for example, `+publish`), not a single-target `publish` invocation.
+6. Only after those checks pass, CI publishes both logger modules with the same derived version through the aggregate root (`publish`), not a single module invocation.
 7. CI records the immutable tag, commit SHA, and published version in the release result. Snapshot publication, if introduced later, must use a separate snapshots repository and must never replace a release artifact.
 
 The release checkout must have Git available and must fetch tags before SBT loads the build. This is required by dynver, not merely by the CI implementation.
