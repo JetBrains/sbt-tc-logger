@@ -9,7 +9,6 @@ import _root_.org.jetbrains.teamcity.plugins.sbt.logger.apiAdapter._
 import sbt.plugins.JvmPlugin
 import sbt.{Def, _}
 import sbt.util.Level
-import lmcoursier.definitions.CacheLogger
 
 /** Native SBT 1.4+ implementation of the TeamCity logger. */
 object SbtTeamCityLogger extends AutoPlugin with (State => State) {
@@ -313,19 +312,4 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   private def compilerFlowId(project: String, configuration: String): String =
     s"$project:$configuration:compiler"
 
-}
-
-/** Version-local boundary for the Coursier API; the shared reporter remains free of sbt implementation classes. */
-private final class DetailedCoursierLogger(appender: TCLogAppender, projectName: String, configuration: String) extends CacheLogger {
-  override def foundLocally(url: String): Unit =
-    appender.detailedDependencyFoundLocally(projectName, configuration, url)
-
-  override def downloadingArtifact(url: String): Unit =
-    appender.detailedDependencyDownloading(projectName, configuration, url)
-
-  override def downloadLength(url: String, totalLength: Long, alreadyDownloaded: Long, watching: Boolean): Unit =
-    appender.detailedDependencyDownloadLength(projectName, configuration, url, totalLength)
-
-  override def downloadedArtifact(url: String, success: Boolean): Unit =
-    appender.detailedDependencyDownloaded(projectName, configuration, url, success)
 }
