@@ -43,9 +43,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
         (if (isRunningUnderTeamCity) transformSettings(project, projectRef.build, rootProject, compilerReporterSettings(getScopeId(project.project), projectRef.project)) else Nil) ++
         (if (isRunningUnderTeamCity && !preserveConsole) {
           val scopeId = getScopeId(project.project)
-          val resultLoggerSettings = if (testResultLoggerFound) {
-            testResultLoggerSettings(extractedStructure, state, projectRef, resolvedProject.configurations, scopeId)
-          } else Nil
+          val resultLoggerSettings = testResultLoggerSettings(extractedStructure, state, projectRef, resolvedProject.configurations, scopeId)
           transformSettings(project, projectRef.build, rootProject, resultLoggerSettings) ++
             transformSettings(project, projectRef.build, rootProject, lifecycleSettings(scopeId, projectRef.project)) ++
             transformSettings(project, projectRef.build, rootProject, detailedDependencySettings(projectRef, projectRef.project, extracted, state))
@@ -81,13 +79,6 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   private val loggerLoadState: String = SbtTeamCityLoggerSettings.loggerLoadState.orNull
   if (loggerLoadState == null) System.setProperty(loggerLoadStateProperty, "loaded")
   else if (loggerLoadState == "loaded") System.setProperty(loggerLoadStateProperty, "reloaded")
-
-  private val testResultLoggerFound = try {
-    val _: Def.Initialize[_root_.sbt.TestResultLogger] = Def.setting((Test / testResultLogger).value)
-    true
-  } catch {
-    case _: java.lang.NoSuchMethodError => false
-  }
 
   override lazy val projectSettings = if (isRunningUnderTeamCity) loggerOnSettings else loggerOffSettings
 
