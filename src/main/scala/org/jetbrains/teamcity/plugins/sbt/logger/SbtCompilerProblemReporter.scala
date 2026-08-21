@@ -16,7 +16,7 @@ import scala.collection.mutable
  * publication and structured Build Log output to their independently scoped collaborators.
  */
 final class SbtCompilerProblemReporter(
-  delegate: xsbti.Reporter,
+  defaultReporter: xsbti.Reporter,
   buildEventReporter: SbtBuildEventReporter,
   writer: TeamCityServiceMessageWriter,
   flowId: String,
@@ -28,7 +28,7 @@ final class SbtCompilerProblemReporter(
 
   override def reset(): Unit = synchronized {
     reportedProblems.clear()
-    delegate.reset()
+    defaultReporter.reset()
   }
 
   override def hasErrors: Boolean = synchronized {
@@ -40,7 +40,9 @@ final class SbtCompilerProblemReporter(
   }
 
   override def printSummary(): Unit = {
-    if (!reportCompilerOutput) delegate.printSummary()
+    if (!reportCompilerOutput) {
+      defaultReporter.printSummary()
+    }
   }
 
   override def problems(): Array[Problem] = synchronized {
@@ -48,7 +50,9 @@ final class SbtCompilerProblemReporter(
   }
 
   override def comment(position: Position, message: String): Unit = {
-    if (!reportCompilerOutput) delegate.comment(position, message)
+    if (!reportCompilerOutput) {
+      defaultReporter.comment(position, message)
+    }
   }
 
   override def log(problem: Problem): Unit = {
@@ -60,7 +64,9 @@ final class SbtCompilerProblemReporter(
     if (reportCompilerOutput) {
       buildEventReporter.recordCompilerProblem(flowId, problem.severity())
       buildEventReporter.log(logLevel(problem.severity()), formatProblem(problem), flowId)
-    } else delegate.log(problem)
+    } else {
+      defaultReporter.log(problem)
+    }
   }
 
   private def logLevel(severity: xsbti.Severity): String = {
@@ -79,9 +85,12 @@ final class SbtCompilerProblemReporter(
     }.getOrElse(problem.message())
     val sourceLine = Option(position.lineContent()).filter(_.nonEmpty)
     val pointer =
-      if (position.pointerSpace().isPresent) Some(position.pointerSpace().get() + "^")
-      else if (position.pointer().isPresent) Some((" " * position.pointer().get()) + "^")
-      else None
+      if (position.pointerSpace().isPresent)
+        Some(position.pointerSpace().get() + "^")
+      else if (position.pointer().isPresent)
+        Some((" " * position.pointer().get()) + "^")
+      else
+        None
 
     (Seq(sourceLocation) ++ sourceLine ++ pointer).mkString("\n")
   }

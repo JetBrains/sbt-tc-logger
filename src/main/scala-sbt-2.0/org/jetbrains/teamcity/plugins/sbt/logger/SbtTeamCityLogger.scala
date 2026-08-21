@@ -4,7 +4,6 @@ package org.jetbrains.teamcity.plugins.sbt.logger
 import sbt.Keys.*
 import sbt.internal.LogManager
 import sbt.internal.util.AttributeKey
-import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.reporterSettings
 import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiSupport.*
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildEventReporter, SbtCoursierDependencyEventReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
 import org.jetbrains.teamcity.plugins.sbt.logger.reporting.{SbtInitializerErrorTestFailureReporter, SbtTestReportListener}
@@ -183,14 +182,14 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   }
 
   private def compilerReporterSettings(scope: String, projectName: String): Seq[Def.Setting[?]] =
-    inConfig(Compile)(Seq(reporterSettings(
+    inConfig(Compile)(Seq(SbtCompilerReporterOverrideSettings.settings(
       sbtBuildEventReporter,
       teamCityServiceMessageWriter,
       compilerFlowId(scope, Compile.name),
       () => sbtBuildEventReporter.compilationStarted(compilerFlowId(scope, Compile.name), Some(projectName)),
       reportCompilerOutput = !preserveConsole
     ))) ++
-    inConfig(Test)(Seq(reporterSettings(
+    inConfig(Test)(Seq(SbtCompilerReporterOverrideSettings.settings(
       sbtBuildEventReporter,
       teamCityServiceMessageWriter,
       compilerFlowId(scope, Test.name),

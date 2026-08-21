@@ -49,12 +49,19 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
     val fullyQualifiedName = event.fullyQualifiedName
     event.selector match {
       case selector: TestSelector =>
-        if (fullyQualifiedName == selector.testName()) fullyQualifiedName
-        else fullyQualifiedName + "." + selector.testName
+        if (fullyQualifiedName == selector.testName())
+          fullyQualifiedName
+        else
+          s"$fullyQualifiedName.${selector.testName}"
       case selector: NestedTestSelector =>
-        val prefix = if (fullyQualifiedName == selector.testName()) "" else fullyQualifiedName + "."
-        prefix + selector.suiteId + "." + selector.testName
-      case _ => fullyQualifiedName
+        val prefix =
+          if (fullyQualifiedName == selector.testName())
+            ""
+          else
+            s"$fullyQualifiedName."
+        s"$prefix${selector.suiteId}.${selector.testName}"
+      case _ =>
+        fullyQualifiedName
     }
   }
 
@@ -63,7 +70,9 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
       val writer = new StringWriter
       throwable.get.printStackTrace(new PrintWriter(writer))
       writer.toString
-    } else ""
+    } else {
+      ""
+    }
   }
 
   private def flowId: String = Thread.currentThread().getId.toString
