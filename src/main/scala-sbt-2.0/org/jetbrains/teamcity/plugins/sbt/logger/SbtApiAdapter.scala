@@ -21,5 +21,4 @@ object SbtApiAdapter {
       new SbtCompilerProblemReporter(defaultReporter, buildEventReporter, writer, flowId, ensureCompilationStarted, reportCompilerOutput)
     }
   }
-
 }

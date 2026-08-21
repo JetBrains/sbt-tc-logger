@@ -4,7 +4,8 @@ package org.jetbrains.teamcity.plugins.sbt.logger
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
 import sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.SbtPrivateKeys
-import sbt.Def
+//NOTE: the extra import of sbtSlashSyntaxRichScopeFromScoped is a workaround for SCL-25850
+import sbt.{Def, sbtSlashSyntaxRichScopeFromScoped}
 
 /** SBT 1 compatibility boundary for APIs that differ from the SBT 2 target. */
 object SbtApiAdapter {
@@ -21,5 +22,4 @@ object SbtApiAdapter {
       new SbtCompilerProblemReporter(defaultReporter, buildEventReporter, writer, flowId, ensureCompilationStarted, reportCompilerOutput)
     }
   }
-
 }
