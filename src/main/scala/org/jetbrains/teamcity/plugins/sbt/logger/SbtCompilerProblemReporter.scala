@@ -1,7 +1,7 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.toFilePosition
+import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiSupport.toFilePosition
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
 import org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtCompilerInspectionReporter
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter

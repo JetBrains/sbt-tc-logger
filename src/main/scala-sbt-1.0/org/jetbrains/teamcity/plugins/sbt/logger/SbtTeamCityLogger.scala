@@ -4,7 +4,8 @@ package org.jetbrains.teamcity.plugins.sbt.logger
 import sbt.Keys.*
 import sbt.internal.LogManager
 import sbt.internal.util.AttributeKey
-import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.*
+import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiAdapter.reporterSettings
+import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiSupport.*
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildEventReporter, SbtCoursierDependencyEventReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
 import org.jetbrains.teamcity.plugins.sbt.logger.reporting.{SbtInitializerErrorTestFailureReporter, SbtTestReportListener}
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{StandardOutputTeamCityServiceMessageWriter, TeamCityServiceMessageWriter}
