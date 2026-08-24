@@ -95,7 +95,7 @@ final class SbtTaskLogAppender(
   private def renderObjectEvent(event: ObjectEvent[?]): Option[String] = {
     val renderedObject = LogExchange.stringCodec(event.contentType) match {
       case Some(renderer) =>
-        SbtObjectEventRenderer.combine(renderer.asInstanceOf[ShowLines[Any]].showLines(event.message))
+        RenderedLines.toMultilineStringIfAny(renderer.asInstanceOf[ShowLines[Any]].showLines(event.message))
       case None =>
         Some(event.message.toString)
     }

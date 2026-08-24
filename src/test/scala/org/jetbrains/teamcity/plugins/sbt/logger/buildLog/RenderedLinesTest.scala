@@ -3,13 +3,13 @@ package org.jetbrains.teamcity.plugins.sbt.logger.buildLog
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class SbtObjectEventRendererTest {
+class RenderedLinesTest {
   @Test def eventWithoutRenderedLinesIsSuppressed(): Unit =
-    assertEquals(None, SbtObjectEventRenderer.combine(Nil))
+    assertEquals(None, RenderedLines.toMultilineStringIfAny(Nil))
 
   @Test def intentionalBlankLineIsPreserved(): Unit =
-    assertEquals(Some(""), SbtObjectEventRenderer.combine(Seq("")))
+    assertEquals(Some(""), RenderedLines.toMultilineStringIfAny(Seq("")))
 
   @Test def multipleRenderedLinesRemainOneMessage(): Unit =
-    assertEquals(Some("first\nsecond"), SbtObjectEventRenderer.combine(Seq("first", "second")))
+    assertEquals(Some("first\nsecond"), RenderedLines.toMultilineStringIfAny(Seq("first", "second")))
 }
