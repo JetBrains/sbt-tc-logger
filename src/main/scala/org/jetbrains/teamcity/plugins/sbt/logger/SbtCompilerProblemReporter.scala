@@ -2,7 +2,7 @@
 package org.jetbrains.teamcity.plugins.sbt.logger
 
 import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiSupport.toFilePosition
-import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
+import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.compilation.{SbtCompilationFlow, SbtCompilationReporter}
 import org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtCompilerInspectionReporter
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
 import xsbti.{Position, Problem}
@@ -17,10 +17,9 @@ import scala.collection.mutable
  */
 final class SbtCompilerProblemReporter(
   defaultReporter: xsbti.Reporter,
-  buildEventReporter: SbtBuildEventReporter,
+  compilationReporter: SbtCompilationReporter,
   writer: TeamCityServiceMessageWriter,
-  flowId: String,
-  ensureCompilationStarted: () => Unit,
+  flow: SbtCompilationFlow,
   reportCompilerOutput: Boolean
 ) extends xsbti.Reporter {
   private val reportedProblems = mutable.ArrayBuffer.empty[Problem]
@@ -56,25 +55,15 @@ final class SbtCompilerProblemReporter(
   }
 
   override def log(problem: Problem): Unit = {
-    if (reportCompilerOutput) ensureCompilationStarted()
+    if (reportCompilerOutput) compilationReporter.started(flow)
     synchronized {
       reportedProblems += problem
     }
     inspectionReporter.report(problem)
     if (reportCompilerOutput) {
-      buildEventReporter.recordCompilerProblem(flowId, problem.severity())
-      buildEventReporter.log(logLevel(problem.severity()), formatProblem(problem), flowId)
+      compilationReporter.reportCompilerProblem(flow, problem.severity(), formatProblem(problem))
     } else {
       defaultReporter.log(problem)
-    }
-  }
-
-  private def logLevel(severity: xsbti.Severity): String = {
-    import xsbti.Severity.*
-    severity match {
-      case Info => "INFO"
-      case Warn => "WARN"
-      case Error => "ERROR"
     }
   }
 

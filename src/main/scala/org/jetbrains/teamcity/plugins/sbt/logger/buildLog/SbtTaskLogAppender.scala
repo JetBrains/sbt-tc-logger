@@ -2,6 +2,7 @@
 package org.jetbrains.teamcity.plugins.sbt.logger.buildLog
 
 import org.jetbrains.teamcity.plugins.sbt.logger.SbtTeamCityLoggerSettings
+import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.compilation.SbtCompilationReporter
 import sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.SbtConsoleAppenderBridge
 import sbt.internal.util.{Appender, ObjectEvent}
 import sbt.util.{Level, LogExchange, ShowLines}
@@ -13,7 +14,7 @@ import sjsonnew.support.scalajson.unsafe.CompactPrinter
  * `SbtTeamCityLogger` installs this as the per-task `screen` appender when it runs under TeamCity and
  * `preserveConsole` is disabled. It must be a `ConsoleAppender` (through `SbtConsoleAppenderBridge`): SBT's
  * `MainAppender` applies a task's effective screen log level only to appenders of that type. The bridge gives this
- * appender a no-op `ConsoleOut`, while the overridden methods send the event to `SbtBuildEventReporter`. Thus each
+ * appender a no-op `ConsoleOut`, while the overridden methods send the event to a Build Log reporter. Thus each
  * eligible event is shown once in TeamCity rather than also being printed as an ordinary SBT console line.
  *
  * For a normal task, the appender preserves the SBT level, renders an `ObjectEvent` to text when necessary, and
@@ -39,26 +40,22 @@ import sjsonnew.support.scalajson.unsafe.CompactPrinter
  * compilation lifecycle. In `preserveConsole` mode this appender is intentionally not installed: the plugin leaves
  * the normal SBT console presentation in place instead.
  *
- * @param buildEventReporter translates text and compiler lifecycle events into TeamCity Build Log service messages
+ * @param buildLogMessageReporter translates ordinary task text into TeamCity Build Log service messages
  * @param flowId identifies the SBT task's TeamCity flow
- * @param isCompilerTask enables compiler-flow routing and lazy compilation-start handling
+ * @param compilationReporter enables compiler-flow routing and lazy compilation-start handling when defined
  * @param compilationStart callback that starts the compiler flow before its first reported event, when available
  * @param reportIfInitializerError receives error text and the task flow ID for optional test-initializer reporting
  */
 final class SbtTaskLogAppender(
-  buildEventReporter: SbtBuildEventReporter,
+  buildLogMessageReporter: SbtBuildLogMessageReporter,
   flowId: String,
-  isCompilerTask: Boolean,
+  compilationReporter: Option[SbtCompilationReporter] = None,
   compilationStart: Option[() => Unit] = None,
   reportIfInitializerError: (String, String) => Unit = SbtTaskLogAppender.ignoreInitializerError
 ) extends SbtConsoleAppenderBridge(s"tc-logger-$flowId") {
 
-  def this(
-    buildEventReporter: SbtBuildEventReporter,
-    flowId: String,
-    isCompilerTask: Boolean
-  ) =
-    this(buildEventReporter, flowId, isCompilerTask, None)
+  def this(buildLogMessageReporter: SbtBuildLogMessageReporter, flowId: String) =
+    this(buildLogMessageReporter, flowId, None)
 
   private val compilationStartLock = new Object
   private var compilationStartRequested = false
@@ -76,11 +73,12 @@ final class SbtTaskLogAppender(
     if (Level.Error.equals(level)) {
       reportIfInitializerError(text, flowId)
     }
-    if (isCompilerTask) {
-      requestCompilationStart()
-      buildEventReporter.logCompilerMessage(level, text, flowId)
-    } else {
-      buildEventReporter.log(level, text, flowId)
+    compilationReporter match {
+      case Some(reporter) =>
+        requestCompilationStart()
+        reporter.logCompilerMessage(level, text, flowId)
+      case None =>
+        buildLogMessageReporter.log(level, text, flowId)
     }
   }
 

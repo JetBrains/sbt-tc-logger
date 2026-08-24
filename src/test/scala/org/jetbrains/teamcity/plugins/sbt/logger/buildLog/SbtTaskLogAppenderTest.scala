@@ -3,6 +3,7 @@ package org.jetbrains.teamcity.plugins.sbt.logger.buildLog
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 import org.jetbrains.teamcity.plugins.sbt.logger.SbtTeamCityLoggerSettings
+import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.compilation.SbtCompilationReporter
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage.BuildLogMessage
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{TeamCityServiceMessage, TeamCityServiceMessageWriter}
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
@@ -20,10 +21,11 @@ class SbtTaskLogAppenderTest {
     val writer = new TeamCityServiceMessageWriter {
       override def write(message: TeamCityServiceMessage): Unit = messageLogged.countDown()
     }
+    val buildLogMessageReporter = new SbtBuildLogMessageReporter(writer)
     val appender = new SbtTaskLogAppender(
-      new SbtBuildEventReporter(writer),
+      buildLogMessageReporter,
       "compiler-flow",
-      isCompilerTask = true,
+      Some(new SbtCompilationReporter(writer, buildLogMessageReporter)),
       Some(() => {
         startEntered.countDown()
         releaseStart.await(10, TimeUnit.SECONDS)
@@ -49,8 +51,8 @@ class SbtTaskLogAppenderTest {
   }
 
   @Test
-  def preservesTheThreeArgumentConstructor(): Unit =
-    new SbtTaskLogAppender(new SbtBuildEventReporter(new IgnoringWriter), "compiler-flow", isCompilerTask = true)
+  def preservesTheTwoArgumentConstructor(): Unit =
+    new SbtTaskLogAppender(new SbtBuildLogMessageReporter(new IgnoringWriter), "flow")
 
   @Test
   def objectEventDetailsAreDisabledByDefault(): Unit = {
@@ -72,7 +74,7 @@ class SbtTaskLogAppenderTest {
 
   private def renderedObjectEvent: String = {
     val writer = new CapturingWriter
-    val appender = new SbtTaskLogAppender(new SbtBuildEventReporter(writer), "flow", isCompilerTask = false)
+    val appender = new SbtTaskLogAppender(new SbtBuildLogMessageReporter(writer), "flow")
     val event = new ObjectEvent[String](
       Level.Info,
       "event payload",

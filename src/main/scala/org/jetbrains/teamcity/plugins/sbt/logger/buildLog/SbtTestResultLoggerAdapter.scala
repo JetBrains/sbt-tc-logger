@@ -12,13 +12,13 @@ import java.io.{PrintWriter, StringWriter}
  * SBT invokes a test-result logger after it has run tests. The logger normally writes aggregate output such as
  * framework summaries, total counts, and failed-suite names to the `Logger` SBT supplies. This adapter returns a
  * logger that invokes `delegate` with the same test results and task name, but replaces that supplied logger with
- * one that routes its messages through `buildEventReporter` in `flowId`.
+ * one that routes its messages through `buildLogMessageReporter` in `flowId`.
  *
  * For example, the normal SBT result summary can be redirected to TeamCity while retaining SBT's failure semantics:
  * {{{
  * val teamCityResultLogger = SbtTestResultLoggerAdapter(
  *   TestResultLogger.Default,
- *   buildEventReporter,
+ *   buildLogMessageReporter,
  *   flowId = "example/Test/test",
  *   screenLevel = Level.Info,
  *   reportIfInitializerError = initializerErrorReporter.reportIfInitializerError
@@ -43,7 +43,7 @@ import java.io.{PrintWriter, StringWriter}
 object SbtTestResultLoggerAdapter {
   def apply(
     delegate: TestResultLogger,
-    buildEventReporter: SbtBuildEventReporter,
+    buildLogMessageReporter: SbtBuildLogMessageReporter,
     flowId: String,
     screenLevel: Level.Value,
     reportIfInitializerError: (String, String) => Unit
@@ -53,12 +53,12 @@ object SbtTestResultLoggerAdapter {
     // the fix, updating the target cross-build version permits direct use of Tests.Output; this form
     // remains compatible with older SBT 2.0.x runtimes because exposing Tests.Output does not change its JVM signature.
     TestResultLogger { (_, results, taskName) =>
-      val directTeamCityLogger = new DirectTeamCityLogger(buildEventReporter, flowId, screenLevel, reportIfInitializerError)
+      val directTeamCityLogger = new DirectTeamCityLogger(buildLogMessageReporter, flowId, screenLevel, reportIfInitializerError)
       delegate.run(directTeamCityLogger, results, taskName)
     }
 
   private final class DirectTeamCityLogger(
-    buildEventReporter: SbtBuildEventReporter,
+    buildLogMessageReporter: SbtBuildLogMessageReporter,
     flowId: String,
     screenLevel: Level.Value,
     reportIfInitializerError: (String, String) => Unit
@@ -68,16 +68,16 @@ object SbtTestResultLoggerAdapter {
       error.printStackTrace(new PrintWriter(buffer))
       val message = buffer.toString
       reportIfInitializerError(message, flowId)
-      buildEventReporter.log(Level.Error, message, flowId)
+      buildLogMessageReporter.log(Level.Error, message, flowId)
     }
 
     override def success(message: => String): Unit =
-      if (isEnabled(Level.Info)) buildEventReporter.log(Level.Info, message, flowId)
+      if (isEnabled(Level.Info)) buildLogMessageReporter.log(Level.Info, message, flowId)
 
     override def log(level: Level.Value, message: => String): Unit = {
       val text = message
       if (Level.Error.equals(level)) reportIfInitializerError(text, flowId)
-      if (isEnabled(level)) buildEventReporter.log(level, text, flowId)
+      if (isEnabled(level)) buildLogMessageReporter.log(level, text, flowId)
     }
 
     private def isEnabled(level: Level.Value): Boolean = level.compare(screenLevel) >= 0
