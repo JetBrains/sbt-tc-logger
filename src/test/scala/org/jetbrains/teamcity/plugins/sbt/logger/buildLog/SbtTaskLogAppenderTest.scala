@@ -9,6 +9,7 @@ import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 import org.junit.Test
 import sbt.internal.util.ObjectEvent
 import sbt.util.Level
+import sjsonnew.shaded.scalajson.ast.unsafe.JString
 
 class SbtTaskLogAppenderTest {
   @Test
@@ -62,7 +63,8 @@ class SbtTaskLogAppenderTest {
   def objectEventDetailsAreAppendedWhenEnabled(): Unit = {
     withObjectEventDetailsOption(Some("true")) {
       assertEquals(
-        "event payload (ObjectEvent details: channelName=Some(channel), execId=Some(execution), contentType=plain)",
+        "event payload (ObjectEvent details: level=info, message=event payload, channelName=Some(channel), " +
+          "execId=Some(execution), contentType=plain, json=\"json\\nvalue\")",
         renderedObjectEvent
       )
     }
@@ -71,7 +73,14 @@ class SbtTaskLogAppenderTest {
   private def renderedObjectEvent: String = {
     val writer = new CapturingWriter
     val appender = new SbtTaskLogAppender(new SbtBuildEventReporter(writer), "flow", isCompilerTask = false)
-    val event = new ObjectEvent[String](Level.Info, "event payload", Some("channel"), Some("execution"), "plain", null)
+    val event = new ObjectEvent[String](
+      Level.Info,
+      "event payload",
+      Some("channel"),
+      Some("execution"),
+      "plain",
+      JString("json\nvalue")
+    )
     appender.appendObjectEvent(Level.Info, event)
     writer.loggedText
   }

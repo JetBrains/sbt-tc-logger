@@ -5,6 +5,7 @@ import org.jetbrains.teamcity.plugins.sbt.logger.SbtTeamCityLoggerSettings
 import sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.SbtConsoleAppenderBridge
 import sbt.internal.util.{Appender, ObjectEvent}
 import sbt.util.{Level, LogExchange, ShowLines}
+import sjsonnew.support.scalajson.unsafe.CompactPrinter
 
 /**
  * Converts an SBT task's ordinary screen-log events into TeamCity Build Log messages.
@@ -112,7 +113,9 @@ final class SbtTaskLogAppender(
    * If no codec is registered, the fallback is `event.message.toString`. For example, the known plain test event
    * with content type `plain` and message `"event payload"` becomes `Some("event payload")`; it does not render the
    * enclosing `ObjectEvent` object. When `teamcity.sbt.logger.renderObjectEventDetails` is enabled, every defined
-   * result additionally ends with the event's channel name, execution ID, and content type.
+   * result additionally ends with all event fields: level, message, channel name, execution ID, content type, and
+   * compact JSON. Any physical line break in a field value, including JSON, is rendered as the two characters `\\n`
+   * to keep the diagnostic suffix on one line.
    *
    * @return text to report, or `None` when the event intentionally has no screen representation
    */
@@ -136,7 +139,18 @@ object SbtTaskLogAppender {
   private val ignoreInitializerError: (String, String) => Unit = (_, _) => ()
 
   private def objectEventDetails(event: ObjectEvent[?]): String =
-    s" (ObjectEvent details: channelName=${event.channelName}, execId=${event.execId}, contentType=${event.contentType})"
+    s" (ObjectEvent details: level=${singleLine(event.level)}, message=${singleLine(event.message)}, " +
+      s"channelName=${singleLine(event.channelName)}, execId=${singleLine(event.execId)}, " +
+      s"contentType=${singleLine(event.contentType)}, json=${singleLine(compactJson(event.json))})"
+
+  private def compactJson(json: sjsonnew.shaded.scalajson.ast.unsafe.JValue): String =
+    if (json == null) "null" else CompactPrinter(json)
+
+  private def singleLine(value: Any): String =
+    String.valueOf(value)
+      .replace("\r\n", "\n")
+      .replace('\r', '\n')
+      .replace("\n", "\\n")
 
   def muted(kind: String): Appender = SbtConsoleAppenderBridge.nullConsoleOutAppender(kind)
 }
