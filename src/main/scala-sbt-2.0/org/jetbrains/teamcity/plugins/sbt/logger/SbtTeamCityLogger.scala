@@ -2,16 +2,14 @@
 package org.jetbrains.teamcity.plugins.sbt.logger
 
 import sbt.Keys.*
-import sbt.internal.LogManager
 import sbt.internal.util.AttributeKey
 import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiSupport.*
-import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildLogMessageReporter, SbtCoursierDependencyEventReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
+import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildLogMessageReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.compilation.{SbtCompilationConfiguration, SbtCompilationFlow, SbtCompilationReporter}
 import org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtTestReportListener
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{StandardOutputTeamCityServiceMessageWriter, TeamCityServiceMessageWriter}
 import sbt.plugins.JvmPlugin
 import sbt.{Def, *}
-import sbt.util.Level
 
 /** Native SBT 2 implementation of the TeamCity logger. */
 object SbtTeamCityLogger extends AutoPlugin with (State => State) {
@@ -44,12 +42,10 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
         (if (isRunningUnderTeamCity) transformSettings(project, projectRef.build, rootProject, compilerReporterSettings(getScopeId(project.project), projectRef.project)) else Nil) ++
         (if (isRunningUnderTeamCity && !preserveConsole) {
           val scopeId = getScopeId(project.project)
-          val resultLoggerSettings = if (testResultLoggerFound) {
-            testResultLoggerSettings(extractedStructure, state, projectRef, resolvedProject.configurations, scopeId)
-          } else Nil
+          val resultLoggerSettings = testResultLoggerSettings.settings(extractedStructure, state, projectRef, resolvedProject.configurations, scopeId)
           transformSettings(project, projectRef.build, rootProject, resultLoggerSettings) ++
             transformSettings(project, projectRef.build, rootProject, lifecycleSettings(scopeId, projectRef.project)) ++
-            transformSettings(project, projectRef.build, rootProject, detailedDependencySettings(projectRef, projectRef.project, extracted, state))
+            transformSettings(project, projectRef.build, rootProject, detailedDependencyResolutionSettings.settings(projectRef, projectRef.project, extracted, state))
         } else Nil)
     }
     reapply(session.appendRaw(transformedProjectSettings), state)
@@ -76,18 +72,21 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   val showTestTaskOutput: Boolean = settings.showTestTaskOutput
   val detailedDependencyResolution: Boolean = settings.detailedDependencyResolution
 
+  private lazy val testResultLoggerSettings = new SbtTestResultLoggerSettings(
+    sbtBuildLogMessageReporter,
+    useTeamCityTestResultLogger,
+    showTestTaskOutput
+  )
+  private lazy val detailedDependencyResolutionSettings = new SbtDetailedDependencyResolutionSettings(
+    sbtDependencyResolutionReporter,
+    detailedDependencyResolution
+  )
+
   private val loggerLoadStateProperty = SbtTeamCityLoggerSettings.LoggerLoadStateProperty
 
   private val loggerLoadState: String = SbtTeamCityLoggerSettings.loggerLoadState.orNull
   if (loggerLoadState == null) System.setProperty(loggerLoadStateProperty, "loaded")
   else if (loggerLoadState == "loaded") System.setProperty(loggerLoadStateProperty, "reloaded")
-
-  private val testResultLoggerFound = try {
-    val _: Def.Initialize[TestResultLogger] = Def.setting((Test / test / testResultLogger).value)
-    true
-  } catch {
-    case _: java.lang.NoSuchMethodError => false
-  }
 
   override lazy val projectSettings = if (isRunningUnderTeamCity) loggerOnSettings else loggerOffSettings
 
@@ -137,50 +136,6 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
       original.andFinally(sbtCompilationReporter.finished(compilationFlow(scope, Some(projectName), SbtCompilationConfiguration.Test)))
     }
   )
-
-  /** Replaces Coursier's native Debug-only `downloaded URL` callback while detailed normal-mode reporting is active. */
-  private def detailedDependencySettings(
-    projectRef: ProjectRef,
-    projectName: String,
-    extracted: Extracted,
-    state: State
-  ): Seq[Def.Setting[?]] = {
-    if (!detailedDependencyResolution) Nil
-    else {
-      val global = if (!debugUpdateLogLevel(extracted, state, projectRef, None)) detailedDependencySettingsFor(projectName, "global") else Nil
-      val compile = if (!debugUpdateLogLevel(extracted, state, projectRef, Some(Compile))) inConfig(Compile)(detailedDependencySettingsFor(projectName, Compile.name)) else Nil
-      val test = if (!debugUpdateLogLevel(extracted, state, projectRef, Some(Test))) inConfig(Test)(detailedDependencySettingsFor(projectName, Test.name)) else Nil
-      global ++ compile ++ test
-    }
-  }
-
-  private def detailedDependencySettingsFor(projectName: String, configuration: String): Seq[Def.Setting[?]] = Seq(
-    update.toSettingKey ~= { original =>
-      original
-        .dependsOn(_root_.sbt.std.TaskExtra.task(sbtDependencyResolutionReporter.started()))
-        .mapN { report =>
-          if (report.stats.cached) sbtDependencyResolutionReporter.reportCacheHit(projectName, configuration)
-          report
-        }
-        .andFinally(sbtDependencyResolutionReporter.finished())
-    },
-    csrLogger.toSettingKey ~= { original =>
-      _root_.sbt.std.TaskExtra.task(Some(new SbtCoursierDependencyEventReporter(sbtDependencyResolutionReporter, projectName, configuration)))
-    }
-  )
-
-  private def debugUpdateLogLevel(
-    extracted: Extracted,
-    state: State,
-    projectRef: ProjectRef,
-    configuration: Option[Configuration]
-  ): Boolean = {
-    val level = configuration match {
-      case Some(config) => extracted.getOpt(projectRef / config / update / logLevel)
-      case None => extracted.getOpt(projectRef / update / logLevel)
-    }
-    level.orElse(state.get(logLevel.key)).contains(Level.Debug)
-  }
 
   private def compilerReporterSettings(scope: String, projectName: String): Seq[Def.Setting[?]] =
     inConfig(Compile)(Seq(SbtCompilerReporterOverrideSettings.settings(
@@ -248,74 +203,6 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   private def isTestTask(key: ScopedKey[?]): Boolean =
     key.scope.task.toOption.exists(TestTaskKeys.contains)
-
-  private def testResultLoggerSettings(
-    structure: _root_.sbt.internal.BuildStructure,
-    state: State,
-    projectRef: ProjectRef,
-    configurations: Seq[Configuration],
-    scopeId: String
-  ): Seq[Def.Setting[?]] = configurations.flatMap { configuration =>
-    settingWhenDefined(structure, projectRef, configuration, test.key,
-      configuration / test / testResultLogger ~= controlledTestResultLogger(
-        resultFlowId(scopeId, configuration, test.key),
-        taskScreenLogLevel(structure, state, projectRef, configuration, test.key)
-      )) ++
-      settingWhenDefined(structure, projectRef, configuration, testOnly.key,
-        configuration / testOnly / testResultLogger ~= controlledTestResultLogger(
-          resultFlowId(scopeId, configuration, testOnly.key),
-          taskScreenLogLevel(structure, state, projectRef, configuration, testOnly.key)
-        )) ++
-      settingWhenDefined(structure, projectRef, configuration, testSelected.key,
-        configuration / testSelected / testResultLogger ~= controlledTestResultLogger(
-          resultFlowId(scopeId, configuration, testSelected.key),
-          taskScreenLogLevel(structure, state, projectRef, configuration, testSelected.key)
-        )) ++
-      settingWhenDefined(structure, projectRef, configuration, testQuick.key,
-        configuration / testQuick / testResultLogger ~= controlledTestResultLogger(
-          resultFlowId(scopeId, configuration, testQuick.key),
-          taskScreenLogLevel(structure, state, projectRef, configuration, testQuick.key)
-        )) ++
-      settingWhenDefined(structure, projectRef, configuration, testFull.key,
-        configuration / testFull / testResultLogger ~= controlledTestResultLogger(
-          resultFlowId(scopeId, configuration, testFull.key),
-          taskScreenLogLevel(structure, state, projectRef, configuration, testFull.key)
-        ))
-  }
-
-  private def settingWhenDefined(
-    structure: _root_.sbt.internal.BuildStructure,
-    projectRef: ProjectRef,
-    configuration: Configuration,
-    taskKey: AttributeKey[?],
-    setting: => Def.Setting[?]
-  ): Seq[Def.Setting[?]] = {
-    val scope = Scope(Select(projectRef), Select(configuration), Select(taskKey), Zero)
-    val scopedKey = Def.ScopedKey(scope, testResultLogger.key)
-    if (structure.data.get(scopedKey).isDefined) Seq(setting) else Nil
-  }
-
-  private def controlledTestResultLogger(
-    flowId: String,
-    screenLevel: Level.Value
-  )(configured: TestResultLogger): TestResultLogger =
-    if (useTeamCityTestResultLogger) silentTestResultLogger
-    else if (showTestTaskOutput) configured
-    else adaptTestResultLoggerForTeamCity(configured, sbtBuildLogMessageReporter, flowId, screenLevel)
-
-  private def taskScreenLogLevel(
-    structure: _root_.sbt.internal.BuildStructure,
-    state: State,
-    projectRef: ProjectRef,
-    configuration: Configuration,
-    taskKey: AttributeKey[?]
-  ): Level.Value = {
-    val scope = Scope(Select(projectRef), Select(configuration), Select(taskKey), Zero)
-    LogManager.getOr(logLevel.key, structure.data, scope, state, Level.Info)
-  }
-
-  private def resultFlowId(project: String, configuration: Configuration, taskKey: AttributeKey[?]): String =
-    s"$project:${configuration.name}:general:${taskKey.label}"
 
   private def phaseForTask(task: String): String =
     if (ResolverTaskNames.contains(task)) "dependency"
