@@ -4,7 +4,7 @@ package org.jetbrains.teamcity.plugins.sbt.logger
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
 import sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.SbtPrivateKeys
-import sbt.{Def, *}
+import sbt.Def
 
 /** Overrides SBT's compiler reporter in both supported SBT targets. */
 object SbtCompilerReporterOverrideSettings {
