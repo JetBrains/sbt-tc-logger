@@ -7,6 +7,7 @@ import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityService
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
 import sbt.*
 import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
+import scala.collection.concurrent.TrieMap
 
 /**
  * Adapts SBT test callbacks to typed TeamCity test messages.
@@ -15,18 +16,32 @@ import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
  * output travel through the separate Build Log path.
  */
 final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends TestReportListener {
-  override def startGroup(name: String): Unit =
-    writer.write(TestSuiteStarted(name, flowId))
+  private val startedGroupFlows = TrieMap.empty[String, String]
+
+  override def startGroup(name: String): Unit = {
+    val groupFlowId = flowId
+    startedGroupFlows.put(name, groupFlowId)
+    writer.write(TestSuiteStarted(name, groupFlowId))
+  }
 
   override def testEvent(event: TestEvent): Unit =
     event.detail.foreach(reportSingleTest)
 
   override def endGroup(name: String, throwable: Throwable): Unit = {
-    writer.write(TestSuiteFinished(name, flowId, Some(TestSuiteFailure(throwable.getMessage, formattedStackTrace(throwable)))))
+    finishStartedGroup(name) { groupFlowId =>
+      writer.write(TestSuiteFinished(name, groupFlowId, Some(TestSuiteFailure(throwable.getMessage, formattedStackTrace(throwable)))))
+    }
   }
 
   override def endGroup(name: String, result: TestResult): Unit =
-    writer.write(TestSuiteFinished(name, flowId))
+    finishStartedGroup(name) { groupFlowId => writer.write(TestSuiteFinished(name, groupFlowId)) }
+
+  /** Closes a suite that SBT started but abandoned after an initialization failure. */
+  private[reporting] def finishInitializerFailure(name: String, details: String, fallbackFlowId: String): Unit = {
+    val groupFlowId = startedGroupFlows.remove(name).getOrElse(fallbackFlowId)
+    writer.write(TestFailed(name, details, groupFlowId))
+    writer.write(TestSuiteFinished(name, groupFlowId, Some(TestSuiteFailure("ExceptionInInitializerError", details))))
+  }
 
   private def reportSingleTest(event: _root_.sbt.testing.Event): Unit = {
     val testName = qualifiedTestName(event)
@@ -98,6 +113,9 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
     throwable.printStackTrace(new PrintWriter(writer))
     writer.toString
   }
+
+  private def finishStartedGroup(name: String)(writeFinished: String => Unit): Unit =
+    startedGroupFlows.remove(name).foreach(writeFinished)
 
   private def flowId: String = Thread.currentThread().getId.toString
 }

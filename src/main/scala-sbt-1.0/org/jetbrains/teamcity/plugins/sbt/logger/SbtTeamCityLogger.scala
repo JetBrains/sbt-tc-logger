@@ -62,7 +62,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   private lazy val sbtBuildEventReporter = new SbtBuildEventReporter(teamCityServiceMessageWriter)
   private lazy val sbtDependencyResolutionReporter = new SbtDependencyResolutionReporter(teamCityServiceMessageWriter)
   private lazy val sbtTestReportListener = new SbtTestReportListener(teamCityServiceMessageWriter)
-  private lazy val sbtInitializerErrorTestFailureReporter = new SbtInitializerErrorTestFailureReporter(teamCityServiceMessageWriter)
+  private lazy val sbtInitializerErrorTestFailureReporter = new SbtInitializerErrorTestFailureReporter(sbtTestReportListener)
 
   private val settings = SbtTeamCityLoggerSettings.extract()
   val teamCityVersion: Option[String] = settings.teamCityVersion
