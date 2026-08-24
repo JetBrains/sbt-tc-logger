@@ -1,29 +1,28 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
-package sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal
+package org.jetbrains.teamcity.plugins.sbt.logger.buildLog
 
-import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
 import sbt.util.{Level, Logger}
-import sbt.{TestResultLogger, Tests}
+import sbt.TestResultLogger
 
 import java.io.{PrintWriter, StringWriter}
 
 /** Runs an SBT test-result logger against the TeamCity Build Log reporter. */
-final class SbtTestResultLoggerAdapter(
-  delegate: TestResultLogger,
-  buildEventReporter: SbtBuildEventReporter,
-  flowId: String,
-  screenLevel: Level.Value,
-  reportIfInitializerError: (String, String) => Unit
-) extends TestResultLogger {
-  // SBT 2 makes Tests.Output private[sbt], so this override must remain in an sbt.* package.
-  // The code is otherwise source-compatible with SBT 1; split it back into target sources if the APIs diverge.
-  override def run(log: Logger, results: Tests.Output, taskName: String): Unit = {
-    val directTeamCityLogger = new SbtTestResultLoggerAdapter.DirectTeamCityLogger(buildEventReporter, flowId, screenLevel, reportIfInitializerError)
-    delegate.run(directTeamCityLogger, results, taskName)
-  }
-}
-
 object SbtTestResultLoggerAdapter {
+  def apply(
+    delegate: TestResultLogger,
+    buildEventReporter: SbtBuildEventReporter,
+    flowId: String,
+    screenLevel: Level.Value,
+    reportIfInitializerError: (String, String) => Unit
+  ): TestResultLogger =
+    // Keep `results` inferred: until sbt/sbt#9655 is merged and released, SBT 2 makes Tests.Output
+    // private[sbt], so naming that type here fails outside package sbt. Once a released 2.0.x contains
+    // the fix, updating the target cross-build version permits direct use of Tests.Output; this form
+    // remains compatible with older SBT 2.0.x runtimes because exposing Tests.Output does not change its JVM signature.
+    TestResultLogger { (_, results, taskName) =>
+      val directTeamCityLogger = new DirectTeamCityLogger(buildEventReporter, flowId, screenLevel, reportIfInitializerError)
+      delegate.run(directTeamCityLogger, results, taskName)
+    }
 
   private final class DirectTeamCityLogger(
     buildEventReporter: SbtBuildEventReporter,

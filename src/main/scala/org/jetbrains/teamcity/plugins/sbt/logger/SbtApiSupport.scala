@@ -1,9 +1,8 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildEventReporter
+import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildEventReporter, SbtTestResultLoggerAdapter}
 import org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtCompilerInspectionReporter.FilePosition
-import sbt.org.jetbrains.teamcity.plugins.sbt.logger.internal.SbtTestResultLoggerAdapter
 import sbt.util.Level
 import sbt.{Reference, Scope, Select, TestResultLogger, Zero}
 
@@ -25,7 +24,7 @@ object SbtApiSupport {
     screenLevel: Level.Value,
     reportIfInitializerError: (String, String) => Unit
   ): TestResultLogger =
-    new SbtTestResultLoggerAdapter(delegate, buildEventReporter, flowId, screenLevel, reportIfInitializerError)
+    SbtTestResultLoggerAdapter(delegate, buildEventReporter, flowId, screenLevel, reportIfInitializerError)
 
   def projectScope(project: Reference): Scope = Scope(Select(project), Zero, Zero, Zero)
 
