@@ -76,6 +76,7 @@ class SbtFixtureTemplateContractTest {
     "dependency-detailed-outcomes",
     "dependency-detailed-preserve-console-disabled"
   )
+  private val initializerErrorScenarios = Set("initializer-error-suite-construction")
 
   // This independent inventory prevents a scenario from silently losing its golden and catches a golden left behind
   // after a test is removed. Keep it explicit: the source transcript is the sole output contract for each profile.
@@ -84,10 +85,10 @@ class SbtFixtureTemplateContractTest {
     SbtTestsRuntime.Sbt1_12_Jdk8.outputProfile -> (commonScenarios ++ sbt1_9PlusScenarios),
     SbtTestsRuntime.Sbt1_12_Jdk17.outputProfile ->
       (commonScenarios ++ sbt1_9PlusScenarios ++ jdk11PlusScenarios ++ modernFrameworkScenarios ++
-        testControlMatrixScenarios ++ detailedDependencyScenarios),
+        testControlMatrixScenarios ++ detailedDependencyScenarios ++ initializerErrorScenarios),
     SbtTestsRuntime.Sbt2_0_Jdk17.outputProfile ->
       (commonScenarios ++ sbt1_9PlusScenarios ++ sbt2PlusScenarios ++ jdk11PlusScenarios ++ modernFrameworkScenarios ++
-        testControlMatrixScenarios ++ detailedDependencyScenarios)
+        testControlMatrixScenarios ++ detailedDependencyScenarios ++ initializerErrorScenarios)
   )
 
   @Test def everyDeclaredSbtVersionUsesTheTemplate(): Unit = {
