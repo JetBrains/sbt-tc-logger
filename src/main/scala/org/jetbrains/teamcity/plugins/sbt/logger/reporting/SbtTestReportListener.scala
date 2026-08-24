@@ -49,21 +49,42 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
     val fullyQualifiedName = event.fullyQualifiedName
     event.selector match {
       case selector: TestSelector =>
-        if (fullyQualifiedName == selector.testName())
-          fullyQualifiedName
-        else
-          s"$fullyQualifiedName.${selector.testName}"
+        // `example.ATest` + `testMe` becomes `example.ATest.testMe`.
+        // `example.ATest.testMe` + `example.ATest.testMe` remains `example.ATest.testMe`.
+        s"${fullyQualifiedNamePrefix(fullyQualifiedName, selector.testName)}${selector.testName}"
       case selector: NestedTestSelector =>
-        val prefix =
-          if (fullyQualifiedName == selector.testName())
-            ""
-          else
-            s"$fullyQualifiedName."
-        s"$prefix${selector.suiteId}.${selector.testName}"
+        // `example.OuterSuite`, `InnerSuite`, and `testMe` become `example.OuterSuite.InnerSuite.testMe`.
+        // `testMe`, `InnerSuite`, and `testMe` become `InnerSuite.testMe`.
+        s"${fullyQualifiedNamePrefix(fullyQualifiedName, selector.testName)}${selector.suiteId}.${selector.testName}"
       case _ =>
+        // A `SuiteSelector` event named `example.ATest` remains `example.ATest`.
         fullyQualifiedName
     }
   }
+
+  /**
+   * Produces the part of a TeamCity test name that precedes selector-specific names.
+   *
+   * On 11 February 2014, the original listener always appended [[TestSelector#testName]] to
+   * [[sbt.testing.Event#fullyQualifiedName]]. On 10 September 2015, nested suite support added the same
+   * unconditional prefix for [[NestedTestSelector]]. That assumption proved invalid on 24 October 2018: JUnit
+   * can report its complete test identifier as both `fullyQualifiedName` and `testName`, so concatenating the
+   * two produced a duplicated name such as `example.ATest.testMe.example.ATest.testMe`.
+   *
+   * The equality check was therefore introduced for `TestSelector`. On 4 June 2020, nested-selector handling
+   * was corrected to use the same rule: some nested-test frameworks report the leaf test name as the event's
+   * fully qualified name. In that case the listener must emit `suiteId.testName`, rather than prefixing it with
+   * the already-represented leaf name.
+   *
+   * Equality only controls whether the fully qualified name is a prefix; it does not mean both selector kinds
+   * render identically. A `TestSelector` then renders `testName`, which equals the fully qualified name, whereas
+   * a `NestedTestSelector` still adds its `suiteId`.
+   */
+  private def fullyQualifiedNamePrefix(fullyQualifiedName: String, testName: String): String =
+    if (fullyQualifiedName == testName)
+      ""
+    else
+      s"$fullyQualifiedName."
 
   private def formattedException(throwable: OptionalThrowable): String = {
     if (throwable.isDefined) {
