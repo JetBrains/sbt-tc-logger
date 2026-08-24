@@ -7,10 +7,10 @@ import sbt.internal.util.{Appender, ObjectEvent}
 import sbt.util.{Level, LogExchange, ShowLines}
 
 /**
- * Redirects ordinary SBT screen-appender events to TeamCity Build Log messages.
+ * SBT 1.0 implementation of the SBT task-log appender.
  *
- * This is the project's only TeamCity-specific SBT `ConsoleAppender`. Structured test and inspection reporting do
- * not pass through it.
+ * See the SBT 2.0 `SbtTaskLogAppender` Scaladoc for the shared behavior, purpose, limitations, and examples.
+ * Keep this implementation behaviorally aligned with that version.
  */
 final class SbtTaskLogAppender(
   buildEventReporter: SbtBuildEventReporter,
@@ -19,7 +19,12 @@ final class SbtTaskLogAppender(
   compilationStart: Option[() => Unit] = None,
   reportIfInitializerError: (String, String) => Unit = SbtTaskLogAppender.ignoreInitializerError
 ) extends SbtConsoleAppenderBridge(s"tc-logger-$flowId") {
-  def this(buildEventReporter: SbtBuildEventReporter, flowId: String, isCompilerTask: Boolean) =
+
+  def this(
+    buildEventReporter: SbtBuildEventReporter,
+    flowId: String,
+    isCompilerTask: Boolean
+  ) =
     this(buildEventReporter, flowId, isCompilerTask, None)
 
   private val compilationStartLock = new Object
@@ -35,11 +40,15 @@ final class SbtTaskLogAppender(
 
   private def report(level: Level.Value, message: => String): Unit = {
     val text = message
-    if (Level.Error.equals(level)) reportIfInitializerError(text, flowId)
+    if (Level.Error.equals(level)) {
+      reportIfInitializerError(text, flowId)
+    }
     if (isCompilerTask) {
       requestCompilationStart()
       buildEventReporter.logCompilerMessage(level, text, flowId)
-    } else buildEventReporter.log(level, text, flowId)
+    } else {
+      buildEventReporter.log(level, text, flowId)
+    }
   }
 
   private def requestCompilationStart(): Unit = compilationStartLock.synchronized {
@@ -55,11 +64,13 @@ final class SbtTaskLogAppender(
     val renderedObject = LogExchange.stringCodec(event.contentType) match {
       case Some(renderer) =>
         SbtObjectEventRenderer.combine(renderer.asInstanceOf[ShowLines[Any]].showLines(event.message))
-      case None => Some(event.message.toString)
+      case None =>
+        Some(event.message.toString)
     }
     if (SbtTeamCityLoggerSettings.RenderObjectEventDetails.isEnabled)
       renderedObject.map(_ + SbtTaskLogAppender.objectEventDetails(event))
-    else renderedObject
+    else
+      renderedObject
   }
 }
 
