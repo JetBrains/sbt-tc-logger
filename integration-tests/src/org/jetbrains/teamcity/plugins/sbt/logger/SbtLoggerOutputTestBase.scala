@@ -124,7 +124,7 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
         Seq("sbt-teamcity-logger") ++
         testCase.behaviorCommands
 
-    val environmentVariablesToRemove = Seq("COURSIER_CACHE") ++
+    val environmentVariablesToRemove = Seq("COURSIER_CACHE", "JAVA_TOOL_OPTIONS") ++
       Option.when(!testCase.teamCityEnvironment)("TEAMCITY_VERSION")
     val runResult = SbtProcessRunner.runSbtProcess(
       projectDir = workingDir,

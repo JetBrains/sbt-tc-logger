@@ -1,0 +1,1 @@
+##teamcity[message status='ERROR' flowId='{{build-id:root}}:test:general:test' text='|[error|] (Test / test) sbt.TestsFailedException: Tests unsuccessful']

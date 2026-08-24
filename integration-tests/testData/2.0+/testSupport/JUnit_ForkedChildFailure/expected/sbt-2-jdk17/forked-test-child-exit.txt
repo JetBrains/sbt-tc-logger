@@ -1,0 +1,3 @@
+##teamcity[message status='ERROR' flowId='{{build-id:root}}:test:general:testQuick' text='|[error|] java.lang.RuntimeException: Forked test process exited with code 255']
+##teamcity[message status='ERROR' flowId='{{build-id:root}}:test:general:testQuick' text='|[error|] (Test / testQuick) Forked test process exited with code 255']
+[[noise:sbt-task-summary]]
