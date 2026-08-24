@@ -6,6 +6,18 @@ import org.junit.Test
 /** Scenarios supported by SBT 2.0.0 and later. */
 trait SbtLoggerOutputTestsSbt2Plus { this: SbtLoggerOutputTestBase =>
 
+  // TW-36109 (GitHub #2) - descriptions from ordinary Specs2 examples must be part of each TeamCity test name,
+  // rather than collapsing every result to its specification class name.
+  @Test
+  def testReporting_Specs2_TestDescriptionsReported(): Unit =
+    runCase(SbtLoggerOutputTestCase(
+      scenarioId = "specs2-descriptions",
+      fixture = "testSupport/Specs2_TestOnlyExamples",
+      setupCommands = Seq.empty,
+      behaviorCommands = Seq("test"),
+      expectedResult = SbtProcessResultExpectation.Success
+    ))
+
   // TW-53224 - SBT 2's slash syntax invokes the same IntegrationTest quick-test task as SBT 1's `it:testQuick`.
   @Test
   def testReporting_IntegrationTest_TestQuickPassAndFailureReported(): Unit =

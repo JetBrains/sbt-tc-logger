@@ -55,7 +55,8 @@ class SbtFixtureTemplateContractTest {
   private val sbt1_9PlusScenarios = Set("integration-test-quick", "jacoco")
   private val sbt2PlusScenarios = Set(
     "junit-test-full",
-    "junit-test-full-configured-hidden"
+    "junit-test-full-configured-hidden",
+    "specs2-descriptions"
   )
   private val jdk11PlusScenarios = Set("scalatest-error-like-output")
   private val modernFrameworkScenarios = Set(
