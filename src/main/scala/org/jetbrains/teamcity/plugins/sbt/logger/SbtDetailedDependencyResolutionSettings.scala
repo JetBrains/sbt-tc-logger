@@ -1,17 +1,26 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger
 
+import _root_.sbt.std.TaskExtra.singleInputTask
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtCoursierDependencyEventReporter, SbtDependencyResolutionReporter}
-import sbt.Keys.*
-import sbt.{Def, *}
+import sbt.Keys.{csrLogger, logLevel, update}
+import sbt.{Configuration, Def, Extracted, ProjectRef, State}
+import sbt.{Compile, Test, inConfig}
+import sbt.librarymanagement.UpdateReport
 import sbt.util.Level
 
-/**
- * Installs opt-in detailed Coursier dependency-resolution reporting for SBT 1.
- *
- * Coursier only exposes final resource information through `csrLogger`. This replaces its small native
- * `downloaded URL` debug callback only while detailed normal-mode reporting is active; Debug keeps the native logger.
- */
+object SbtDetailedDependencyResolutionSettings {
+  private[logger] def reportCacheHit(
+    dependencyResolutionReporter: () => SbtDependencyResolutionReporter,
+    projectName: String,
+    configuration: String
+  )(report: UpdateReport): UpdateReport = {
+    if (report.stats.cached) dependencyResolutionReporter().reportCacheHit(projectName, configuration)
+    report
+  }
+}
+
+/** Installs opt-in detailed Coursier dependency-resolution reporting for supported SBT targets. */
 final class SbtDetailedDependencyResolutionSettings(
   dependencyResolutionReporter: => SbtDependencyResolutionReporter,
   detailedDependencyResolution: Boolean
@@ -21,33 +30,26 @@ final class SbtDetailedDependencyResolutionSettings(
     projectName: String,
     extracted: Extracted,
     state: State
-  ): Seq[Def.Setting[?]] = {
-    val coursierEnabled = extracted.getOpt(projectRef / useCoursier)
-      .orElse(extracted.getOpt(Global / useCoursier))
-      .getOrElse(false)
-    if (!detailedDependencyResolution || !coursierEnabled) Nil
-    else {
-      val global = if (!debugUpdateLogLevel(extracted, state, projectRef, None)) settingsFor(projectName, "global") else Nil
-      val compile = if (!debugUpdateLogLevel(extracted, state, projectRef, Some(Compile))) inConfig(Compile)(settingsFor(projectName, Compile.name)) else Nil
-      val test = if (!debugUpdateLogLevel(extracted, state, projectRef, Some(Test))) inConfig(Test)(settingsFor(projectName, Test.name)) else Nil
-      global ++ compile ++ test
+  ): Seq[Def.Setting[?]] =
+    if (!detailedDependencyResolution || !SbtApiAdapter.isCoursierEnabled(extracted, projectRef)) Nil
+    else dependencyResolutionConfigurations.foldLeft(Seq.empty[Def.Setting[?]]) { (allSettings, configuration) =>
+      if (debugUpdateLogLevel(extracted, state, projectRef, configuration)) allSettings
+      else allSettings ++ settingsForConfiguration(projectName, configuration)
     }
-  }
 
-  private def settingsFor(projectName: String, configuration: String): Seq[Def.Setting[?]] = Seq(
-    update.toSettingKey ~= { original =>
-      original
-        .dependsOn(_root_.sbt.std.TaskExtra.task(dependencyResolutionReporter.started()))
-        .map { report =>
-          if (report.stats.cached) dependencyResolutionReporter.reportCacheHit(projectName, configuration)
-          report
-        }
-        .andFinally(dependencyResolutionReporter.finished())
-    },
-    csrLogger.toSettingKey ~= { original =>
-      _root_.sbt.std.TaskExtra.task(Some(new SbtCoursierDependencyEventReporter(dependencyResolutionReporter, projectName, configuration)))
-    }
-  )
+  private def settingsForConfiguration(
+    projectName: String,
+    configuration: Option[Configuration]
+  ): Seq[Def.Setting[?]] = {
+    val configurationName = configuration.fold("global")(_.name)
+    val settings: Seq[Def.Setting[?]] = Seq(
+      detailedDependencyResolutionUpdateSetting(projectName, configurationName),
+      csrLogger.toSettingKey ~= { _ =>
+        _root_.sbt.std.TaskExtra.task(Some(new SbtCoursierDependencyEventReporter(dependencyResolutionReporter, projectName, configurationName)))
+      }
+    )
+    configuration.fold(settings)(config => inConfig(config)(settings))
+  }
 
   private def debugUpdateLogLevel(
     extracted: Extracted,
@@ -55,10 +57,25 @@ final class SbtDetailedDependencyResolutionSettings(
     projectRef: ProjectRef,
     configuration: Option[Configuration]
   ): Boolean = {
-    val level = configuration match {
-      case Some(config) => extracted.getOpt(projectRef / config / update / logLevel)
-      case None => extracted.getOpt(projectRef / update / logLevel)
-    }
+    val level = SbtApiAdapter.updateLogLevel(extracted, projectRef, configuration)
     level.orElse(state.get(logLevel.key)).contains(Level.Debug)
   }
+
+  private def detailedDependencyResolutionUpdateSetting(
+    projectName: String,
+    configuration: String
+  ): Def.Setting[?] =
+    update.toSettingKey ~= { original =>
+      original
+        .dependsOn(_root_.sbt.std.TaskExtra.task(dependencyResolutionReporter.started()))
+        // Deliberately use `map` via the `singleInputTask` compatibility API, rather than SBT 2's `mapN`, to keep this implementation easy to cross-compile with SBT 1.
+        .map(SbtDetailedDependencyResolutionSettings.reportCacheHit(
+          () => dependencyResolutionReporter,
+          projectName,
+          configuration
+        ))
+        .andFinally(dependencyResolutionReporter.finished())
+    }
+
+  private val dependencyResolutionConfigurations: Seq[Option[Configuration]] = Seq(None, Some(Compile), Some(Test))
 }

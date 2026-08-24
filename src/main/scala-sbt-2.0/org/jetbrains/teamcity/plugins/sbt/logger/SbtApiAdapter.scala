@@ -4,9 +4,10 @@ package org.jetbrains.teamcity.plugins.sbt.logger
 import org.jetbrains.teamcity.plugins.sbt.logger.SbtTestResultLoggerSettings.SbtTestResultLoggerTask
 import sbt./
 import sbt.Def
-import sbt.Keys.{test, testFull, testOnly, testQuick, testResultLogger, testSelected}
+import sbt.Keys.{logLevel, test, testFull, testOnly, testQuick, testResultLogger, testSelected, update}
 import sbt.internal.util.AttributeKey
-import sbt.{Configuration, Scope, TestResultLogger}
+import sbt.{Configuration, Extracted, ProjectRef, Scope, TestResultLogger}
+import sbt.util.Level
 
 /** SBT 2 compatibility boundary for APIs that differ from the SBT 1 target. */
 object SbtApiAdapter {
@@ -34,4 +35,17 @@ object SbtApiAdapter {
     structure: _root_.sbt.internal.BuildStructure,
     scope: Scope
   ): Boolean = structure.data.get(Def.ScopedKey(scope, testResultLogger.key)).isDefined
+
+  /** SBT 2 always resolves dependencies with Coursier. */
+  def isCoursierEnabled(_extracted: Extracted, _projectRef: ProjectRef): Boolean = true
+
+  def updateLogLevel(
+    extracted: Extracted,
+    projectRef: ProjectRef,
+    configuration: Option[Configuration]
+  ): Option[Level.Value] =
+    configuration match {
+      case Some(config) => extracted.getOpt(projectRef / config / update / logLevel)
+      case None => extracted.getOpt(projectRef / update / logLevel)
+    }
 }
