@@ -92,13 +92,39 @@ final class SbtTaskLogAppender(
     }
   }
 
+  /**
+   * Converts an SBT object event to the text that this appender can report to TeamCity.
+   *
+   * The event's `contentType` selects an SBT `ShowLines` codec from `LogExchange`.<br>
+   * SBT's built-in codecs are:
+   *   - `scala.Throwable`, which produces one trimmed stack-trace string;
+   *   - `sbt.internal.util.TraceEvent`, which renders the event's throwable as one trimmed stack-trace string; and
+   *   - `sbt.internal.util.SuccessEvent`, which produces the success message as one line.
+   *
+   * A plugin can register another `ShowLines` codec. The complete set of resulting line-sequence cases is:
+   *   - `Seq()` becomes `None`, so `appendObjectEvent` emits no Build Log message. SBT test-lifecycle protocol events
+   *     use this case because structured test reporting handles them separately.
+   *   - `Seq("")` becomes `Some("")`, preserving one intentional blank framework-output line.
+   *   - `Seq("test output")` becomes `Some("test output")`.
+   *   - `Seq("first line", "second line")` becomes `Some("first line\\nsecond line")`, which is sent as one
+   *     multi-line TeamCity message.
+   *
+   * If no codec is registered, the fallback is `event.message.toString`. For example, the known plain test event
+   * with content type `plain` and message `"event payload"` becomes `Some("event payload")`; it does not render the
+   * enclosing `ObjectEvent` object. When `teamcity.sbt.logger.renderObjectEventDetails` is enabled, every defined
+   * result additionally ends with the event's channel name, execution ID, and content type.
+   *
+   * @return text to report, or `None` when the event intentionally has no screen representation
+   */
   private def renderObjectEvent(event: ObjectEvent[?]): Option[String] = {
     val renderedObject = LogExchange.stringCodec(event.contentType) match {
       case Some(renderer) =>
-        RenderedLines.toMultilineStringIfAny(renderer.asInstanceOf[ShowLines[Any]].showLines(event.message))
+        val lines: Seq[String] = renderer.asInstanceOf[ShowLines[Any]].showLines(event.message)
+        RenderedLines.toMultilineStringIfAny(lines)
       case None =>
         Some(event.message.toString)
     }
+
     if (SbtTeamCityLoggerSettings.RenderObjectEventDetails.isEnabled)
       renderedObject.map(_ + SbtTaskLogAppender.objectEventDetails(event))
     else
