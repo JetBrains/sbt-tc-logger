@@ -20,20 +20,17 @@ import java.io.{PrintWriter, StringWriter}
  *   TestResultLogger.Default,
  *   buildLogMessageReporter,
  *   flowId = "example/Test/test",
- *   screenLevel = Level.Info,
- *   reportIfInitializerError = initializerErrorReporter.reportIfInitializerError
+ *   screenLevel = Level.Info
  * )
  *
  * Test / testResultLogger := teamCityResultLogger
  * }}}
  *
  * For example, a `delegate` call to `log.info("Passed: Total 12, Failed 0")` becomes a normal Build Log message
- * in that flow. A call to `log.error("Failed: Total 12, Failed 1")` becomes an error Build Log message and also
- * invokes `reportIfInitializerError` with the same text.
+ * in that flow. A call to `log.error("Failed: Total 12, Failed 1")` becomes an error Build Log message.
  *
  * The returned logger preserves the delegate's handling of test success and failure. It filters ordinary messages
- * below `screenLevel`, associates Build Log messages with the supplied flow, and passes error output to
- * `reportIfInitializerError` so the initializer-error fallback can publish its structured failure.
+ * below `screenLevel` and associates Build Log messages with the supplied flow.
  *
  * This adapter does not inspect or transform per-suite results, produce `testStarted`/`testFailed`/`testFinished`
  * service messages, or determine the task result and process exit code.
@@ -45,29 +42,26 @@ object SbtTestResultLoggerAdapter {
     delegate: TestResultLogger,
     buildLogMessageReporter: SbtBuildLogMessageReporter,
     flowId: String,
-    screenLevel: Level.Value,
-    reportIfInitializerError: (String, String) => Unit
+    screenLevel: Level.Value
   ): TestResultLogger =
     // Keep `results` inferred: until sbt/sbt#9655 is merged and released, SBT 2 makes Tests.Output
     // private[sbt], so naming that type here fails outside package sbt. Once a released 2.0.x contains
     // the fix, updating the target cross-build version permits direct use of Tests.Output; this form
     // remains compatible with older SBT 2.0.x runtimes because exposing Tests.Output does not change its JVM signature.
     TestResultLogger { (_, results, taskName) =>
-      val directTeamCityLogger = new DirectTeamCityLogger(buildLogMessageReporter, flowId, screenLevel, reportIfInitializerError)
+      val directTeamCityLogger = new DirectTeamCityLogger(buildLogMessageReporter, flowId, screenLevel)
       delegate.run(directTeamCityLogger, results, taskName)
     }
 
   private final class DirectTeamCityLogger(
     buildLogMessageReporter: SbtBuildLogMessageReporter,
     flowId: String,
-    screenLevel: Level.Value,
-    reportIfInitializerError: (String, String) => Unit
+    screenLevel: Level.Value
   ) extends Logger {
     override def trace(error: => Throwable): Unit = {
       val buffer = new StringWriter
       error.printStackTrace(new PrintWriter(buffer))
       val message = buffer.toString
-      reportIfInitializerError(message, flowId)
       buildLogMessageReporter.log(Level.Error, message, flowId)
     }
 
@@ -76,7 +70,6 @@ object SbtTestResultLoggerAdapter {
 
     override def log(level: Level.Value, message: => String): Unit = {
       val text = message
-      if (Level.Error.equals(level)) reportIfInitializerError(text, flowId)
       if (isEnabled(level)) buildLogMessageReporter.log(level, text, flowId)
     }
 

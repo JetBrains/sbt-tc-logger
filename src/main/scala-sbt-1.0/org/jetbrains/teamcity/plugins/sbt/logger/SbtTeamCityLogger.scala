@@ -7,7 +7,7 @@ import sbt.internal.util.AttributeKey
 import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiSupport.*
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildLogMessageReporter, SbtCoursierDependencyEventReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.compilation.{SbtCompilationConfiguration, SbtCompilationFlow, SbtCompilationReporter}
-import org.jetbrains.teamcity.plugins.sbt.logger.reporting.{SbtInitializerErrorTestFailureReporter, SbtTestReportListener}
+import org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtTestReportListener
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{StandardOutputTeamCityServiceMessageWriter, TeamCityServiceMessageWriter}
 import sbt.plugins.JvmPlugin
 import sbt.{Def, *}
@@ -64,7 +64,6 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   private lazy val sbtCompilationReporter = new SbtCompilationReporter(teamCityServiceMessageWriter, sbtBuildLogMessageReporter)
   private lazy val sbtDependencyResolutionReporter = new SbtDependencyResolutionReporter(teamCityServiceMessageWriter)
   private lazy val sbtTestReportListener = new SbtTestReportListener(teamCityServiceMessageWriter)
-  private lazy val sbtInitializerErrorTestFailureReporter = new SbtInitializerErrorTestFailureReporter(sbtTestReportListener)
 
   private val settings = SbtTeamCityLoggerSettings.extract()
   val teamCityVersion: Option[String] = settings.teamCityVersion
@@ -93,7 +92,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
           // subclasses it so client-mode task events are delivered once without a visible SBT console line.
           screen = (key, _) =>
             if (!showTestTaskOutput && isTestTask(key)) SbtTaskLogAppender.muted("test-task")
-            else new SbtTaskLogAppender(sbtBuildLogMessageReporter, flowIdFor(key), compilerReporterFor(key), compilationStartFor(key), sbtInitializerErrorTestFailureReporter.reportIfInitializerError),
+            else new SbtTaskLogAppender(sbtBuildLogMessageReporter, flowIdFor(key), compilerReporterFor(key), compilationStartFor(key)),
           relay = _ => SbtTaskLogAppender.muted("relay"),
           extra = configuredExtraAppenders
         )
@@ -289,7 +288,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   )(configured: TestResultLogger): TestResultLogger =
     if (useTeamCityTestResultLogger) silentTestResultLogger
     else if (showTestTaskOutput) configured
-    else adaptTestResultLoggerForTeamCity(configured, sbtBuildLogMessageReporter, flowId, screenLevel, sbtInitializerErrorTestFailureReporter.reportIfInitializerError)
+    else adaptTestResultLoggerForTeamCity(configured, sbtBuildLogMessageReporter, flowId, screenLevel)
 
   private def taskScreenLogLevel(
     structure: _root_.sbt.internal.BuildStructure,

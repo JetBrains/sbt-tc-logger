@@ -36,13 +36,6 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
   override def endGroup(name: String, result: TestResult): Unit =
     finishStartedGroup(name) { groupFlowId => writer.write(TestSuiteFinished(name, groupFlowId)) }
 
-  /** Closes a suite that SBT started but abandoned after an initialization failure. */
-  private[reporting] def finishInitializerFailure(name: String, details: String, fallbackFlowId: String): Unit = {
-    val groupFlowId = startedGroupFlows.remove(name).getOrElse(fallbackFlowId)
-    writer.write(TestFailed(name, details, groupFlowId))
-    writer.write(TestSuiteFinished(name, groupFlowId, Some(TestSuiteFailure("ExceptionInInitializerError", details))))
-  }
-
   private def reportSingleTest(event: _root_.sbt.testing.Event): Unit = {
     val testName = qualifiedTestName(event)
     val eventFlowId = flowId

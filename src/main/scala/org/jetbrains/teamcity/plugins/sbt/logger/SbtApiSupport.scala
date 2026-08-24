@@ -21,10 +21,9 @@ object SbtApiSupport {
     delegate: TestResultLogger,
     buildLogMessageReporter: SbtBuildLogMessageReporter,
     flowId: String,
-    screenLevel: Level.Value,
-    reportIfInitializerError: (String, String) => Unit
+    screenLevel: Level.Value
   ): TestResultLogger =
-    SbtTestResultLoggerAdapter(delegate, buildLogMessageReporter, flowId, screenLevel, reportIfInitializerError)
+    SbtTestResultLoggerAdapter(delegate, buildLogMessageReporter, flowId, screenLevel)
 
   def projectScope(project: Reference): Scope = Scope(Select(project), Zero, Zero, Zero)
 

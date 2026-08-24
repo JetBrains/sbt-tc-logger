@@ -26,8 +26,7 @@ import sjsonnew.support.scalajson.unsafe.CompactPrinter
  * Compiler-task events receive extra ordering and lifecycle handling. Before the first such event is reported, the
  * optional compilation-start callback is invoked exactly once, and concurrent events wait for it to complete. The
  * reporter can therefore emit `compilationStarted` before, for example, the first
- * `"[info] compiling 3 Scala sources"` message. Error events are also offered to the supplied initializer-error
- * callback; that callback decides whether the error represents a test-framework initialization failure.
+ * `"[info] compiling 3 Scala sources"` message.
  *
  * This class does not capture a process's raw stdout or stderr, parse compiler diagnostics, or create TeamCity test
  * or inspection events. Those responsibilities belong respectively to the process/SBT logging setup, the compiler
@@ -44,14 +43,12 @@ import sjsonnew.support.scalajson.unsafe.CompactPrinter
  * @param flowId identifies the SBT task's TeamCity flow
  * @param compilationReporter enables compiler-flow routing and lazy compilation-start handling when defined
  * @param compilationStart callback that starts the compiler flow before its first reported event, when available
- * @param reportIfInitializerError receives error text and the task flow ID for optional test-initializer reporting
  */
 final class SbtTaskLogAppender(
   buildLogMessageReporter: SbtBuildLogMessageReporter,
   flowId: String,
   compilationReporter: Option[SbtCompilationReporter] = None,
-  compilationStart: Option[() => Unit] = None,
-  reportIfInitializerError: (String, String) => Unit = SbtTaskLogAppender.ignoreInitializerError
+  compilationStart: Option[() => Unit] = None
 ) extends SbtConsoleAppenderBridge(s"tc-logger-$flowId") {
 
   def this(buildLogMessageReporter: SbtBuildLogMessageReporter, flowId: String) =
@@ -70,9 +67,6 @@ final class SbtTaskLogAppender(
 
   private def report(level: Level.Value, message: => String): Unit = {
     val text = message
-    if (Level.Error.equals(level)) {
-      reportIfInitializerError(text, flowId)
-    }
     compilationReporter match {
       case Some(reporter) =>
         requestCompilationStart()
@@ -134,8 +128,6 @@ final class SbtTaskLogAppender(
 }
 
 object SbtTaskLogAppender {
-  private val ignoreInitializerError: (String, String) => Unit = (_, _) => ()
-
   private def objectEventDetails(event: ObjectEvent[?]): String =
     s" (ObjectEvent details: level=${singleLine(event.level)}, message=${singleLine(event.message)}, " +
       s"channelName=${singleLine(event.channelName)}, execId=${singleLine(event.execId)}, " +
