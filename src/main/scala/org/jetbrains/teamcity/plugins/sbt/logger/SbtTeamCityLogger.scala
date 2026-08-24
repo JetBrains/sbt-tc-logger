@@ -2,6 +2,7 @@
 package org.jetbrains.teamcity.plugins.sbt.logger
 
 import sbt.Keys.*
+import sbt.internal.LogManager
 import sbt.internal.util.AttributeKey
 import org.jetbrains.teamcity.plugins.sbt.logger.SbtApiSupport.*
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.{SbtBuildLogMessageReporter, SbtDependencyResolutionReporter, SbtTaskLogAppender}
@@ -11,7 +12,7 @@ import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{StandardOutput
 import sbt.plugins.JvmPlugin
 import sbt.{Def, *}
 
-/** Native SBT 1.4+ implementation of the TeamCity logger. */
+/** Native implementation of the TeamCity logger for the supported SBT targets. */
 object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
   override def requires: Plugins = JvmPlugin
@@ -29,7 +30,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     "ivySbt"
   )
   private val CompilerTaskKeys: Set[AttributeKey[?]] = Set(compile.key, compileIncremental.key)
-  private val TestTaskKeys: Set[AttributeKey[?]] = Set(test.key, testOnly.key, testQuick.key)
+  private val TestTaskKeys: Set[AttributeKey[?]] = SbtApiAdapter.testTaskKeys
 
   override def apply(state: State): State = {
     if (SbtTeamCityLoggerSettings.loggerLoadState.contains("reloaded")) return state
@@ -109,6 +110,8 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
 
     Seq(
       commands += teamCityLoggerStatusCommand,
+      // Keep this unscoped so every configuration that defines SBT test tasks, including SBT 1's IntegrationTest
+      // and a custom SBT 2 Runtime-derived test configuration, inherits the TeamCity test listener.
       testListeners += sbtTestReportListener
     ) ++ ordinaryTaskLogging
   }
