@@ -22,8 +22,7 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
     event.detail.foreach(reportSingleTest)
 
   override def endGroup(name: String, throwable: Throwable): Unit = {
-    val details = throwable.getStackTrace
-    writer.write(TestSuiteFinished(name, flowId, Some(TestSuiteFailure(throwable.getMessage, s"$details"))))
+    writer.write(TestSuiteFinished(name, flowId, Some(TestSuiteFailure(throwable.getMessage, formattedStackTrace(throwable)))))
   }
 
   override def endGroup(name: String, result: TestResult): Unit =
@@ -88,12 +87,16 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
 
   private def formattedException(throwable: OptionalThrowable): String = {
     if (throwable.isDefined) {
-      val writer = new StringWriter
-      throwable.get.printStackTrace(new PrintWriter(writer))
-      writer.toString
+      formattedStackTrace(throwable.get)
     } else {
       ""
     }
+  }
+
+  private def formattedStackTrace(throwable: Throwable): String = {
+    val writer = new StringWriter
+    throwable.printStackTrace(new PrintWriter(writer))
+    writer.toString
   }
 
   private def flowId: String = Thread.currentThread().getId.toString
