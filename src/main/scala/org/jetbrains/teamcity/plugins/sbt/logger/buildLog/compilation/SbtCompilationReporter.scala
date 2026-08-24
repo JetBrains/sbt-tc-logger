@@ -1,12 +1,13 @@
 // Copyright © 2013–2026 JetBrains s.r.o.
 package org.jetbrains.teamcity.plugins.sbt.logger.buildLog.compilation
 
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
-
 import org.jetbrains.teamcity.plugins.sbt.logger.buildLog.SbtBuildLogMessageReporter
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage.{CompilationFinished, CompilationStarted}
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
+import sbt.util.Level
+
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /** Coordinates compiler lifecycle, flow routing, and diagnostic summaries for concurrent SBT compilations. */
 final class SbtCompilationReporter(
@@ -18,7 +19,7 @@ final class SbtCompilationReporter(
   private val problemCounts = new ConcurrentHashMap[String, CompilerProblemCounts]()
 
   /** Routes compiler-task output to a compilation flow only after that flow has started. */
-  def logCompilerMessage(level: _root_.sbt.Level.Value, message: => String, compilerFlowId: String): Unit = {
+  def logCompilerMessage(level: Level.Value, message: => String, compilerFlowId: String): Unit = {
     val text = message
     if (activeFlows.contains(compilerFlowId))
       buildLogMessageReporter.log(level, text, compilerFlowId)
@@ -29,7 +30,7 @@ final class SbtCompilationReporter(
   def reportCompilerProblem(flow: SbtCompilationFlow, severity: xsbti.Severity, message: => String): Unit = {
     val counts = problemCounts.computeIfAbsent(flow.flowId, _ => new CompilerProblemCounts)
     counts.record(severity)
-    buildLogMessageReporter.log(logLevel(severity), message, flow.flowId)
+    buildLogMessageReporter.log(sbtLevel(severity), message, flow.flowId)
   }
 
   def started(flow: SbtCompilationFlow): Unit = {
@@ -72,20 +73,20 @@ final class SbtCompilationReporter(
     val counts = problemCounts.remove(flowId)
     if (counts != null) {
       counts.warningSummary.foreach { summary =>
-        buildLogMessageReporter.log(_root_.sbt.Level.Warn, summary, flowId)
+        buildLogMessageReporter.log(Level.Warn, summary, flowId)
       }
       counts.errorSummary.foreach { summary =>
-        buildLogMessageReporter.log(_root_.sbt.Level.Error, summary, flowId)
+        buildLogMessageReporter.log(Level.Error, summary, flowId)
       }
     }
   }
 
-  private def logLevel(severity: xsbti.Severity): String = {
+  private def sbtLevel(severity: xsbti.Severity): Level.Value = {
     import xsbti.Severity.*
     severity match {
-      case Info => "INFO"
-      case Warn => "WARN"
-      case Error => "ERROR"
+      case Info => Level.Info
+      case Warn => Level.Warn
+      case Error => Level.Error
     }
   }
 }
