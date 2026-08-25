@@ -10,6 +10,7 @@ class SbtOutputVerifierTest {
     repoRoot = new File("/repo"),
     workDir = new File("/repo/target/integration-tests/work/profile/scenario"),
     sbtGlobalBase = new File("/repo/target/integration-tests/global/profile/scenario"),
+    sbtBootDirectory = new File("/teamcity-cache/integration-test-sbt-boot/profile"),
     sbtCoursierHome = new File("/teamcity-cache/integration-test-coursier/profile"),
     sbtIvyHome = new File("/repo/target/integration-test-ivy/profile"),
     javaHome = new File("/jdks/17"),
@@ -40,14 +41,14 @@ class SbtOutputVerifierTest {
       "##teamcity[testStarted name='a' flowId='{{flow:first}}']",
       "##teamcity[testFinished name='a' duration='{{duration:test}}' flowId='{{flow:first}}']",
       "##teamcity[testStarted name='b' flowId='{{flow:second}}']",
-      "source={{path:work-dir}}/src/Test.scala cache={{path:sbt-coursier-home}}/cache version={{logger-version}} build={{build-id:root}}",
+      "source={{path:work-dir}}/src/Test.scala boot={{path:sbt-boot-directory}}/scala-3/library.jar cache={{path:sbt-coursier-home}}/cache version={{logger-version}} build={{build-id:root}}",
       "again={{build-id:root}}"
     )
     verify(Vector(
       "##teamcity[testStarted name='a' flowId='17']",
       "##teamcity[testFinished name='a' duration='9' flowId='17']",
       "##teamcity[testStarted name='b' flowId='18']",
-      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
+      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala boot=/teamcity-cache/integration-test-sbt-boot/profile/scala-3/library.jar cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
       "again=-42"
     ), golden)
 
@@ -55,14 +56,14 @@ class SbtOutputVerifierTest {
       "##teamcity[testStarted name='a' flowId='17']",
       "##teamcity[testFinished name='a' duration='9' flowId='99']",
       "##teamcity[testStarted name='b' flowId='18']",
-      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
+      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala boot=/teamcity-cache/integration-test-sbt-boot/profile/scala-3/library.jar cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
       "again=-42"
     ), golden))
     expectAssertionError(verify(Vector(
       "##teamcity[testStarted name='a' flowId='17']",
       "##teamcity[testFinished name='a' duration='9' flowId='17']",
       "##teamcity[testStarted name='b' flowId='17']",
-      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
+      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala boot=/teamcity-cache/integration-test-sbt-boot/profile/scala-3/library.jar cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
       "again=-42"
     ), golden))
     expectAssertionError(verify(Vector(
@@ -94,14 +95,20 @@ class SbtOutputVerifierTest {
       "[[unordered]]",
       "[[lane:root]]",
       "##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] not up to date. inChanged = true, force = false']",
+      "##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] Updating ...']",
+      "##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] Done updating ']",
       "##teamcity[compilationStarted compiler='Scala compiler |[root|]' flowId='{{build-id:root}}:compile:compiler']",
       "[[/lane]]",
       "[[lane:project1]]",
       "##teamcity[message status='NORMAL' flowId='{{build-id:project1}}:global:dependency' text='|[debug|] not up to date. inChanged = true, force = false']",
+      "##teamcity[message status='NORMAL' flowId='{{build-id:project1}}:global:dependency' text='|[debug|] Updating project1...']",
+      "##teamcity[message status='NORMAL' flowId='{{build-id:project1}}:global:dependency' text='|[debug|] Done updating project1']",
       "##teamcity[compilationStarted compiler='Scala compiler |[project1|]' flowId='{{build-id:project1}}:compile:compiler']",
       "[[/lane]]",
       "[[lane:project2]]",
       "##teamcity[message status='NORMAL' flowId='{{build-id:project2}}:global:dependency' text='|[debug|] not up to date. inChanged = true, force = false']",
+      "##teamcity[message status='NORMAL' flowId='{{build-id:project2}}:global:dependency' text='|[debug|] Updating project2...']",
+      "##teamcity[message status='NORMAL' flowId='{{build-id:project2}}:global:dependency' text='|[debug|] Done updating project2']",
       "##teamcity[compilationStarted compiler='Scala compiler |[project2|]' flowId='{{build-id:project2}}:compile:compiler']",
       "[[/lane]]",
       "[[/unordered]]"
@@ -109,10 +116,16 @@ class SbtOutputVerifierTest {
     val valid = Vector(
       dependency("1512025224"),
       dependency("-353998860"),
+      updating("project1", "-353998860"),
+      updating("project2", "1512025224"),
       dependency("2027211914"),
+      updating("", "2027211914"),
+      updated("project1", "-353998860"),
+      updated("", "2027211914"),
+      updated("project2", "1512025224"),
+      compilationStarted("root", "2027211914"),
       compilationStarted("project1", "-353998860"),
-      compilationStarted("project2", "1512025224"),
-      compilationStarted("root", "2027211914")
+      compilationStarted("project2", "1512025224")
     )
 
     verify(valid, golden)
@@ -330,6 +343,12 @@ class SbtOutputVerifierTest {
 
   private def dependency(buildId: String): String =
     s"##teamcity[message status='NORMAL' flowId='$buildId:global:dependency' text='|[debug|] not up to date. inChanged = true, force = false']"
+
+  private def updating(project: String, buildId: String): String =
+    s"##teamcity[message status='NORMAL' flowId='$buildId:global:dependency' text='|[debug|] Updating $project...']"
+
+  private def updated(project: String, buildId: String): String =
+    s"##teamcity[message status='NORMAL' flowId='$buildId:global:dependency' text='|[debug|] Done updating $project']"
 
   private def compilationStarted(project: String, buildId: String): String =
     s"##teamcity[compilationStarted compiler='Scala compiler |[$project|]' flowId='$buildId:compile:compiler']"

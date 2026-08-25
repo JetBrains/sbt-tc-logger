@@ -165,7 +165,9 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
         renderObjectEventDetails = renderObjectEventDetails
       )
     )
-    val context = TranscriptContext(root, workingDir, sbtGlobalBase, sbtCoursierHome, sbtIvyHome, javaHome, bounded.loggerVersion)
+    val context = TranscriptContext(
+      root, workingDir, sbtGlobalBase, sbtBootDirectory, sbtCoursierHome, sbtIvyHome, javaHome, bounded.loggerVersion
+    )
     val golden = SbtOutputVerifier.goldenFile(sourceWorkingDir, runtime.outputProfile, testCase.scenarioId)
     if (java.lang.Boolean.getBoolean(SbtOutputVerifier.CandidateModeProperty)) {
       val candidate = SbtOutputVerifier.candidateFile(root, runtime.outputProfile, testCase.scenarioId)
