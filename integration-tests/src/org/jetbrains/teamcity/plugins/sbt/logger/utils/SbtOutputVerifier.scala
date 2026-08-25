@@ -104,7 +104,8 @@ private[logger] object SbtTranscriptBoundary {
     s"$value${if (annotations.nonEmpty) s" (${annotations.mkString("; ")})" else ""}"
   }
 
-  private def fail(message: String): Nothing = throw new AssertionError(message)
+  private def fail(message: String): Nothing =
+    throw new AssertionError(TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput(message))
 }
 
 /** Exact, line-bounded transcript verifier and candidate renderer. */
@@ -639,7 +640,8 @@ private[logger] object SbtOutputVerifier {
     private def diagnosticLine(line: String): String =
       TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput(line)
 
-    private def fail(message: String): Nothing = throw new AssertionError(message)
+    private def fail(message: String): Nothing =
+      throw new AssertionError(TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput(message))
   }
 
   private object NoiseRecognizers {

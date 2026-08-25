@@ -37,15 +37,16 @@ class SbtOutputVerifierTest {
   }
 
   @Test def mismatchDiagnosticsEscapeNestedServiceMessages(): Unit = {
-    val error = expectAssertionError {
-      verify(
-        Vector("##teamcity[testStarted name='inner-failure' flowId='17']"),
-        goldenFile("##teamcity[testStarted name='different' flowId='{{flow:test}}']")
-      )
+    Seq(
+      "##teamcity[message status='NORMAL' text='actual']" ->
+        "##teamcity[message status='NORMAL' text='expected']",
+      "##teamcity[testStarted name='inner-failure' flowId='17']" ->
+        "##teamcity[testStarted name='different' flowId='{{flow:test}}']"
+    ).foreach { case (actual, expected) =>
+      val error = expectAssertionError(verify(Vector(actual), goldenFile(expected)))
+      Assert.assertFalse(error.getMessage.contains("##teamcity["))
+      Assert.assertTrue(error.getMessage.contains("@@teamcity["))
     }
-
-    Assert.assertFalse(error.getMessage.contains("##teamcity["))
-    Assert.assertTrue(error.getMessage.contains("@@teamcity[testStarted name='inner-failure' flowId='17']"))
   }
 
   @Test def typedPlaceholdersValidateBindingsDistinctFlowsAndPathSuffixes(): Unit = {
@@ -327,6 +328,20 @@ class SbtOutputVerifierTest {
     val candidate = FileUtils.createTempFile("stack-candidate", ".txt")
     SbtOutputVerifier.writeCandidate(actual, candidate, context)
     Assert.assertTrue(FileUtils.read(candidate).contains("{{framework-stack-tail:junit}}"))
+    verify(actual, candidate)
+  }
+
+  @Test def candidateRenderingPreservesLiteralTabsInStackTraces(): Unit = {
+    val actual = Vector(
+      "##teamcity[testFailed name='fixture.Test.fails' details='java.lang.AssertionError: boom|n\tat org.junit.Assert.fail(Assert.java:89)|n\tat fixture.Test.fails(Test.scala:7)|n\tat java.base/java.lang.reflect.Method.invoke(Method.java:569)' flowId='17']"
+    )
+    val candidate = FileUtils.createTempFile("tab-stack-candidate", ".txt")
+
+    SbtOutputVerifier.writeCandidate(actual, candidate, context)
+
+    val rendered = FileUtils.read(candidate)
+    Assert.assertTrue(rendered.contains("|n\tat org.junit.Assert.fail"))
+    Assert.assertFalse(rendered.contains("|n\\tat org.junit.Assert.fail"))
     verify(actual, candidate)
   }
 
