@@ -10,6 +10,7 @@ class SbtOutputVerifierTest {
     repoRoot = new File("/repo"),
     workDir = new File("/repo/target/integration-tests/work/profile/scenario"),
     sbtGlobalBase = new File("/repo/target/integration-tests/global/profile/scenario"),
+    sbtCoursierHome = new File("/teamcity-cache/integration-test-coursier/profile"),
     sbtIvyHome = new File("/repo/target/integration-test-ivy/profile"),
     javaHome = new File("/jdks/17"),
     loggerVersion = "2026.1-test"
@@ -39,14 +40,14 @@ class SbtOutputVerifierTest {
       "##teamcity[testStarted name='a' flowId='{{flow:first}}']",
       "##teamcity[testFinished name='a' duration='{{duration:test}}' flowId='{{flow:first}}']",
       "##teamcity[testStarted name='b' flowId='{{flow:second}}']",
-      "source={{path:work-dir}}/src/Test.scala version={{logger-version}} build={{build-id:root}}",
+      "source={{path:work-dir}}/src/Test.scala cache={{path:sbt-coursier-home}}/cache version={{logger-version}} build={{build-id:root}}",
       "again={{build-id:root}}"
     )
     verify(Vector(
       "##teamcity[testStarted name='a' flowId='17']",
       "##teamcity[testFinished name='a' duration='9' flowId='17']",
       "##teamcity[testStarted name='b' flowId='18']",
-      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala version=2026.1-test build=-42",
+      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
       "again=-42"
     ), golden)
 
@@ -54,21 +55,21 @@ class SbtOutputVerifierTest {
       "##teamcity[testStarted name='a' flowId='17']",
       "##teamcity[testFinished name='a' duration='9' flowId='99']",
       "##teamcity[testStarted name='b' flowId='18']",
-      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala version=2026.1-test build=-42",
+      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
       "again=-42"
     ), golden))
     expectAssertionError(verify(Vector(
       "##teamcity[testStarted name='a' flowId='17']",
       "##teamcity[testFinished name='a' duration='9' flowId='17']",
       "##teamcity[testStarted name='b' flowId='17']",
-      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala version=2026.1-test build=-42",
+      "source=/repo/target/integration-tests/work/profile/scenario/src/Test.scala cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
       "again=-42"
     ), golden))
     expectAssertionError(verify(Vector(
       "##teamcity[testStarted name='a' flowId='17']",
       "##teamcity[testFinished name='a' duration='9' flowId='17']",
       "##teamcity[testStarted name='b' flowId='18']",
-      "source=/tmp/other/src/Test.scala version=2026.1-test build=-42",
+      "source=/tmp/other/src/Test.scala cache=/teamcity-cache/integration-test-coursier/profile/cache version=2026.1-test build=-42",
       "again=-42"
     ), golden))
   }
@@ -76,6 +77,16 @@ class SbtOutputVerifierTest {
   @Test def unknownOrUntypedPlaceholderIsRejected(): Unit = {
     expectIllegalArgument(verify(Vector("anything"), goldenFile("{{regex:.*}}")))
     expectIllegalArgument(verify(Vector("anything"), goldenFile("{{path:not-a-root}}")))
+  }
+
+  @Test def typedPlaceholdersKeepNamedBuildIdsDistinct(): Unit = {
+    val golden = goldenFile(
+      "first={{build-id:first}}",
+      "second={{build-id:second}}"
+    )
+
+    verify(Vector("first=41", "second=42"), golden)
+    expectAssertionError(verify(Vector("first=41", "second=41"), golden))
   }
 
   @Test def malformedTeamCityLookingLinesAreRejectedByOfficialParser(): Unit = {
@@ -163,6 +174,35 @@ class SbtOutputVerifierTest {
     Assert.assertTrue(FileUtils.read(destination).contains("{{path:work-dir}}/src/A.scala"))
     Assert.assertTrue(FileUtils.read(destination).contains("{{build-id:root}}:compile:compiler"))
     Assert.assertTrue(FileUtils.read(destination).contains("{{flow:test}}"))
+    verify(actual, destination)
+  }
+
+  @Test def candidateRenderingUsesExactCoursierHomeAndPerSuiteFlows(): Unit = {
+    val actual = Vector(
+      "cache=/teamcity-cache/integration-test-coursier/profile/cache/v1/https/repo1.maven.org/example.jar",
+      "##teamcity[testSuiteStarted name='suites.NonParallelSuite' flowId='17']",
+      "##teamcity[testStarted name='suites.NonParallelSuite.test' flowId='17']",
+      "##teamcity[testSuiteFinished name='suites.NonParallelSuite' flowId='17']",
+      "##teamcity[testSuiteStarted name='tests.ParallelTest' flowId='18']",
+      "##teamcity[testStarted name='tests.ParallelTest.test' flowId='18']",
+      "##teamcity[testSuiteFinished name='tests.ParallelTest' flowId='18']"
+    )
+    val destination = FileUtils.createTempFile("semantic-candidate", ".txt")
+
+    SbtOutputVerifier.writeCandidate(actual, destination, context)
+
+    Assert.assertEquals(
+      Vector(
+        "cache={{path:sbt-coursier-home}}/cache/v1/https/repo1.maven.org/example.jar",
+        "##teamcity[testSuiteStarted name='suites.NonParallelSuite' flowId='{{flow:suite-non-parallel}}']",
+        "##teamcity[testStarted name='suites.NonParallelSuite.test' flowId='{{flow:suite-non-parallel}}']",
+        "##teamcity[testSuiteFinished name='suites.NonParallelSuite' flowId='{{flow:suite-non-parallel}}']",
+        "##teamcity[testSuiteStarted name='tests.ParallelTest' flowId='{{flow:direct-parallel}}']",
+        "##teamcity[testStarted name='tests.ParallelTest.test' flowId='{{flow:direct-parallel}}']",
+        "##teamcity[testSuiteFinished name='tests.ParallelTest' flowId='{{flow:direct-parallel}}']"
+      ),
+      FileUtils.readLines(destination).toVector
+    )
     verify(actual, destination)
   }
 

@@ -8,7 +8,7 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.text.ParseException
-import java.util.regex.Pattern
+import java.util.regex.{Matcher, Pattern}
 import scala.collection.mutable
 import scala.jdk.CollectionConverters.*
 
@@ -17,6 +17,7 @@ private[logger] final case class TranscriptContext(
   repoRoot: File,
   workDir: File,
   sbtGlobalBase: File,
+  sbtCoursierHome: File,
   sbtIvyHome: File,
   javaHome: File,
   loggerVersion: String
@@ -25,6 +26,7 @@ private[logger] final case class TranscriptContext(
     "repo-root" -> normalise(repoRoot),
     "work-dir" -> normalise(workDir),
     "sbt-global-base" -> normalise(sbtGlobalBase),
+    "sbt-coursier-home" -> normalise(sbtCoursierHome),
     "sbt-ivy-home" -> normalise(sbtIvyHome),
     "java-home" -> normalise(javaHome),
     "user-home" -> FileUtils.normalisePathSeparator(System.getProperty("user.home"))
@@ -327,6 +329,7 @@ private[logger] object SbtOutputVerifier {
       new File("/__TRANSCRIPT_PATH_repo-root__"),
       new File("/__TRANSCRIPT_PATH_work-dir__"),
       new File("/__TRANSCRIPT_PATH_sbt-global-base__"),
+      new File("/__TRANSCRIPT_PATH_sbt-coursier-home__"),
       new File("/__TRANSCRIPT_PATH_sbt-ivy-home__"),
       new File("/__TRANSCRIPT_PATH_java-home__"),
       "__TRANSCRIPT_LOGGER_VERSION__"
@@ -339,7 +342,7 @@ private[logger] object SbtOutputVerifier {
       case "dependency-outcome" =>
         ValidatedPlaceholder("(?:local cache hit|downloaded)")
       case Named("flow", name) => BoundPlaceholder("flow", name, distinct = true, "[^'\\s\\]]+")
-      case Named("build-id", name) => BoundPlaceholder("build-id", name, distinct = false, "-?[0-9]+")
+      case Named("build-id", name) => BoundPlaceholder("build-id", name, distinct = true, "-?[0-9]+")
       case Named("duration", _) => ValidatedPlaceholder("[0-9]+(?:\\.[0-9]+)?")
       case Named("timestamp", _) => ValidatedPlaceholder("(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+|[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3})")
       case Named("thread", _) => ValidatedPlaceholder("pool-[0-9]+-thread-[0-9]+")
@@ -373,7 +376,7 @@ private[logger] object SbtOutputVerifier {
         case "dependency-outcome" => ValidatedPlaceholder("(?:local cache hit|downloaded)")
         case value if value.startsWith("path:") => ExactPlaceholder(ctx => ctx.paths(value.stripPrefix("path:")))
         case value if value.startsWith("flow:") => BoundPlaceholder("flow", value.stripPrefix("flow:"), distinct = true, "[^'\\s\\]]+")
-        case value if value.startsWith("build-id:") => BoundPlaceholder("build-id", value.stripPrefix("build-id:"), distinct = false, "-?[0-9]+")
+        case value if value.startsWith("build-id:") => BoundPlaceholder("build-id", value.stripPrefix("build-id:"), distinct = true, "-?[0-9]+")
         case value if value.startsWith("duration:") => ValidatedPlaceholder("[0-9]+(?:\\.[0-9]+)?")
         case value if value.startsWith("timestamp:") => ValidatedPlaceholder("(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+|[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3})")
         case value if value.startsWith("thread:") => ValidatedPlaceholder("pool-[0-9]+-thread-[0-9]+")
@@ -656,7 +659,8 @@ private[logger] object SbtOutputVerifier {
     ): String = {
       var line = original
       context.paths.toVector.sortBy { case (_, value) => -value.length }.foreach { case (name, value) =>
-        line = line.replace(value, s"{{path:$name}}")
+        val path = Pattern.compile(Pattern.quote(value) + "(?=$|[^A-Za-z0-9._-])")
+        line = path.matcher(line).replaceAll(Matcher.quoteReplacement(s"{{path:$name}}"))
       }
       line = line.replace(context.loggerVersion, "{{logger-version}}")
       line = FlowAttribute.replaceAllIn(line, matched => {
