@@ -74,7 +74,7 @@ Typed placeholders cover values which cannot be frozen safely:
 - `{{path:repo-root}}`, `{{path:work-dir}}`, `{{path:sbt-global-base}}`, `{{path:sbt-boot-directory}}`, `{{path:sbt-coursier-home}}`, `{{path:sbt-ivy-home}}`, `{{path:java-home}}`, and `{{path:user-home}}` replace only known machine-specific roots.
 - `{{duration:<name>}}`, `{{timestamp:<name>}}`, `{{thread:<name>}}`, `{{hash:<name>}}`, and `{{logger-version}}` validate their typed values.
 - Dependency outcome/metadata and framework stack-tail placeholders are accepted only by their dedicated validators; fixture causes and frames before a recognized framework tail remain literal.
-- `{{input-file-mappings:java-sources}}` validates the exact Java-sources package-mapping set and every output path while allowing only independent generated-file entries to arrive in a different file-system order.
+- `{{input-file-mappings:java-sources}}` validates the exact Java-sources package-mapping set, its expected classes-directory layout, and every source-to-output relation while allowing only independent generated-file entries to arrive in a different file-system order.
 
 Use an unordered block only for observed concurrent output. Every lane remains internally ordered and every line remains mandatory:
 

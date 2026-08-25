@@ -36,6 +36,18 @@ class SbtOutputVerifierTest {
     }
   }
 
+  @Test def mismatchDiagnosticsEscapeNestedServiceMessages(): Unit = {
+    val error = expectAssertionError {
+      verify(
+        Vector("##teamcity[testStarted name='inner-failure' flowId='17']"),
+        goldenFile("##teamcity[testStarted name='different' flowId='{{flow:test}}']")
+      )
+    }
+
+    Assert.assertFalse(error.getMessage.contains("##teamcity["))
+    Assert.assertTrue(error.getMessage.contains("@@teamcity[testStarted name='inner-failure' flowId='17']"))
+  }
+
   @Test def typedPlaceholdersValidateBindingsDistinctFlowsAndPathSuffixes(): Unit = {
     val golden = goldenFile(
       "##teamcity[testStarted name='a' flowId='{{flow:first}}']",
@@ -277,6 +289,36 @@ class SbtOutputVerifierTest {
     Assert.assertTrue(FileUtils.read(candidate).contains("text='{{input-file-mappings:java-sources}}'"))
   }
 
+  @Test def javaSourcesInputMappingsRejectUnexpectedClassesRoot(): Unit = {
+    val golden = goldenFile(
+      "##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='{{input-file-mappings:java-sources}}']"
+    )
+    val mapping = javaSourcesMapping(
+      Vector("HelloScala.class", "HelloWorld.class", "HelloScala$.class"),
+      classesDirectory = "/tmp/unrelated/classes/"
+    )
+
+    expectAssertionError(verify(Vector(packageMappingMessage(mapping)), golden))
+  }
+
+  @Test def candidateRenderingNormalisesOnlyBackgroundJobStagingHashes(): Unit = {
+    val actual = Vector(
+      "[debug] \t/repo/target/integration-tests/work/profile/scenario/target/bg-jobs/sbt_cafebabe/job-1/target/1234abcd/stable.jar",
+      "[debug] \t/repo/target/1234abcd/must-stay-literal.jar"
+    )
+    val destination = FileUtils.createTempFile("background-job-candidate", ".txt")
+
+    SbtOutputVerifier.writeCandidate(actual, destination, context)
+
+    val rendered = FileUtils.readLines(destination).toVector
+    Assert.assertEquals(
+      "[debug] \t{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/job-1/target/{{hash:bg-job-target}}/stable.jar",
+      rendered.head
+    )
+    Assert.assertEquals("[debug] \t{{path:repo-root}}/target/1234abcd/must-stay-literal.jar", rendered(1))
+    verify(actual, destination)
+  }
+
   @Test def longFrameworkStackTailIsRecognizedWithoutRegexBacktracking(): Unit = {
     val frameworkTail = (1 to 300).map(index => s"|n\tat org.junit.runners.ParentRunner.run(ParentRunner.scala:$index)").mkString
     val actual = Vector(
@@ -353,8 +395,10 @@ class SbtOutputVerifierTest {
   private def compilationStarted(project: String, buildId: String): String =
     s"##teamcity[compilationStarted compiler='Scala compiler |[$project|]' flowId='$buildId:compile:compiler']"
 
-  private def javaSourcesMapping(classFiles: Vector[String]): String = {
-    val classesDirectory = s"${context.paths("work-dir")}/target/scala-2.13/classes/"
+  private def javaSourcesMapping(
+    classFiles: Vector[String],
+    classesDirectory: String = s"${context.paths("work-dir")}/target/scala-2.13/classes/"
+  ): String = {
     val directories = Vector("com", "com/jetbrains", "com/jetbrains/sbt", "com/jetbrains/sbt/test")
     val entries = directories ++ classFiles
     (Vector("|[debug|] Input file mappings:") ++ entries.flatMap { entry =>

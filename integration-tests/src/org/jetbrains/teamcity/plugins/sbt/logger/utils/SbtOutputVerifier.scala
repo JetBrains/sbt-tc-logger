@@ -63,7 +63,10 @@ private[logger] object SbtTranscriptBoundary {
       case (line, index) if line.contains("##teamcity[") => index -> line
     }
     preBoundaryServiceMessage.foreach { case (index, line) =>
-      fail(s"TeamCity service message before the transcript boundary at output line ${index + 1}: $line")
+      fail(
+        s"TeamCity service message before the transcript boundary at output line ${index + 1}: " +
+          TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput(line)
+      )
     }
 
     val expectedTail = Vector(
@@ -86,7 +89,8 @@ private[logger] object SbtTranscriptBoundary {
     val actualTail = handshake.drop(2)
     if (actualTail != expectedTail) {
       fail(
-        s"Malformed logger-status handshake.\nExpected:\n${expectedTail.mkString("\n")}\nActual:\n${actualTail.mkString("\n")}"
+        s"Malformed logger-status handshake.\nExpected:\n${expectedTail.mkString("\n")}\nActual:\n" +
+          actualTail.map(TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput).mkString("\n")
       )
     }
 
@@ -143,7 +147,10 @@ private[logger] object SbtOutputVerifier {
 
   private def validateTeamCityLine(line: String, lineNumber: Int): Unit = {
     if (!line.startsWith("##teamcity[") || !line.endsWith("]")) {
-      fail(s"Malformed TeamCity-looking output line $lineNumber: $line")
+      fail(
+        s"Malformed TeamCity-looking output line $lineNumber: " +
+          TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput(line)
+      )
     }
 
     val messages = mutable.ArrayBuffer.empty[ServiceMessage]
@@ -160,7 +167,10 @@ private[logger] object SbtOutputVerifier {
       val details = errors.headOption.map(_._1.getMessage).getOrElse {
         if (unparsedText.nonEmpty) s"unparsed text: ${unparsedText.mkString}" else s"parsed ${messages.size} messages"
       }
-      fail(s"Malformed TeamCity service message at output line $lineNumber ($details): $line")
+      fail(
+        s"Malformed TeamCity service message at output line $lineNumber ($details): " +
+          TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput(line)
+      )
     }
   }
 
@@ -358,7 +368,7 @@ private[logger] object SbtOutputVerifier {
       case Named("framework-stack-tail", framework) =>
         ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (tail, _) => FrameworkStackTail.isRecognized(framework, tail))
       case Named("input-file-mappings", fixture) =>
-        ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (value, context) => InputFileMappings.isRecognized(fixture, value, context))
+        ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (value, _) => InputFileMappings.isRecognized(fixture, value))
       case Named("path", name) =>
         if (!PlaceholderContext.paths.contains(name)) invalid(file, lineNumber, s"Unknown path root '$name'.")
         // Marker substitution is handled by contextualCompile before matching.
@@ -396,7 +406,7 @@ private[logger] object SbtOutputVerifier {
           ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (tail, _) => FrameworkStackTail.isRecognized(framework, tail))
         case value if value.startsWith("input-file-mappings:") =>
           val fixture = value.stripPrefix("input-file-mappings:")
-          ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (text, ctx) => InputFileMappings.isRecognized(fixture, text, ctx))
+          ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (text, _) => InputFileMappings.isRecognized(fixture, text))
       }
       if (placeholder.captures) {
         group += 1
@@ -447,63 +457,66 @@ private[logger] object SbtOutputVerifier {
       "com/jetbrains/sbt/test/HelloScala.tasty"
     )
 
-    def isRecognized(fixture: String, value: String, context: TranscriptContext): Boolean = fixture match {
-      case "java-sources" => isJavaSourcesMapping(value, context)
+    def isRecognized(fixture: String, value: String): Boolean = fixture match {
+      case "java-sources" => isJavaSourcesMapping(value)
       case _ => false
     }
 
-    def tokenize(line: String, context: TranscriptContext): String =
+    def tokenize(line: String): String =
       TextAttribute.replaceAllIn(line, matched => {
         val replacement =
-          if (isRecognized("java-sources", matched.group(1), context)) "text='{{input-file-mappings:java-sources}}'"
+          if (isRecognized("java-sources", matched.group(1))) "text='{{input-file-mappings:java-sources}}'"
           else matched.matched
         Matcher.quoteReplacement(replacement)
       })
 
-    private def isJavaSourcesMapping(value: String, context: TranscriptContext): Boolean = {
+    private def isJavaSourcesMapping(value: String): Boolean = {
       val lines = value.split("\\|n", -1).toVector
       if (lines.headOption != Some(DebugPrefix + "Input file mappings:")) return false
 
       val pairs = lines.drop(1).grouped(2).collect { case Vector(entry, path) => entry -> path }.toVector
       if (lines.size != 1 + pairs.size * 2) return false
-      matchesSbt1Mapping(pairs, context) || matchesSbt2Mapping(pairs, context)
+      matchesSbt1Mapping(pairs) || matchesSbt2Mapping(pairs)
     }
 
-    private def matchesSbt1Mapping(pairs: Vector[(String, String)], context: TranscriptContext): Boolean = {
+    private def matchesSbt1Mapping(pairs: Vector[(String, String)]): Boolean = {
       if (pairs.size != Directories.size + JavaSourceClasses.size) return false
       val directoryPairs = pairs.take(Directories.size)
       val classPairs = pairs.drop(Directories.size)
-      commonClassesRoot(directoryPairs, Directories.toSet, context).exists { classesRoot =>
+      commonClassesRoot(pairs, Directories.toSet ++ JavaSourceClasses, "/target/scala-2.13/classes/").exists { classesRoot =>
         directoryPairs.zip(Directories).forall { case ((entry, path), directory) =>
           entry == EntryPrefix + directory && path == MappingPrefix + classesRoot + directory
         } && matchesUnorderedMappings(classPairs, JavaSourceClasses, classesRoot)
       }
     }
 
-    private def matchesSbt2Mapping(pairs: Vector[(String, String)], context: TranscriptContext): Boolean =
-      commonClassesRoot(pairs, Scala3JavaSourceEntries, context).exists { classesRoot =>
+    private def matchesSbt2Mapping(pairs: Vector[(String, String)]): Boolean =
+      commonClassesRoot(
+        pairs,
+        Scala3JavaSourceEntries,
+        "/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/"
+      ).exists { classesRoot =>
         matchesUnorderedMappings(pairs, Scala3JavaSourceEntries, classesRoot)
       }
 
     private def commonClassesRoot(
       pairs: Vector[(String, String)],
       expectedEntries: Set[String],
-      context: TranscriptContext
+      expectedRootSuffix: String
     ): Option[String] = {
       val entryNames = pairs.map(_._1.stripPrefix(EntryPrefix))
       val entriesMatch = pairs.size == expectedEntries.size && entryNames.size == expectedEntries.size &&
         entryNames.toSet == expectedEntries && pairs.forall(_._1.startsWith(EntryPrefix))
-      if (!entriesMatch) None
-      else {
-        val (firstEntry, firstPath) = pairs.head
-        val name = firstEntry.stripPrefix(EntryPrefix)
-        val path = firstPath.stripPrefix(MappingPrefix)
-        Option.when(
-          firstPath.startsWith(MappingPrefix) &&
-            path.endsWith(name) &&
-            path.stripSuffix(name).startsWith(context.paths("work-dir") + "/") &&
-            path.stripSuffix(name).endsWith("/classes/")
-        )(path.stripSuffix(name))
+      val roots = pairs.map { case (entry, path) =>
+        val name = entry.stripPrefix(EntryPrefix)
+        val outputPath = path.stripPrefix(MappingPrefix)
+        Option.when(path.startsWith(MappingPrefix) && outputPath.endsWith(name))(outputPath.stripSuffix(name))
+      }
+      Option.when(entriesMatch && roots.forall(_.isDefined)).flatMap { _ =>
+        roots.flatten.distinct match {
+          case Vector(root) if root.endsWith(expectedRootSuffix) => Some(root)
+          case _ => None
+        }
       }
     }
 
@@ -613,15 +626,18 @@ private[logger] object SbtOutputVerifier {
         case atom: Atom => s"golden line ${atom.sourceLine}: ${atom.description}"
         case Unordered(lanes) => s"unordered lanes ${lanes.map(_.name).mkString(", ")}"
       }
-      val actualLine = actual.lift(index).fold("<end of transcript>")(identity)
+      val actualLine = actual.lift(index).fold("<end of transcript>")(diagnosticLine)
       fail(
         s"Exact transcript mismatch in ${FileUtils.normalisedAbsolutePath(source)} at output line ${index + 1}.\n" +
-          s"Expected $expectation\nActual: $actualLine\nContext:\n${numbered(actual.slice((index - 2).max(0), index + 3), (index - 2).max(0) + 1)}"
+          s"Expected ${diagnosticLine(expectation)}\nActual: $actualLine\nContext:\n${numbered(actual.slice((index - 2).max(0), index + 3), (index - 2).max(0) + 1)}"
       )
     }
 
     private def numbered(lines: Seq[String], start: Int = 1): String =
-      lines.zipWithIndex.map { case (line, index) => f"${start + index}%5d | $line" }.mkString("\n")
+      lines.zipWithIndex.map { case (line, index) => f"${start + index}%5d | ${diagnosticLine(line)}" }.mkString("\n")
+
+    private def diagnosticLine(line: String): String =
+      TeamCityOutputNormaliser.normaliseNestedServiceMessageOutput(line)
 
     private def fail(message: String): Nothing = throw new AssertionError(message)
   }
@@ -763,7 +779,7 @@ private[logger] object SbtOutputVerifier {
       flowNames: mutable.LinkedHashMap[String, String]
     ): String = {
       var line = original
-      line = InputFileMappings.tokenize(line, context)
+      line = InputFileMappings.tokenize(line)
       context.paths.toVector.sortBy { case (_, value) => -value.length }.foreach { case (name, value) =>
         val path = Pattern.compile(Pattern.quote(value) + "(?=$|[^A-Za-z0-9._-])")
         line = path.matcher(line).replaceAll(Matcher.quoteReplacement(s"{{path:$name}}"))
@@ -793,6 +809,10 @@ private[logger] object SbtOutputVerifier {
       line = line.replaceAll("(Running cached compiler )[0-9a-fA-F]{6,16}", "$1{{hash:compiler}}")
       line = line.replaceAll("(JavacTool@)[0-9a-fA-F]{6,16}", "$1{{hash:javac}}")
       line = line.replaceAll("sbt_([0-9a-fA-F]{6,16})", "sbt_{{hash:bg-job}}")
+      line = line.replaceAll(
+        "(target/bg-jobs/sbt_(?:\\{\\{hash:bg-job\\}\\}|[0-9a-fA-F]{6,16})/(?:job-[0-9]+/)?target/)[0-9a-fA-F]{6,16}(?=/)",
+        "$1{{hash:bg-job-target}}"
+      )
       line = line.replaceAll("local cache hit (https?://[^ '\\]]+)", "{{dependency-outcome}} $1{{dependency-metadata}}")
       line = line.replaceAll("downloaded (https?://[^ ']+) \\([^']+\\)", "{{dependency-outcome}} $1{{dependency-metadata}}")
       tokenizeFrameworkTail(line)

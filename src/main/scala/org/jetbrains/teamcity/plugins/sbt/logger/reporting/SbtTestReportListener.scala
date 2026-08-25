@@ -106,8 +106,11 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
   private def formattedStackTrace(throwable: Throwable): String = {
     val writer = new StringWriter
     throwable.printStackTrace(new PrintWriter(writer))
-    writer.toString
+    AnsiEscapeSequence.replaceAllIn(writer.toString, "")
   }
+
+  // ANSI styles are useful in an interactive terminal, but TeamCity renders their escaped bytes as literal text.
+  private val AnsiEscapeSequence = "\\u001B\\[[0-?]*[ -/]*[@-~]".r
 
   private def finishStartedGroup(name: String)(writeFinished: String => Unit): Unit =
     startedGroupFlows.remove(name).foreach(writeFinished)

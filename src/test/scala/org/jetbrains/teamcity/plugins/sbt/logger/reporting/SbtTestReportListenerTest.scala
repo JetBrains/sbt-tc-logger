@@ -5,7 +5,7 @@ import scala.collection.mutable
 
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage.*
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.{TeamCityServiceMessage, TeamCityServiceMessageWriter}
-import org.junit.Assert.{assertEquals, assertNotEquals}
+import org.junit.Assert.{assertEquals, assertFalse, assertNotEquals, assertTrue}
 import org.junit.Test
 import sbt.TestEvent
 import sbt.protocol.testing.TestResult
@@ -44,12 +44,34 @@ class SbtTestReportListenerTest {
     )
   }
 
+  @Test
+  def removesAnsiStylesFromFailureDetails(): Unit = {
+    val writer = new CapturingWriter
+    val listener = new SbtTestReportListener(writer)
+    listener.startGroup("example.AnsiSuite")
+
+    listener.testEvent(TestEvent(Seq(failure("example.AnsiSuite.fails", new AssertionError("\u001b[1mbold\u001b[0m")))))
+
+    val details = writer.messages.collectFirst { case TestFailed("example.AnsiSuite.fails", value, _) => value }.get
+    assertTrue(details.contains("bold"))
+    assertFalse(details.contains("\u001b["))
+  }
+
   private def success(name: String): Event = new Event {
     override def fullyQualifiedName(): String = name
     override def fingerprint(): Fingerprint = null
     override def selector(): TestSelector = new TestSelector(name)
     override def status(): Status = Status.Success
     override def throwable(): OptionalThrowable = new OptionalThrowable
+    override def duration(): Long = 0L
+  }
+
+  private def failure(name: String, error: Throwable): Event = new Event {
+    override def fullyQualifiedName(): String = name
+    override def fingerprint(): Fingerprint = null
+    override def selector(): TestSelector = new TestSelector(name)
+    override def status(): Status = Status.Failure
+    override def throwable(): OptionalThrowable = new OptionalThrowable(error)
     override def duration(): Long = 0L
   }
 

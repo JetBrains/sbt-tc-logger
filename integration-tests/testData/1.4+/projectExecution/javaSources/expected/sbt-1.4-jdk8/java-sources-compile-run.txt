@@ -45,7 +45,7 @@
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='|[debug|] Done packaging.']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:general' text='|[info|] running com.jetbrains.sbt.test.HelloWorld ']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:general' text='|[debug|] Waiting for threads to exit or System.exit to be called.']
-##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:general' text='|[debug|]   Classpath:|n|[debug|] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/job-1/target/e84e7f2e/1748d128/java-sources-compile-run_2.13-0.1.0-SNAPSHOT.jar|n|[debug|] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/target/5ea1ca19/80cde419/scala-library-2.13.18.jar']
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:general' text='|[debug|]   Classpath:|n|[debug|] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/job-1/target/{{hash:bg-job-target}}/1748d128/java-sources-compile-run_2.13-0.1.0-SNAPSHOT.jar|n|[debug|] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/target/{{hash:bg-job-target}}/80cde419/scala-library-2.13.18.jar']
 [[unordered]]
 [[lane:background-runner]]
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:general' text='|[debug|] Waiting for thread run-main-0 to terminate.']
