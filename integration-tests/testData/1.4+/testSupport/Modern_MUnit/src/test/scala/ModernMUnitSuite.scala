@@ -10,4 +10,6 @@ class ModernMUnitSuite extends munit.FunSuite {
   test("ignored test".ignore) {
     fail("ignored body must not execute")
   }
+
+  override def munitAnsiColors: Boolean = false
 }

@@ -89,6 +89,37 @@ class SbtOutputVerifierTest {
     expectAssertionError(verify(Vector("first=41", "second=41"), golden))
   }
 
+  @Test def unorderedCompilationLanesKeepDependencyAndCompilerBuildIdsBoundToTheSameModule(): Unit = {
+    val golden = goldenFile(
+      "[[unordered]]",
+      "[[lane:root]]",
+      "##teamcity[message status='NORMAL' flowId='{{build-id:root}}:global:dependency' text='|[debug|] not up to date. inChanged = true, force = false']",
+      "##teamcity[compilationStarted compiler='Scala compiler |[root|]' flowId='{{build-id:root}}:compile:compiler']",
+      "[[/lane]]",
+      "[[lane:project1]]",
+      "##teamcity[message status='NORMAL' flowId='{{build-id:project1}}:global:dependency' text='|[debug|] not up to date. inChanged = true, force = false']",
+      "##teamcity[compilationStarted compiler='Scala compiler |[project1|]' flowId='{{build-id:project1}}:compile:compiler']",
+      "[[/lane]]",
+      "[[lane:project2]]",
+      "##teamcity[message status='NORMAL' flowId='{{build-id:project2}}:global:dependency' text='|[debug|] not up to date. inChanged = true, force = false']",
+      "##teamcity[compilationStarted compiler='Scala compiler |[project2|]' flowId='{{build-id:project2}}:compile:compiler']",
+      "[[/lane]]",
+      "[[/unordered]]"
+    )
+    val valid = Vector(
+      dependency("1512025224"),
+      dependency("-353998860"),
+      dependency("2027211914"),
+      compilationStarted("project1", "-353998860"),
+      compilationStarted("project2", "1512025224"),
+      compilationStarted("root", "2027211914")
+    )
+
+    verify(valid, golden)
+    expectAssertionError(verify(valid.updated(1, dependency("2027211914")), golden))
+    expectAssertionError(verify(valid.map(_.replace("-353998860", "2027211914")), golden))
+  }
+
   @Test def malformedTeamCityLookingLinesAreRejectedByOfficialParser(): Unit = {
     expectAssertionError(verify(Vector("prefix ##teamcity[message text='x']"), goldenFile("prefix ##teamcity[message text='x']")))
     expectAssertionError(verify(Vector("##teamcity[testStarted flowId='1']"), goldenFile("##teamcity[testStarted flowId='1']")))
@@ -206,6 +237,33 @@ class SbtOutputVerifierTest {
     verify(actual, destination)
   }
 
+  @Test def javaSourcesInputMappingsAcceptOnlyTheKnownMappingsInAnyClassFileOrder(): Unit = {
+    val golden = goldenFile(
+      "##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='{{input-file-mappings:java-sources}}']"
+    )
+    val inExpectedOrder = javaSourcesMapping(Vector("HelloScala.class", "HelloWorld.class", "HelloScala$.class"))
+    val reordered = javaSourcesMapping(Vector("HelloWorld.class", "HelloScala$.class", "HelloScala.class"))
+
+    verify(Vector(packageMappingMessage(inExpectedOrder)), golden)
+    verify(Vector(packageMappingMessage(reordered)), golden)
+    verify(Vector(packageMappingMessage(scala3JavaSourcesMapping(Vector(
+      "com/jetbrains/sbt/test/HelloScala.tasty",
+      "com/jetbrains/sbt/test/HelloWorld.class",
+      "com/jetbrains/sbt/test/HelloScala.class",
+      "com/jetbrains/sbt/test/HelloScala$.class"
+    )))), golden)
+    expectAssertionError(verify(Vector(packageMappingMessage(javaSourcesMapping(Vector(
+      "HelloScala.class", "HelloScala.class", "HelloWorld.class"
+    )))), golden))
+    expectAssertionError(verify(Vector(packageMappingMessage(javaSourcesMapping(Vector(
+      "HelloScala.class", "HelloWorld.class", "Unexpected.class"
+    )))), golden))
+
+    val candidate = FileUtils.createTempFile("input-mappings-candidate", ".txt")
+    SbtOutputVerifier.writeCandidate(Vector(packageMappingMessage(reordered)), candidate, context)
+    Assert.assertTrue(FileUtils.read(candidate).contains("text='{{input-file-mappings:java-sources}}'"))
+  }
+
   @Test def longFrameworkStackTailIsRecognizedWithoutRegexBacktracking(): Unit = {
     val frameworkTail = (1 to 300).map(index => s"|n\tat org.junit.runners.ParentRunner.run(ParentRunner.scala:$index)").mkString
     val actual = Vector(
@@ -265,6 +323,31 @@ class SbtOutputVerifierTest {
     val file = FileUtils.createTempFile("exact-transcript", ".txt")
     FileUtils.writeStringToFile(file, lines.mkString("\n"))
     file
+  }
+
+  private def packageMappingMessage(text: String): String =
+    s"##teamcity[message status='NORMAL' flowId='41:compile:general:packageBin' text='$text']"
+
+  private def dependency(buildId: String): String =
+    s"##teamcity[message status='NORMAL' flowId='$buildId:global:dependency' text='|[debug|] not up to date. inChanged = true, force = false']"
+
+  private def compilationStarted(project: String, buildId: String): String =
+    s"##teamcity[compilationStarted compiler='Scala compiler |[$project|]' flowId='$buildId:compile:compiler']"
+
+  private def javaSourcesMapping(classFiles: Vector[String]): String = {
+    val classesDirectory = s"${context.paths("work-dir")}/target/scala-2.13/classes/"
+    val directories = Vector("com", "com/jetbrains", "com/jetbrains/sbt", "com/jetbrains/sbt/test")
+    val entries = directories ++ classFiles
+    (Vector("|[debug|] Input file mappings:") ++ entries.flatMap { entry =>
+      Vector(s"|[debug|] \t$entry", s"|[debug|] \t  $classesDirectory$entry")
+    }).mkString("|n")
+  }
+
+  private def scala3JavaSourcesMapping(entries: Vector[String]): String = {
+    val classesDirectory = s"${context.paths("work-dir")}/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/"
+    (Vector("|[debug|] Input file mappings:") ++ entries.flatMap { entry =>
+      Vector(s"|[debug|] \t$entry", s"|[debug|] \t  $classesDirectory$entry")
+    }).mkString("|n")
   }
 
   private def verify(actual: Vector[String], golden: File): Unit =

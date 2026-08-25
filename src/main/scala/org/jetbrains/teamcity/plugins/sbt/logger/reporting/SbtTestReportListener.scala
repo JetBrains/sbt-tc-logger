@@ -2,6 +2,8 @@
 package org.jetbrains.teamcity.plugins.sbt.logger.reporting
 
 import java.io.{PrintWriter, StringWriter}
+import java.nio.charset.StandardCharsets
+import java.util.UUID
 
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessage.*
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
@@ -19,7 +21,7 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
   private val startedGroupFlows = TrieMap.empty[String, String]
 
   override def startGroup(name: String): Unit = {
-    val groupFlowId = flowId
+    val groupFlowId = stableGroupFlowId(name)
     startedGroupFlows.put(name, groupFlowId)
     writer.write(TestSuiteStarted(name, groupFlowId))
   }
@@ -38,7 +40,7 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
 
   private def reportSingleTest(event: _root_.sbt.testing.Event): Unit = {
     val testName = qualifiedTestName(event)
-    val eventFlowId = flowId
+    val eventFlowId = startedGroupFlowFor(testName).getOrElse(flowId)
     writer.write(TestStarted(testName, eventFlowId))
 
     event.status match {
@@ -110,5 +112,32 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
   private def finishStartedGroup(name: String)(writeFinished: String => Unit): Unit =
     startedGroupFlows.remove(name).foreach(writeFinished)
 
+  /**
+   * Returns the active test group which owns a test event.
+   *
+   * Test frameworks are allowed to invoke [[testEvent]] from a worker other than the one that invoked
+   * [[startGroup]]. A thread-derived flow therefore detached leaf events from their suite whenever executor
+   * scheduling changed. A qualified test name belongs to its exact group or to the most-specific active group
+   * which prefixes it. Selecting the longest prefix keeps nested framework suites associated with their inner
+   * group rather than an outer one.
+   */
+  private def startedGroupFlowFor(testName: String): Option[String] =
+    startedGroupFlows.iterator.collect {
+      case (groupName, groupFlowId) if testName == groupName || testName.startsWith(s"$groupName.") =>
+        groupName -> groupFlowId
+    }.toSeq.sortBy { case (groupName, _) => -groupName.length }.headOption.map(_._2)
+
+  /**
+   * Creates a deterministic, protocol-safe flow ID from an SBT group name.
+   *
+   * The UUID is name-based (rather than random), so all callbacks for one group share a flow even when the
+   * framework moves them across threads. It also avoids placing arbitrary framework-provided group text directly
+   * into a TeamCity attribute.
+   */
+  private def stableGroupFlowId(name: String): String =
+    s"teamcity-sbt-test-${UUID.nameUUIDFromBytes(name.getBytes(StandardCharsets.UTF_8))}"
+
+  // A framework callback without a matching started group is unexpected, but keeping the legacy thread flow lets
+  // us report it without inventing suite ownership.
   private def flowId: String = Thread.currentThread().getId.toString
 }

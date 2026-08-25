@@ -274,7 +274,7 @@ private[logger] object SbtOutputVerifier {
       val matcher = regex.matcher(actual)
       if (!matcher.matches()) return None
       captures.foldLeft(Option(initial)) { case (state, capture) =>
-        state.flatMap(capture.placeholder.accept(matcher.group(capture.group), _))
+        state.flatMap(capture.placeholder.accept(matcher.group(capture.group), _, context))
       }
     }
   }
@@ -282,20 +282,24 @@ private[logger] object SbtOutputVerifier {
   private sealed trait Placeholder {
     def regex(context: TranscriptContext): String
     def captures: Boolean = true
-    def accept(value: String, bindings: Bindings): Option[Bindings] = Some(bindings)
+    def accept(value: String, bindings: Bindings, context: TranscriptContext): Option[Bindings] = Some(bindings)
   }
   private final case class BoundPlaceholder(kind: String, name: String, distinct: Boolean, valueRegex: String) extends Placeholder {
     override def regex(context: TranscriptContext): String = valueRegex
-    override def accept(value: String, bindings: Bindings): Option[Bindings] =
+    override def accept(value: String, bindings: Bindings, context: TranscriptContext): Option[Bindings] =
       bindings.bind(BindingKey(kind, name), value, distinct)
   }
   private final case class ExactPlaceholder(value: TranscriptContext => String) extends Placeholder {
     override def captures: Boolean = false
     override def regex(context: TranscriptContext): String = Pattern.quote(value(context))
   }
-  private final case class ValidatedPlaceholder(valueRegex: String, validation: String => Boolean = _ => true) extends Placeholder {
+  private final case class ValidatedPlaceholder(
+    valueRegex: String,
+    validation: (String, TranscriptContext) => Boolean = (_, _) => true
+  ) extends Placeholder {
     override def regex(context: TranscriptContext): String = valueRegex
-    override def accept(value: String, bindings: Bindings): Option[Bindings] = Option.when(validation(value))(bindings)
+    override def accept(value: String, bindings: Bindings, context: TranscriptContext): Option[Bindings] =
+      Option.when(validation(value, context))(bindings)
   }
 
   private object LineTemplate {
@@ -349,7 +353,9 @@ private[logger] object SbtOutputVerifier {
       case Named("hash", _) => ValidatedPlaceholder("[0-9a-fA-F]{6,16}")
       case "dependency-metadata" => ValidatedPlaceholder("(?: \\([^)]*?, [0-9]+(?:\\.[0-9]+)? ?(?:ms|s)\\))?")
       case Named("framework-stack-tail", framework) =>
-        ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", tail => FrameworkStackTail.isRecognized(framework, tail))
+        ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (tail, _) => FrameworkStackTail.isRecognized(framework, tail))
+      case Named("input-file-mappings", fixture) =>
+        ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (value, context) => InputFileMappings.isRecognized(fixture, value, context))
       case Named("path", name) =>
         if (!PlaceholderContext.paths.contains(name)) invalid(file, lineNumber, s"Unknown path root '$name'.")
         // Marker substitution is handled by contextualCompile before matching.
@@ -384,7 +390,10 @@ private[logger] object SbtOutputVerifier {
         case "dependency-metadata" => ValidatedPlaceholder("(?: \\([^)]*?, [0-9]+(?:\\.[0-9]+)? ?(?:ms|s)\\))?")
         case value if value.startsWith("framework-stack-tail:") =>
           val framework = value.stripPrefix("framework-stack-tail:")
-          ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", tail => FrameworkStackTail.isRecognized(framework, tail))
+          ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (tail, _) => FrameworkStackTail.isRecognized(framework, tail))
+        case value if value.startsWith("input-file-mappings:") =>
+          val fixture = value.stripPrefix("input-file-mappings:")
+          ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (text, ctx) => InputFileMappings.isRecognized(fixture, text, ctx))
       }
       if (placeholder.captures) {
         group += 1
@@ -412,6 +421,99 @@ private[logger] object SbtOutputVerifier {
           trimmed.startsWith("Caused by: ")
       }
     }
+  }
+
+  /**
+   * Validates a package input-mapping set whose entries are emitted in file-system iteration order.
+   *
+   * The placeholder is deliberately limited to the Java-sources fixture: it requires every directory mapping,
+   * every generated file mapping, their common classes directory, and the exact one-to-one source/destination
+   * relation. Only the order of independent generated-file entries is relaxed.
+   */
+  private object InputFileMappings {
+    private val TextAttribute = "text='((?:(?:\\|.)|[^'])*+)'".r
+    private val DebugPrefix = "|[debug|] "
+    private val EntryPrefix = DebugPrefix + "\t"
+    private val MappingPrefix = DebugPrefix + "\t  "
+    private val Directories = Vector("com", "com/jetbrains", "com/jetbrains/sbt", "com/jetbrains/sbt/test")
+    private val JavaSourceClasses = Set("HelloScala.class", "HelloScala$.class", "HelloWorld.class")
+    private val Scala3JavaSourceEntries = Set(
+      "com/jetbrains/sbt/test/HelloScala.class",
+      "com/jetbrains/sbt/test/HelloScala$.class",
+      "com/jetbrains/sbt/test/HelloWorld.class",
+      "com/jetbrains/sbt/test/HelloScala.tasty"
+    )
+
+    def isRecognized(fixture: String, value: String, context: TranscriptContext): Boolean = fixture match {
+      case "java-sources" => isJavaSourcesMapping(value, context)
+      case _ => false
+    }
+
+    def tokenize(line: String, context: TranscriptContext): String =
+      TextAttribute.replaceAllIn(line, matched => {
+        val replacement =
+          if (isRecognized("java-sources", matched.group(1), context)) "text='{{input-file-mappings:java-sources}}'"
+          else matched.matched
+        Matcher.quoteReplacement(replacement)
+      })
+
+    private def isJavaSourcesMapping(value: String, context: TranscriptContext): Boolean = {
+      val lines = value.split("\\|n", -1).toVector
+      if (lines.headOption != Some(DebugPrefix + "Input file mappings:")) return false
+
+      val pairs = lines.drop(1).grouped(2).collect { case Vector(entry, path) => entry -> path }.toVector
+      if (lines.size != 1 + pairs.size * 2) return false
+      matchesSbt1Mapping(pairs, context) || matchesSbt2Mapping(pairs, context)
+    }
+
+    private def matchesSbt1Mapping(pairs: Vector[(String, String)], context: TranscriptContext): Boolean = {
+      if (pairs.size != Directories.size + JavaSourceClasses.size) return false
+      val directoryPairs = pairs.take(Directories.size)
+      val classPairs = pairs.drop(Directories.size)
+      commonClassesRoot(directoryPairs, Directories.toSet, context).exists { classesRoot =>
+        directoryPairs.zip(Directories).forall { case ((entry, path), directory) =>
+          entry == EntryPrefix + directory && path == MappingPrefix + classesRoot + directory
+        } && matchesUnorderedMappings(classPairs, JavaSourceClasses, classesRoot)
+      }
+    }
+
+    private def matchesSbt2Mapping(pairs: Vector[(String, String)], context: TranscriptContext): Boolean =
+      commonClassesRoot(pairs, Scala3JavaSourceEntries, context).exists { classesRoot =>
+        matchesUnorderedMappings(pairs, Scala3JavaSourceEntries, classesRoot)
+      }
+
+    private def commonClassesRoot(
+      pairs: Vector[(String, String)],
+      expectedEntries: Set[String],
+      context: TranscriptContext
+    ): Option[String] = {
+      val entryNames = pairs.map(_._1.stripPrefix(EntryPrefix))
+      val entriesMatch = pairs.size == expectedEntries.size && entryNames.size == expectedEntries.size &&
+        entryNames.toSet == expectedEntries && pairs.forall(_._1.startsWith(EntryPrefix))
+      if (!entriesMatch) None
+      else {
+        val (firstEntry, firstPath) = pairs.head
+        val name = firstEntry.stripPrefix(EntryPrefix)
+        val path = firstPath.stripPrefix(MappingPrefix)
+        Option.when(
+          firstPath.startsWith(MappingPrefix) &&
+            path.endsWith(name) &&
+            path.stripSuffix(name).startsWith(context.paths("work-dir") + "/") &&
+            path.stripSuffix(name).endsWith("/classes/")
+        )(path.stripSuffix(name))
+      }
+    }
+
+    private def matchesUnorderedMappings(
+      pairs: Vector[(String, String)],
+      expectedEntries: Set[String],
+      classesRoot: String
+    ): Boolean =
+      pairs.size == expectedEntries.size &&
+        pairs.map(_._1.stripPrefix(EntryPrefix)).toSet == expectedEntries &&
+        pairs.forall { case (entry, path) =>
+          entry.startsWith(EntryPrefix) && path == MappingPrefix + classesRoot + entry.stripPrefix(EntryPrefix)
+        }
   }
 
   private object ExactMatcher {
@@ -658,6 +760,7 @@ private[logger] object SbtOutputVerifier {
       flowNames: mutable.LinkedHashMap[String, String]
     ): String = {
       var line = original
+      line = InputFileMappings.tokenize(line, context)
       context.paths.toVector.sortBy { case (_, value) => -value.length }.foreach { case (name, value) =>
         val path = Pattern.compile(Pattern.quote(value) + "(?=$|[^A-Za-z0-9._-])")
         line = path.matcher(line).replaceAll(Matcher.quoteReplacement(s"{{path:$name}}"))

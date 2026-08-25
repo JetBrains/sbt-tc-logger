@@ -42,7 +42,7 @@
 [debug] Evaluating tasks: Compile / run
 [debug] Running task... Cancel: Signal, check cycles: false, forcegc: true
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='|[debug|] Packaging {{path:work-dir}}/target/out/jvm/scala-3.8.4/java-sources-compile-run/java-sources-compile-run_3-0.1.0-SNAPSHOT.jar ...']
-##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='|[debug|] Input file mappings:|n|[debug|] 	com/jetbrains/sbt/test/HelloScala.class|n|[debug|] 	  {{path:work-dir}}/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/com/jetbrains/sbt/test/HelloScala.class|n|[debug|] 	com/jetbrains/sbt/test/HelloWorld.class|n|[debug|] 	  {{path:work-dir}}/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/com/jetbrains/sbt/test/HelloWorld.class|n|[debug|] 	com/jetbrains/sbt/test/HelloScala$.class|n|[debug|] 	  {{path:work-dir}}/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/com/jetbrains/sbt/test/HelloScala$.class|n|[debug|] 	com/jetbrains/sbt/test/HelloScala.tasty|n|[debug|] 	  {{path:work-dir}}/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/com/jetbrains/sbt/test/HelloScala.tasty']
+##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='{{input-file-mappings:java-sources}}']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='|[debug|] Done packaging.']
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='|[debug|] wrote ${OUT}/jvm/scala-3.8.4/java-sources-compile-run/java-sources-compile-run_3-0.1.0-SNAPSHOT.jar']
 [info] running com.jetbrains.sbt.test.HelloWorld 
