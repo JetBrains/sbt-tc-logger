@@ -513,7 +513,8 @@ private[logger] object SbtOutputVerifier {
         val outputPath = path.stripPrefix(MappingPrefix)
         Option.when(path.startsWith(MappingPrefix) && outputPath.endsWith(name))(outputPath.stripSuffix(name))
       }
-      Option.when(entriesMatch && roots.forall(_.isDefined)).flatMap { _ =>
+      if (!entriesMatch || !roots.forall(_.isDefined)) None
+      else {
         roots.flatten.distinct match {
           case Vector(root) if root.endsWith(expectedRootSuffix) => Some(root)
           case _ => None
