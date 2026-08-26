@@ -397,6 +397,23 @@ class SbtSemanticVerifierTest {
       finding.category == SemanticCardinalityFailure && finding.disposition == Blocked))
   }
 
+  @Test def malformedLineBlocksRequiredEventAttributeConclusion(): Unit = {
+    val contract = SbtSemanticContract(Vector(event("required", BuildLogMessage, "expected")))
+    val wrongParsedEvent = "##teamcity[message status='NORMAL' text='wrong']"
+    val baseline = collect(Vector(wrongParsedEvent), contract)
+    Assert.assertTrue(baseline.exists(finding =>
+      finding.semanticIdentity == "event:required" && finding.disposition == Violation))
+
+    val withMalformedCandidate = collect(Vector(
+      wrongParsedEvent,
+      "##teamcity[message status='NORMAL' text='expected'"
+    ), contract)
+    Assert.assertTrue(withMalformedCandidate.exists(_.category == WireProtocolFailure))
+    Assert.assertTrue(withMalformedCandidate.exists(finding =>
+      finding.semanticIdentity == "event:required" && finding.disposition == Blocked &&
+        finding.context.exists(_.contains("Malformed lines"))))
+  }
+
   @Test def distinctBindingsMustReferenceCapturedExpandedKeys(): Unit = {
     val typo = SemanticBindingKey.flow("typo")
     val contract = SbtSemanticContract(
@@ -544,6 +561,636 @@ class SbtSemanticVerifierTest {
       base.copy(processResult = ProcessResultContract.Failure),
       exitCode = 0
     ).exists(_.category == ProcessResultFailure))
+  }
+
+  @Test def emptyEventContractStrictlyRequiresProtocolAbsence(): Unit = {
+    val contract = SbtSemanticContract(events = Vector.empty)
+
+    verify(Vector.empty, contract)
+    val findings = collect(Vector("##teamcity[message status='NORMAL' text='unexpected']"), contract)
+    Assert.assertTrue(findings.exists(finding =>
+      finding.category == SemanticCardinalityFailure && finding.disposition == Violation))
+    Assert.assertFalse(findings.exists(_.category == GoldenSyntaxFailure))
+  }
+
+  @Test def lifecycleOwnershipSupportsOneBuildIdAcrossMainAndTestSuffixes(): Unit = {
+    val buildId = SemanticBindingKey.buildId("root-build")
+    val mainOwnership = embedded("", buildId, ":compile:compiler")
+    val testOwnership = embedded("", buildId, ":test:compiler")
+    val contract = SbtSemanticContract(
+      events = Vector(
+        ExpectedSemanticEvent("main-start", CompilationStarted, "compiler" -> exact("main")),
+        ExpectedSemanticEvent("main-message", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("main body")),
+        ExpectedSemanticEvent("main-finish", CompilationFinished, "compiler" -> exact("main")),
+        ExpectedSemanticEvent("test-start", CompilationStarted, "compiler" -> exact("test")),
+        ExpectedSemanticEvent("test-message", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("test body")),
+        ExpectedSemanticEvent("test-finish", CompilationFinished, "compiler" -> exact("test"))
+      ),
+      lifecycles = Vector(
+        SemanticLifecycleRule.compilation(
+          "main-compile", "main-start", Seq("main-message"), "main-finish", mainOwnership),
+        SemanticLifecycleRule.compilation(
+          "test-compile", "test-start", Seq("test-message"), "test-finish", testOwnership)
+      )
+    )
+    val valid = Vector(
+      compilationStarted("main", "42:compile:compiler"),
+      buildMessage("42:compile:compiler", "main body"),
+      compilationFinished("main", "42:compile:compiler"),
+      compilationStarted("test", "42:test:compiler"),
+      buildMessage("42:test:compiler", "test body"),
+      compilationFinished("test", "42:test:compiler")
+    )
+
+    verify(valid, contract)
+    val wrongBuild = valid.updated(4, buildMessage("43:test:compiler", "test body"))
+    assertCategory(expectFailure(verify(wrongBuild, contract)), FlowOwnershipFailure)
+    val swappedBoundary = valid.updated(3, compilationStarted("test", "42:compile:compiler"))
+    assertCategory(expectFailure(verify(swappedBoundary, contract)), SemanticCardinalityFailure)
+  }
+
+  @Test def optionalCompilerBridgeGroupIsAbsentOrCompleteAndUsesMatcherBudget(): Unit = {
+    val bridgeFlow = SemanticBindingKey.flow("bridge")
+    val group = OptionalSemanticEventGroup(
+      "compiler-bridge",
+      Vector(
+        ExpectedSemanticEvent("bridge-announcement", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> compilerBridgeAnnouncement),
+        ExpectedSemanticEvent("bridge-completion", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> compilerBridgeCompletion)
+      ),
+      happensBefore = Set(HappensBefore("bridge-announcement", "bridge-completion")),
+      ownership = Some(bound(bridgeFlow))
+    )
+    val contract = SbtSemanticContract(events = Vector.empty, optionalGroups = Vector(group))
+    val announcement =
+      "##teamcity[message status='NORMAL' text='|[info|] Non-compiled module |'compiler-bridge_2.13|' for Scala 2.13.18. Compiling...' flowId='bridge-flow']"
+    val completion =
+      "##teamcity[message status='NORMAL' text='|[info|]   Compilation completed in 4.321s.' flowId='bridge-flow']"
+
+    verify(Vector.empty, contract)
+    verify(Vector(announcement, completion), contract)
+    val partial = collect(Vector(announcement), contract)
+    Assert.assertTrue(partial.exists(_.semanticIdentity == "optional-group:compiler-bridge"))
+    Assert.assertTrue(partial.exists(finding =>
+      finding.semanticIdentity == "kind:message" && finding.disposition == Violation))
+    Assert.assertTrue(partial.exists(finding =>
+      finding.semanticIdentity == "edge:bridge-announcement->bridge-completion" &&
+        finding.disposition == Blocked))
+    val malformed = SbtSemanticOutputVerifier.collect(
+      Vector(announcement, completion.dropRight(1)),
+      contract,
+      exitCode = 0,
+      delegated = SbtDelegatedVerification(processResultVerified = true)
+    )
+    Assert.assertTrue(malformed.exists(finding =>
+      finding.semanticIdentity == "edge:bridge-announcement->bridge-completion" &&
+        finding.disposition == Blocked && finding.context.exists(_.contains("Malformed lines"))))
+    Assert.assertTrue(malformed.exists(finding =>
+      finding.semanticIdentity == "event:bridge-completion" && finding.disposition == Blocked))
+    Assert.assertTrue(malformed.exists(finding =>
+      finding.semanticIdentity == "kind:message" && finding.disposition == Blocked &&
+        finding.context.exists(_.contains("complete an allowed event count"))))
+    assertCategory(expectFailure(verify(Vector(completion, announcement), contract)), OrderingFailure)
+    assertCategory(expectFailure(verify(
+      Vector(announcement, completion),
+      contract.copy(matcherStateBudget = 1)
+    )), MatcherComplexityFailure)
+  }
+
+  @Test def repeatedEquivalentEventsNeedNoObservedOrdinalsAndExpandEdgesAndLifecycleMembership(): Unit = {
+    val compileFlow = SemanticBindingKey.flow("repeat-compile")
+    val contract = SbtSemanticContract(
+      events = Vector(
+        ExpectedSemanticEvent("compile-start", CompilationStarted, "compiler" -> exact("compiler")),
+        ExpectedSemanticEvent.repeated("compiler-message", BuildLogMessage, 2,
+          "status" -> exact("NORMAL"), "text" -> exact("same")),
+        ExpectedSemanticEvent("compile-finish", CompilationFinished, "compiler" -> exact("compiler")),
+        ExpectedSemanticEvent("inspection", Inspection,
+          "typeId" -> exact("scala"), "message" -> exact("checked"))
+      ),
+      happensBefore = Set(HappensBefore("compiler-message", "inspection")),
+      lifecycles = Vector(SemanticLifecycleRule.compilation(
+        "compile", "compile-start", Seq("compiler-message"), "compile-finish", compileFlow))
+    )
+    val valid = Vector(
+      compilationStarted("compiler", "repeat-flow"),
+      buildMessage("repeat-flow", "same"),
+      buildMessage("repeat-flow", "same"),
+      compilationFinished("compiler", "repeat-flow"),
+      "##teamcity[inspection typeId='scala' message='checked']"
+    )
+
+    verify(valid, contract)
+    Assert.assertFalse(collect(valid, contract).exists(_.category == MatcherComplexityFailure))
+    val oneCloneOutsideLifecycle = valid.updated(0, buildMessage("repeat-flow", "same")).updated(
+      1, compilationStarted("compiler", "repeat-flow"))
+    assertCategory(expectFailure(verify(oneCloneOutsideLifecycle, contract)), OrderingFailure)
+
+    val oneMissingClone = Vector(
+      compilationStarted("compiler", "repeat-flow"),
+      compilationFinished("compiler", "repeat-flow"),
+      buildMessage("repeat-flow", "same"),
+      "##teamcity[inspection typeId='scala' message='checked']"
+    )
+    val partial = collect(oneMissingClone, contract)
+    Assert.assertTrue(partial.exists(finding =>
+      finding.semanticIdentity == "edge:compiler-message.1->compile-finish" && finding.disposition == Violation))
+    Assert.assertTrue(partial.exists(finding =>
+      finding.semanticIdentity.contains("compiler-message.2") && finding.disposition == Blocked))
+  }
+
+  @Test def partialCloneMappingDoesNotClaimObservationsSharedWithNonClones(): Unit = {
+    val cloneFlow = SemanticBindingKey.flow("clone-flow")
+    val nonCloneFlow = SemanticBindingKey.flow("non-clone-flow")
+    val contract = SbtSemanticContract(
+      events = Vector(
+        ExpectedSemanticEvent.repeated("clone", BuildLogMessage, 2,
+          "status" -> exact("NORMAL"), "flowId" -> bound(cloneFlow), "text" -> exact("shared")),
+        ExpectedSemanticEvent("non-clone", BuildLogMessage,
+          "status" -> exact("NORMAL"), "flowId" -> bound(nonCloneFlow), "text" -> exact("shared")),
+        ExpectedSemanticEvent("inspection", Inspection,
+          "typeId" -> exact("scala"), "message" -> exact("checked"))
+      ),
+      happensBefore = Set(HappensBefore("clone", "inspection"))
+    )
+    val findings = collect(Vector(
+      "##teamcity[inspection typeId='scala' message='checked']",
+      buildMessage("flow-a", "shared"),
+      buildMessage("flow-b", "shared")
+    ), contract)
+
+    Assert.assertFalse(findings.exists(finding =>
+      Set(OrderingFailure, FlowOwnershipFailure).contains(finding.category) && finding.disposition == Violation))
+    Assert.assertTrue(findings.exists(finding =>
+      finding.semanticIdentity == "edge:clone.1->inspection" && finding.disposition == Blocked))
+    Assert.assertTrue(findings.exists(finding =>
+      finding.semanticIdentity == "binding:flow:clone-flow" && finding.disposition == Blocked))
+  }
+
+  @Test def finiteSemanticPatternsAcceptOnlyTheirNamedStructures(): Unit = {
+    val url = "https://repo.example.test/a.jar"
+    val contract = SbtSemanticContract(events = Vector(
+      ExpectedSemanticEvent("duration", TestFinished,
+        "name" -> exact("test"), "duration" -> unsignedDuration, "flowId" -> exact("test-flow")),
+      ExpectedSemanticEvent.repeated("normal-resource", BuildLogMessage, 2,
+        "status" -> exact("NORMAL"), "flowId" -> exact("dependency"),
+        "text" -> dependencyResource("root", "global", url, Set(
+          DependencyResourceOutcome.LocalCacheHit,
+          DependencyResourceOutcome.Downloaded
+        ))),
+      ExpectedSemanticEvent("failed-resource", BuildLogMessage,
+        "status" -> exact("WARNING"), "flowId" -> exact("dependency"),
+        "text" -> dependencyResource("root", "global", url, Set(
+          DependencyResourceOutcome.FailedDownloadAttempt
+        ))),
+      ExpectedSemanticEvent("failure", TestFailed,
+        "name" -> exact("fixture.fails"),
+        "details" -> userFailure(
+          "java.lang.AssertionError: boom",
+          Seq("\tat fixture.Spec.fails(Spec.scala:7)"),
+          RecognizedTestFramework.JUnit,
+          maximumFrameworkFrames = 2
+        ),
+        "flowId" -> exact("test-flow"))
+    ))
+    val output = Vector(
+      "##teamcity[testFinished name='test' duration='17.5' flowId='test-flow']",
+      s"##teamcity[message status='NORMAL' flowId='dependency' text='|[root / global|] local cache hit $url']",
+      s"##teamcity[message status='NORMAL' flowId='dependency' text='|[root / global|] downloaded $url (1.2 KiB, 17 ms)']",
+      s"##teamcity[message status='WARNING' flowId='dependency' text='|[root / global|] failed download attempt $url (after 1.25 s)']",
+      "##teamcity[testFailed name='fixture.fails' details='java.lang.AssertionError: boom|n\tat fixture.Spec.fails(Spec.scala:7)|n\tat org.junit.runners.ParentRunner.run(ParentRunner.java:1)|n\tat java.base/java.lang.reflect.Method.invoke(Method.java:2)' flowId='test-flow']"
+    )
+
+    verify(output, contract)
+    assertCategory(expectFailure(verify(output.updated(0,
+      "##teamcity[testFinished name='test' duration='-1' flowId='test-flow']"), contract)), SemanticCardinalityFailure)
+    assertCategory(expectFailure(verify(output.updated(2, output(2).replace(url, url + "?mutable=true")), contract)),
+      SemanticCardinalityFailure)
+    assertCategory(expectFailure(verify(output.updated(4,
+      output(4).replace("fixture.Spec.fails(Spec.scala:7)", "fixture.Spec.other(Spec.scala:8)")), contract)),
+      SemanticCardinalityFailure)
+  }
+
+  @Test def finitePlainPatternsEnforceCardinalityAndOptionalRawBridgeBlocks(): Unit = {
+    val patterns = PlainOutputContract.Patterns(Vector(
+      PlainOutputPattern.SbtTaskSummary,
+      PlainOutputPattern.OptionalGroup("raw-bridge", Vector(
+        PlainOutputPattern.CompilerBridgeAnnouncement,
+        PlainOutputPattern.CompilerBridgeCompletion
+      ))
+    ))
+    val contract = SbtSemanticContract(events = Vector.empty, plainOutput = patterns)
+    val summary = "[success] Total time: 1.25 s, completed Aug 26, 2026, 12:00:00 PM"
+    val announcement = "[info] Non-compiled module 'compiler-bridge_2.13' for Scala 2.13.18. Compiling..."
+    val completion = "[info]   Compilation completed in 4.321s."
+
+    verify(Vector(summary), contract)
+    verify(Vector(summary, announcement, completion), contract)
+    assertCategory(expectFailure(verify(Vector.empty, contract)), PlainOutputFailure)
+    assertCategory(expectFailure(verify(Vector(summary, summary), contract)), PlainOutputFailure)
+    assertCategory(expectFailure(verify(Vector(summary, announcement), contract)), PlainOutputFailure)
+    assertCategory(expectFailure(verify(
+      Vector(summary, announcement, completion, announcement, completion), contract)), PlainOutputFailure)
+  }
+
+  @Test def scenarioShapedProtocolContractCoversKindsAttributesPlainOutputAndBoundaryOwnership(): Unit = {
+    val suiteAndTestFlow = SemanticBindingKey.flow("suite-and-test")
+    val blockFlow = SemanticBindingKey.flow("block")
+    val contract = SbtSemanticContract(
+      events = Vector(
+        ExpectedSemanticEvent("suite-start", TestSuiteStarted, "name" -> exact("fixture.Suite")),
+        ExpectedSemanticEvent("test-start", TestStarted,
+          "name" -> exact("fixture.Suite.test"), "captureStandardOutput" -> exact("true")),
+        ExpectedSemanticEvent("test-failed", TestFailed,
+          "name" -> exact("fixture.Suite.test"), "details" -> exact("boom")),
+        ExpectedSemanticEvent("test-finish", TestFinished,
+          "name" -> exact("fixture.Suite.test"), "duration" -> unsignedDuration),
+        ExpectedSemanticEvent("suite-finish", TestSuiteFinished, "name" -> exact("fixture.Suite")),
+        ExpectedSemanticEvent("block-open", BlockOpened, "name" -> exact("analysis")),
+        ExpectedSemanticEvent("inspection-type", InspectionType,
+          "id" -> exact("scala"), "name" -> exact("Scala"), "description" -> exact("Compiler"),
+          "category" -> exact("Compiler")),
+        ExpectedSemanticEvent("inspection", Inspection,
+          "typeId" -> exact("scala"), "message" -> exact("warning"), "file" -> exact("/repo/A.scala"),
+          "line" -> exact("7"), "severity" -> exact("WARNING")),
+        ExpectedSemanticEvent("custom", Other("fixtureEvent"), "value" -> exact("owned")),
+        ExpectedSemanticEvent("block-close", BlockClosed, "name" -> exact("analysis"))
+      ),
+      lifecycles = Vector(
+        SemanticLifecycleRule.suite(
+          "suite", "suite-start", Seq("test-start", "test-failed", "test-finish"), "suite-finish", suiteAndTestFlow),
+        SemanticLifecycleRule.test(
+          "test", "test-start", Seq("test-failed"), "test-finish", suiteAndTestFlow),
+        SemanticLifecycleRule.block(
+          "analysis", "block-open", Seq("inspection-type", "inspection", "custom"), "block-close", blockFlow)
+      ),
+      plainOutput = PlainOutputContract.Exact(Vector("fixture output"))
+    )
+    val valid = Vector(
+      "##teamcity[testSuiteStarted name='fixture.Suite' flowId='suite-test-flow']",
+      "##teamcity[testStarted name='fixture.Suite.test' captureStandardOutput='true' flowId='suite-test-flow']",
+      "##teamcity[testFailed name='fixture.Suite.test' details='boom' flowId='suite-test-flow']",
+      "##teamcity[testFinished name='fixture.Suite.test' duration='9' flowId='suite-test-flow']",
+      "##teamcity[testSuiteFinished name='fixture.Suite' flowId='suite-test-flow']",
+      "##teamcity[blockOpened name='analysis' flowId='block-flow']",
+      "##teamcity[inspectionType id='scala' name='Scala' description='Compiler' category='Compiler' flowId='block-flow']",
+      "##teamcity[inspection typeId='scala' message='warning' file='/repo/A.scala' line='7' severity='WARNING' flowId='block-flow']",
+      "##teamcity[fixtureEvent value='owned' flowId='block-flow']",
+      "##teamcity[blockClosed name='analysis' flowId='block-flow']",
+      "fixture output"
+    )
+
+    verify(valid, contract)
+    assertCategory(expectFailure(verify(valid.updated(7,
+      valid(7).replace(" severity='WARNING'", "")), contract)), SemanticCardinalityFailure)
+    assertCategory(expectFailure(verify(valid.updated(8,
+      valid(8).replace(" value='owned'", " value='owned' surprise='x'")), contract)), SemanticCardinalityFailure)
+    val swapped = valid.updated(0, valid(0).replace("suite-test-flow", "block-flow"))
+    assertCategory(expectFailure(verify(swapped, contract)), FlowOwnershipFailure)
+
+    val declared = contract.copy(plainOutput = PlainOutputContract.Declared("fixture prefix", _.startsWith("fixture ")))
+    verify(valid, declared)
+    assertCategory(expectFailure(verify(valid.updated(10, "foreign output"), declared)), PlainOutputFailure)
+  }
+
+  @Test def globallySelectedOptionalGroupsDoNotRejectRequiredOrOtherGroupOverlap(): Unit = {
+    val requiredOverlap = SbtSemanticContract(
+      events = Vector(event("required", BuildLogMessage, "shared")),
+      optionalGroups = Vector(OptionalSemanticEventGroup("optional", Vector(
+        event("optional-head", BuildLogMessage, "shared"),
+        event("optional-tail", BuildLogMessage, "tail")
+      )))
+    )
+    verify(Vector("##teamcity[message status='NORMAL' text='shared']"), requiredOverlap)
+
+    val overlappingGroups = SbtSemanticContract(
+      events = Vector.empty,
+      optionalGroups = Vector(
+        OptionalSemanticEventGroup("first", Vector(
+          event("first-head", BuildLogMessage, "shared"),
+          event("first-tail", BuildLogMessage, "tail-a")
+        )),
+        OptionalSemanticEventGroup("second", Vector(
+          event("second-head", BuildLogMessage, "shared"),
+          event("second-tail", BuildLogMessage, "tail-b")
+        ))
+      )
+    )
+    verify(Vector(
+      "##teamcity[message status='NORMAL' text='shared']",
+      "##teamcity[message status='NORMAL' text='tail-a']"
+    ), overlappingGroups)
+  }
+
+  @Test def optionalActivationUsesAllFeasibleAssignmentsRatherThanTheFirstTwo(): Unit = {
+    def indistinguishableGroup(name: String): OptionalSemanticEventGroup = OptionalSemanticEventGroup(
+      name,
+      Vector(
+        event(s"$name-first", BuildLogMessage, "shared"),
+        event(s"$name-second", BuildLogMessage, "shared")
+      ),
+      happensBefore = Set(HappensBefore(s"$name-first", s"$name-second"))
+    )
+    val contract = SbtSemanticContract(
+      events = Vector.empty,
+      optionalGroups = Vector(indistinguishableGroup("earlier"), indistinguishableGroup("later"))
+    )
+    val findings = collect(Vector(
+      "##teamcity[message status='NORMAL' text='shared']",
+      "##teamcity[message status='NORMAL' text='shared']"
+    ), contract)
+
+    Seq("edge:earlier-first->earlier-second", "edge:later-first->later-second").foreach { identity =>
+      Assert.assertTrue(s"Expected blocked activation-dependent edge $identity in $findings", findings.exists(finding =>
+        finding.semanticIdentity == identity && finding.disposition == Blocked))
+    }
+  }
+
+  @Test def optionalChoiceFeasibilityPrunesManyAbsentGroupsBeforeBudgetExhaustion(): Unit = {
+    val groups = (1 to 20).map { index =>
+      OptionalSemanticEventGroup(s"group-$index", Vector(event(s"event-$index", BuildLogMessage, s"value-$index")))
+    }.toVector
+    val contract = SbtSemanticContract(
+      events = Vector.empty,
+      optionalGroups = groups,
+      matcherStateBudget = 100
+    )
+
+    verify(Vector.empty, contract)
+    Assert.assertFalse(collect(Vector.empty, contract).exists(_.category == MatcherComplexityFailure))
+
+    val matchingOutput = (1 to 10).map { index =>
+      s"##teamcity[message status='NORMAL' text='value-$index']"
+    }.toVector
+    val defaultBudgetContract = SbtSemanticContract(events = Vector.empty, optionalGroups = groups)
+    verify(matchingOutput, defaultBudgetContract)
+    Assert.assertFalse(collect(matchingOutput, defaultBudgetContract).exists(_.category == MatcherComplexityFailure))
+  }
+
+  @Test def dependencyResourceContractsCorrelateOutcomeStatusAndTypedMetadata(): Unit = {
+    val url = "https://repo.example.test/artifact.jar"
+    def dependencyEvent(
+      id: String,
+      status: SemanticValuePattern,
+      outcomes: Set[DependencyResourceOutcome]
+    ): ExpectedSemanticEvent = ExpectedSemanticEvent(id, BuildLogMessage,
+      "status" -> status,
+      "flowId" -> exact("dependency"),
+      "text" -> dependencyResource("root", "global", url, outcomes))
+
+    val validCases = Vector(
+      dependencyEvent("local", exact("NORMAL"), Set(DependencyResourceOutcome.LocalCacheHit)) ->
+        s"##teamcity[message status='NORMAL' flowId='dependency' text='|[root / global|] local cache hit $url']",
+      dependencyEvent("download", exact("NORMAL"), Set(DependencyResourceOutcome.Downloaded)) ->
+        s"##teamcity[message status='NORMAL' flowId='dependency' text='|[root / global|] downloaded $url (size unknown, 0 ms)']",
+      dependencyEvent("failure", exact("WARNING"), Set(DependencyResourceOutcome.FailedDownloadAttempt)) ->
+        s"##teamcity[message status='WARNING' flowId='dependency' text='|[root / global|] failed download attempt $url (after 1.25 s)']"
+    )
+    validCases.foreach { case (expected, line) => verify(Vector(line), SbtSemanticContract(Vector(expected))) }
+
+    val mixed = dependencyEvent("mixed", exact("NORMAL"), Set(
+      DependencyResourceOutcome.LocalCacheHit,
+      DependencyResourceOutcome.FailedDownloadAttempt
+    ))
+    val invalidContracts = Vector(
+      mixed,
+      dependencyEvent("wrong-status", exact("WARNING"), Set(DependencyResourceOutcome.Downloaded)),
+      dependencyEvent("non-exact-status", unsignedDuration, Set(DependencyResourceOutcome.Downloaded))
+    )
+    invalidContracts.foreach { expected =>
+      assertCategory(expectFailure(verify(Vector.empty, SbtSemanticContract(Vector(expected)))), GoldenSyntaxFailure)
+    }
+    val mixedFailure = expectFailure(verify(Vector.empty, SbtSemanticContract(Vector(mixed))))
+    Assert.assertEquals(1, mixedFailure.failures.size)
+    Assert.assertTrue(mixedFailure.failure.summary.contains("mixes NORMAL and WARNING"))
+    Assert.assertFalse(mixedFailure.failure.summary.contains("must declare exact status"))
+
+    val downloadContract = SbtSemanticContract(Vector(validCases(1)._1))
+    Vector(
+      validCases(1)._2.replace("root / global", "other / global"),
+      validCases(1)._2.replace("root / global", "root / compile"),
+      validCases(1)._2.replace(url, url + "?token=secret"),
+      validCases(1)._2.replace("size unknown", "1 KB"),
+      validCases(1)._2.replace("0 ms", "-1 ms")
+    ).foreach { line => assertCategory(expectFailure(verify(Vector(line), downloadContract)), SemanticCardinalityFailure) }
+
+    val failureContract = SbtSemanticContract(Vector(validCases(2)._1))
+    assertCategory(expectFailure(verify(Vector(validCases(2)._2.replace("status='WARNING'", "status='NORMAL'")),
+      failureContract)), SemanticCardinalityFailure)
+  }
+
+  @Test def compilerBridgePatternsAreValidOnlyAsOwnedAdjacentOptionalPairs(): Unit = {
+    val bridgeFlow = SemanticBindingKey.flow("bridge-contract")
+    val announcementEvent = ExpectedSemanticEvent("bridge-start", BuildLogMessage,
+      "status" -> exact("NORMAL"), "text" -> compilerBridgeAnnouncement)
+    val completionEvent = ExpectedSemanticEvent("bridge-end", BuildLogMessage,
+      "status" -> exact("NORMAL"), "text" -> compilerBridgeCompletion)
+    def group(
+      events: Vector[ExpectedSemanticEvent] = Vector(announcementEvent, completionEvent),
+      edges: Set[HappensBefore] = Set(HappensBefore("bridge-start", "bridge-end")),
+      ownership: Option[SemanticValuePattern] = Some(bound(bridgeFlow))
+    ): OptionalSemanticEventGroup = OptionalSemanticEventGroup("bridge-pair", events, edges, ownership)
+    def contract(value: OptionalSemanticEventGroup): SbtSemanticContract =
+      SbtSemanticContract(events = Vector.empty, optionalGroups = Vector(value))
+
+    val invalidSemantic = Vector(
+      SbtSemanticContract(Vector(announcementEvent)),
+      contract(group(events = Vector(announcementEvent), edges = Set.empty)),
+      contract(group(ownership = None)),
+      contract(group(edges = Set.empty)),
+      contract(group(events = Vector(
+        announcementEvent,
+        completionEvent.copy(attributes = completionEvent.attributes.updated(0, "status" -> exact("WARNING")))
+      ))),
+      contract(group(events = Vector(completionEvent, announcementEvent),
+        edges = Set(HappensBefore("bridge-start", "bridge-end"))))
+    )
+    invalidSemantic.foreach(value => assertCategory(expectFailure(verify(Vector.empty, value)), GoldenSyntaxFailure))
+
+    val invalidPlain = Vector(
+      PlainOutputContract.Patterns(Vector(PlainOutputPattern.CompilerBridgeAnnouncement)),
+      PlainOutputContract.Patterns(Vector(PlainOutputPattern.OptionalGroup(
+        "single", Vector(PlainOutputPattern.CompilerBridgeAnnouncement)))),
+      PlainOutputContract.Patterns(Vector(PlainOutputPattern.OptionalGroup(
+        "reversed", Vector(PlainOutputPattern.CompilerBridgeCompletion, PlainOutputPattern.CompilerBridgeAnnouncement)))),
+      PlainOutputContract.Patterns(Vector(PlainOutputPattern.OptionalGroup("nested", Vector(
+        PlainOutputPattern.OptionalGroup("inner", Vector(
+          PlainOutputPattern.CompilerBridgeAnnouncement,
+          PlainOutputPattern.CompilerBridgeCompletion
+        ))
+      ))))
+    )
+    invalidPlain.foreach { plain =>
+      assertCategory(expectFailure(verify(Vector.empty, SbtSemanticContract(Vector.empty, plainOutput = plain))),
+        GoldenSyntaxFailure)
+    }
+
+    val announcement =
+      "##teamcity[message status='NORMAL' text='|[info|] Non-compiled module |'compiler-bridge_2.13|' for Scala 2.13.18. Compiling...' flowId='bridge-flow']"
+    val completion =
+      "##teamcity[message status='NORMAL' text='|[info|]   Compilation completed in 2.5s.' flowId='bridge-flow']"
+    val validContract = contract(group())
+    verify(Vector(announcement, completion), validContract)
+    assertCategory(expectFailure(verify(Vector(announcement, completion.replace("bridge-flow", "other-flow")),
+      validContract)), FlowOwnershipFailure)
+    assertCategory(expectFailure(verify(Vector(announcement.replace("Non-compiled", "Compiled"), completion),
+      validContract)), SemanticCardinalityFailure)
+
+    val withMiddle = validContract.copy(events = Vector(event("middle", BuildLogMessage, "middle")))
+    val nonAdjacent = collect(Vector(
+      announcement,
+      "##teamcity[message status='NORMAL' text='middle']",
+      completion
+    ), withMiddle)
+    Assert.assertTrue(nonAdjacent.exists(finding =>
+      finding.semanticIdentity == "optional-group:bridge-pair:adjacency" && finding.disposition == Violation))
+  }
+
+  @Test def userFailureTailIsBoundedNonblankFrameworkSpecificAndNeverOwnsCauses(): Unit = {
+    val cases = Vector(
+      RecognizedTestFramework.ScalaTest -> "org.scalatest.Suite.run(Suite.scala:1)",
+      RecognizedTestFramework.Specs2 -> "org.specs2.runner.SpecificationsFinder.run(SpecificationsFinder.scala:1)",
+      RecognizedTestFramework.JUnit -> "org.junit.runners.ParentRunner.run(ParentRunner.java:1)"
+    )
+    cases.foreach { case (framework, frameworkFrame) =>
+      val contract = SbtSemanticContract(Vector(ExpectedSemanticEvent("failure", TestFailed,
+        "name" -> exact("fixture.fails"),
+        "details" -> userFailure(
+          "java.lang.AssertionError: boom",
+          Seq("\tat fixture.Spec.fails(Spec.scala:7)"),
+          framework,
+          maximumFrameworkFrames = 1
+        ),
+        "flowId" -> exact("test"))))
+      val prefix = "##teamcity[testFailed name='fixture.fails' details='java.lang.AssertionError: boom|n\tat fixture.Spec.fails(Spec.scala:7)"
+      val suffix = "' flowId='test']"
+      verify(Vector(s"$prefix|n\tat $frameworkFrame$suffix"), contract)
+      verify(Vector(s"$prefix|n\tat $frameworkFrame|n$suffix"), contract)
+      Vector(
+        s"$prefix|n|n\tat $frameworkFrame$suffix",
+        s"$prefix|n\tat $frameworkFrame|n|n$suffix",
+        s"$prefix|n\tat $frameworkFrame|n\tat $frameworkFrame$suffix",
+        s"$prefix|n\tat com.foreign.Runner.run(Runner.scala:1)$suffix",
+        s"$prefix|nCaused by: java.lang.IllegalStateException: hidden$suffix"
+      ).foreach { line =>
+        assertCategory(expectFailure(verify(Vector(line), contract)), SemanticCardinalityFailure)
+      }
+    }
+  }
+
+  @Test def taskSummaryPatternsAcceptBothFiniteBranchesAndRejectNearMisses(): Unit = {
+    val contract = SbtSemanticContract(
+      events = Vector.empty,
+      plainOutput = PlainOutputContract.Patterns(Vector(PlainOutputPattern.SbtTaskSummary))
+    )
+    Vector(
+      "[success] Total time: 1.25 s, completed Aug 26, 2026, 12:00:00 PM",
+      "[error] elapsed time: 0.5 s, cache 42%, 3 tasks"
+    ).foreach(line => verify(Vector(line), contract))
+    Vector(
+      "[warn] Total time: 1.25 s",
+      "[success] Total time: -1 s",
+      "[error] elapsed time: 1 s, cache -1%, 3 tasks",
+      "[error] elapsed time: 1 s, cache 50%"
+    ).foreach(line => assertCategory(expectFailure(verify(Vector(line), contract)), PlainOutputFailure))
+  }
+
+  @Test def optionalAndLifecycleValidatorsRejectInvalidStructureDeterministically(): Unit = {
+    val pathOwnership = SemanticBindingKey.path("not-ownership")
+    val invalid = Vector(
+      SbtSemanticContract(Vector.empty, optionalGroups = Vector(
+        OptionalSemanticEventGroup("empty", Vector.empty))),
+      SbtSemanticContract(Vector.empty, optionalGroups = Vector(
+        OptionalSemanticEventGroup("same", Vector(event("one", BuildLogMessage, "one"))),
+        OptionalSemanticEventGroup("same", Vector(event("two", BuildLogMessage, "two"))))),
+      SbtSemanticContract(Vector.empty, optionalGroups = Vector(
+        OptionalSemanticEventGroup("bad-edge", Vector(event("one", BuildLogMessage, "one")),
+          happensBefore = Set(HappensBefore("one", "missing"))))),
+      SbtSemanticContract(Vector.empty, optionalGroups = Vector(
+        OptionalSemanticEventGroup("bad-owner", Vector(event("one", BuildLogMessage, "one")),
+          ownership = Some(bound(pathOwnership)))))
+    )
+    invalid.foreach(contract => assertCategory(expectFailure(verify(Vector.empty, contract)), GoldenSyntaxFailure))
+
+    val invalidPlain = Vector(
+      PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.OptionalGroup("empty", Vector.empty))),
+      PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.OptionalGroup("same", Vector(PlainOutputPattern.Exact("first"))),
+        PlainOutputPattern.OptionalGroup("same", Vector(PlainOutputPattern.Exact("second")))))
+    )
+    invalidPlain.foreach { plain =>
+      assertCategory(expectFailure(verify(Vector.empty, SbtSemanticContract(Vector.empty, plainOutput = plain))),
+        GoldenSyntaxFailure)
+    }
+
+    val duplicateLifecycle = compilationContract().copy(
+      lifecycles = compilationContract().lifecycles ++ compilationContract().lifecycles.take(1)
+    )
+    val duplicateFailure = expectFailure(verify(Vector.empty, duplicateLifecycle))
+    Assert.assertTrue(duplicateFailure.failures.exists(_.summary.contains("Duplicate lifecycle name 'compile-a'")))
+
+    val cyclic = SbtSemanticContract(
+      events = Vector(event("a", BuildLogMessage, "a"), event("b", BuildLogMessage, "b")),
+      happensBefore = Set(HappensBefore("b", "a"), HappensBefore("a", "b"))
+    )
+    val cycleFailure = expectFailure(verify(Vector.empty, cyclic))
+    Assert.assertTrue(cycleFailure.failures.exists(_.summary.contains("a -> b -> a")))
+  }
+
+  @Test def compoundMutationReportsIndependentViolationsAndBlockedDependenciesTogether(): Unit = {
+    val flowC = SemanticBindingKey.flow("compile-c")
+    val inspection = ExpectedSemanticEvent("inspection", Inspection,
+      "typeId" -> exact("scala"), "message" -> exact("stable"), "severity" -> exact("WARNING"))
+    val contract = compilationContract().copy(
+      events = compilationContract().events ++ Vector(
+        ExpectedSemanticEvent("compile-c-start", CompilationStarted, "compiler" -> exact("compiler-c")),
+        ExpectedSemanticEvent("compile-c-finish", CompilationFinished, "compiler" -> exact("compiler-c")),
+        inspection
+      ),
+      lifecycles = compilationContract().lifecycles :+
+        SemanticLifecycleRule.compilation("compile-c", "compile-c-start", Seq.empty, "compile-c-finish", flowC),
+      distinctBindings = compilationContract().distinctBindings ++ Set(
+        DistinctSemanticBindings(flowA, flowC), DistinctSemanticBindings(flowB, flowC)),
+      processResult = ProcessResultContract.Success
+    )
+    val mutated = Vector(
+      compilationStarted("compiler-a", "flow-a"),
+      compilationFinished("compiler-a", "flow-a"),
+      buildMessage("flow-a", "body-b"),
+      compilationStarted("compiler-b", "flow-b"),
+      compilationFinished("compiler-b", "flow-b"),
+      compilationStarted("compiler-c", "flow-c"),
+      "##teamcity[inspection typeId='scala' message='changed' severity='ERROR']",
+      "##teamcity[fixtureUnexpected value='extra']",
+      "unexpected plain output"
+    )
+    val error = expectFailure(SbtSemanticOutputVerifier.verify(mutated, contract, exitCode = 7))
+    val findings = error.failures
+
+    Seq(SemanticCardinalityFailure, FlowOwnershipFailure, LifecycleFailure, OrderingFailure,
+      PlainOutputFailure, ProcessResultFailure).foreach { category =>
+      Assert.assertTrue(s"Missing $category in $findings", findings.exists(_.category == category))
+    }
+    Assert.assertTrue(findings.exists(finding =>
+      finding.semanticIdentity == "event:inspection" && finding.disposition == Violation))
+    Assert.assertTrue(findings.exists(finding =>
+      finding.semanticIdentity == "kind:fixtureUnexpected" && finding.disposition == Violation))
+    Assert.assertTrue(findings.exists(finding =>
+      finding.semanticIdentity == "lifecycle:compile-c" && finding.disposition == Violation))
+    Assert.assertTrue(findings.exists(finding =>
+      finding.semanticIdentity.contains("compile-a-message") && finding.disposition == Blocked))
+    Assert.assertTrue(findings.exists(finding =>
+      finding.semanticIdentity == "edge:compile-b-start->compile-b-message" && finding.disposition == Violation))
+    Seq("SemanticCardinalityFailure", "FlowOwnershipFailure", "LifecycleFailure", "OrderingFailure",
+      "PlainOutputFailure", "ProcessResultFailure", "[Violation]", "[Blocked]", "event:inspection",
+      "kind:fixtureUnexpected", "lifecycle:compile-c", "compile-a-message",
+      "Required happens-before edge 'compile-b-start' -> 'compile-b-message' is reversed.").foreach { text =>
+      Assert.assertTrue(s"Missing '$text' in rendered compound failure", error.getMessage.contains(text))
+    }
   }
 
   private def nonOwnershipCase(

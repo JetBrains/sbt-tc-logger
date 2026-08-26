@@ -67,10 +67,20 @@ private[logger] object SbtSemanticOutputVerifier {
 
   private final case class MatchSolution(
     eventToObservation: Map[SemanticEventId, Int],
-    bindings: Map[SemanticBindingKey, String]
+    bindings: Map[SemanticBindingKey, String],
+    expectedEvents: Vector[ExpectedSemanticEvent],
+    happensBefore: Set[HappensBefore],
+    activeOptionalGroups: Set[String],
+    uncertainEdges: Set[HappensBefore] = Set.empty
   )
 
   private final case class SearchResult(solutions: Vector[MatchSolution], budgetExceeded: Boolean)
+
+  private final case class PartialOptionalAssessment(
+    possibleGroups: Set[String],
+    definiteGroups: Set[String],
+    findings: Vector[SbtSemanticFailure]
+  )
 
   private enum OwnershipMode {
     case Enforce
@@ -83,8 +93,6 @@ private[logger] object SbtSemanticOutputVerifier {
     wireFailures: Vector[SbtSemanticFailure]
   ): Vector[SbtSemanticFailure] = {
     val failures = Vector.newBuilder[SbtSemanticFailure]
-    failures ++= cardinalityFailures(observed, contract, wireFailures)
-    failures ++= attributeFailures(observed, contract)
     if (wireFailures.nonEmpty) {
       failures += SbtSemanticFailure(
         SbtVerificationFailureCategory.SemanticCardinalityFailure,
@@ -98,8 +106,11 @@ private[logger] object SbtSemanticOutputVerifier {
     var fullMapping = Option.empty[MatchSolution]
     var unresolvedAssignment = false
     var assignmentBlockedReason = Option.empty[String]
-    if (observed.size == contract.events.size) {
+    var diagnosticSolutions = Vector.empty[MatchSolution]
+    var diagnosticOwnershipMode = OwnershipMode.Enforce
+    {
       val exact = search(observed, contract, OwnershipMode.Enforce)
+      diagnosticSolutions = Option.unless(exact.budgetExceeded)(exact.solutions).getOrElse(Vector.empty)
       if (exact.budgetExceeded) {
         assignmentBlockedReason = Some("exact semantic matching exceeded its state budget")
         failures += SbtSemanticFailure(
@@ -115,6 +126,9 @@ private[logger] object SbtSemanticOutputVerifier {
         fullMapping = exact.solutions.headOption
       } else {
         val ownershipRelaxed = search(observed, contract, OwnershipMode.Ignore)
+        diagnosticOwnershipMode = OwnershipMode.Ignore
+        diagnosticSolutions = Option.unless(ownershipRelaxed.budgetExceeded)(ownershipRelaxed.solutions)
+          .getOrElse(Vector.empty)
         if (ownershipRelaxed.budgetExceeded) {
           assignmentBlockedReason = Some("ownership-relaxed semantic matching exceeded its state budget")
           failures += SbtSemanticFailure(
@@ -134,13 +148,55 @@ private[logger] object SbtSemanticOutputVerifier {
       }
     }
 
-    val effectiveMapping = fullMapping.getOrElse(
-      MatchSolution(safePartialMapping(observed, contract), Map.empty)
+    val optionalAssessment = fullMapping.fold(
+      assessPartialOptionalGroups(
+        observed,
+        contract,
+        diagnosticSolutions,
+        assignmentBlockedReason,
+        wireFailures,
+        diagnosticOwnershipMode
+      )
+    )(_ => PartialOptionalAssessment(Set.empty, Set.empty, Vector.empty))
+    val diagnosticGroups = contract.optionalGroups.filter(group => optionalAssessment.possibleGroups.contains(group.name))
+    val diagnosticEvents = fullMapping.map(_.expectedEvents).getOrElse(
+      contract.events ++ diagnosticGroups.flatMap(_.events)
     )
+    if (fullMapping.isEmpty) {
+      failures ++= cardinalityFailures(observed, contract, wireFailures)
+      failures ++= attributeFailures(
+        observed,
+        contract,
+        diagnosticEvents,
+        optionalAssessment.definiteGroups,
+        wireFailures
+      )
+      failures ++= optionalAssessment.findings
+    }
+    val diagnosticEdges = contract.happensBefore ++ diagnosticGroups.flatMap(_.happensBefore)
+    val uncertainEdges = diagnosticGroups.filterNot(group => optionalAssessment.definiteGroups.contains(group.name))
+      .flatMap(_.happensBefore).toSet
+    val effectiveMapping = fullMapping.getOrElse(MatchSolution(
+      safePartialMapping(observed, contract, diagnosticEvents),
+      Map.empty,
+      diagnosticEvents,
+      diagnosticEdges,
+      optionalAssessment.possibleGroups,
+      uncertainEdges
+    ))
     val dependentBlockedReason = assignmentBlockedReason.orElse(
       Option.when(unresolvedAssignment)("no complete semantic event assignment exists")
     )
-    val bindingFailures = bindingConflictFailures(effectiveMapping.eventToObservation, observed, contract)
+    val bindingEvents = fullMapping.map(_.expectedEvents).getOrElse(
+      contract.events ++ contract.optionalGroups.filter(group => optionalAssessment.definiteGroups.contains(group.name))
+        .flatMap(_.events)
+    )
+    val bindingFailures = bindingConflictFailures(
+      effectiveMapping.eventToObservation,
+      observed,
+      contract,
+      bindingEvents
+    )
     failures ++= lifecycleBalanceFailures(
       effectiveMapping.eventToObservation,
       contract,
@@ -151,6 +207,7 @@ private[logger] object SbtSemanticOutputVerifier {
     failures ++= blockedBindingFindings(
       effectiveMapping.eventToObservation,
       contract,
+      effectiveMapping.expectedEvents,
       wireFailures,
       dependentBlockedReason
     )
@@ -158,7 +215,7 @@ private[logger] object SbtSemanticOutputVerifier {
       failures += SbtSemanticFailure(
         SbtVerificationFailureCategory.SemanticCardinalityFailure,
         "Expected and observed messages cannot be assigned one-to-one under the declared attribute contract.",
-        diagnosticOverview(observed, contract.events),
+        diagnosticOverview(observed, diagnosticEvents),
         semanticIdentity = "event-assignment"
       )
     }
@@ -173,25 +230,32 @@ private[logger] object SbtSemanticOutputVerifier {
   ): Vector[SbtSemanticFailure] = {
     val expectedByKind = contract.events.groupMapReduce(_.kind)(event => Vector(event))(_ ++ _)
     val observedByKind = observed.groupMapReduce(_.kind)(message => Vector(message))(_ ++ _)
-    val kinds = (expectedByKind.keySet ++ observedByKind.keySet).toVector.sortBy(_.wireName)
+    val optionalKinds = contract.optionalGroups.flatMap(_.events.map(_.kind)).toSet
+    val kinds = (expectedByKind.keySet ++ optionalKinds ++ observedByKind.keySet).toVector.sortBy(_.wireName)
     val deltas = kinds.flatMap { kind =>
       val expected = expectedByKind.getOrElse(kind, Vector.empty)
       val actual = observedByKind.getOrElse(kind, Vector.empty)
-      Option.when(expected.size != actual.size)((kind, expected, actual))
+      val allowedCounts = possibleExpectedCounts(kind, contract)
+      Option.when(!allowedCounts.contains(actual.size))((kind, expected, actual, allowedCounts))
     }
 
-    deltas.map { case (kind, expected, actual) =>
-      val isPotentiallyMissing = expected.size > actual.size
+    deltas.map { case (kind, expected, actual, allowedCounts) =>
+      val minimumExpected = allowedCounts.minOption.getOrElse(0)
+      val maximumExpected = allowedCounts.maxOption.getOrElse(0)
+      val isPotentiallyMissing = actual.size < minimumExpected
+      val malformedMayCompleteCount = wireFailures.nonEmpty && actual.size < maximumExpected
       val disposition =
-        if (isPotentiallyMissing && wireFailures.nonEmpty) SbtFindingDisposition.Blocked
+        if (malformedMayCompleteCount) SbtFindingDisposition.Blocked
         else SbtFindingDisposition.Violation
       val summary =
-        if (isPotentiallyMissing) s"Missing ${expected.size - actual.size} parsed ${kind.wireName} event(s)."
-        else s"Observed ${actual.size - expected.size} extra parsed ${kind.wireName} event(s)."
+        if (isPotentiallyMissing) s"Missing ${minimumExpected - actual.size} parsed ${kind.wireName} event(s)."
+        else if (actual.size > maximumExpected) s"Observed ${actual.size - maximumExpected} extra parsed ${kind.wireName} event(s)."
+        else s"Observed ${actual.size} parsed ${kind.wireName} event(s), which cannot satisfy optional all-or-none groups."
       val context =
         if (isPotentiallyMissing) Vector(s"Expected semantic events: ${expected.map(_.id).mkString(", ")}") ++
           Option.when(wireFailures.nonEmpty)("Malformed lines may contain the unavailable event(s).").toVector
-        else actual.map(describe)
+        else Vector(s"Allowed exact counts: ${allowedCounts.toVector.sorted.mkString(", ")}") ++ actual.map(describe) ++
+          Option.when(malformedMayCompleteCount)("Malformed lines may complete an allowed event count.").toVector
       SbtSemanticFailure(
         SbtVerificationFailureCategory.SemanticCardinalityFailure,
         summary,
@@ -199,6 +263,17 @@ private[logger] object SbtSemanticOutputVerifier {
         disposition,
         s"kind:${kind.wireName}"
       )
+    }
+  }
+
+  private def possibleExpectedCounts(
+    kind: ObservedServiceMessageKind,
+    contract: PreparedSemanticContract
+  ): Set[Int] = {
+    val required = contract.events.count(_.kind == kind)
+    contract.optionalGroups.foldLeft(Set(required)) { (counts, group) =>
+      val contribution = group.events.count(_.kind == kind)
+      counts ++ counts.map(_ + contribution)
     }
   }
 
@@ -225,10 +300,14 @@ private[logger] object SbtSemanticOutputVerifier {
 
   private def attributeFailures(
     observed: Vector[ObservedServiceMessage],
-    contract: PreparedSemanticContract
+    contract: PreparedSemanticContract,
+    events: Vector[ExpectedSemanticEvent],
+    definiteOptionalGroups: Set[String],
+    wireFailures: Vector[SbtSemanticFailure]
   ): Vector[SbtSemanticFailure] = {
     val occurrenceByIndex = occurrences(observed)
-    contract.events.flatMap { event =>
+    val optionalOwner = contract.optionalGroups.flatMap(group => group.events.map(_.id -> group.name)).toMap
+    events.flatMap { event =>
       val sameKind = observed.indices.filter { index =>
         observed(index).kind == event.kind && event.occurrence.forall(_ == occurrenceByIndex(index))
       }
@@ -245,7 +324,14 @@ private[logger] object SbtSemanticOutputVerifier {
           Vector(SbtSemanticFailure(
             SbtVerificationFailureCategory.SemanticCardinalityFailure,
             s"No ${event.kind.wireName} observation satisfies attributes for semantic event '${event.id}'.",
-            Vector(s"Expected attributes: ${describeAttributes(event.attributes)}") ++ raw,
+            Vector(s"Expected attributes: ${describeAttributes(event.attributes)}") ++ raw ++
+              Option.when(wireFailures.nonEmpty)(
+                "Malformed lines may contain an unavailable matching event."
+              ).toVector,
+            disposition = if (wireFailures.nonEmpty) SbtFindingDisposition.Blocked else optionalOwner.get(event.id) match {
+              case Some(group) if !definiteOptionalGroups.contains(group) => SbtFindingDisposition.Blocked
+              case _ => SbtFindingDisposition.Violation
+            },
             semanticIdentity = s"event:${event.id}"
           ))
         }
@@ -253,19 +339,167 @@ private[logger] object SbtSemanticOutputVerifier {
     }
   }
 
+  private def assessPartialOptionalGroups(
+    observed: Vector[ObservedServiceMessage],
+    contract: PreparedSemanticContract,
+    candidateSolutions: Vector[MatchSolution],
+    assignmentBlockedReason: Option[String],
+    wireFailures: Vector[SbtSemanticFailure],
+    ownershipMode: OwnershipMode = OwnershipMode.Enforce
+  ): PartialOptionalAssessment = {
+    val structuralMatches = contract.optionalGroups.map { group =>
+      group.name -> maximumCompatibleAssignments(group.events, observed, contract)
+    }.toMap
+    val needsSoundActivationSearch = candidateSolutions.nonEmpty || assignmentBlockedReason.exists { reason =>
+      reason.contains("ambiguous") || reason.contains("budget")
+    }
+    val constrainedActivation = Option.when(needsSoundActivationSearch)(
+      analyzeOptionalActivation(observed, contract, ownershipMode)
+    )
+    val possible = constrainedActivation.map(_._1).getOrElse(
+      structuralMatches.collect { case (name, count) if count > 0 => name }.toSet
+    )
+    val definiteEvidence = contract.optionalGroups.filter(group => possible.contains(group.name)).flatMap { group =>
+      val exclusiveObservationIndexes = observed.indices.filter { index =>
+        val matchesRequired = contract.events.exists(event => compatibleIgnoringOwnership(event, observed(index), contract))
+        val matchingGroups = contract.optionalGroups.filter(_.events.exists(event =>
+          compatibleIgnoringOwnership(event, observed(index), contract)
+        )).map(_.name).toSet
+        !matchesRequired && matchingGroups == Set(group.name)
+      }.toSet
+      Option.when(maximumCompatibleAssignments(group.events, observed, contract, Some(exclusiveObservationIndexes)) > 0)(group.name)
+    }.toSet
+    val definite = constrainedActivation.map(_._2).getOrElse(definiteEvidence)
+    val findings = contract.optionalGroups.filter(group => possible.contains(group.name)).flatMap { group =>
+      val matched = structuralMatches(group.name)
+      val partial = Option.when(matched > 0 && matched < group.events.size)(SbtSemanticFailure(
+        SbtVerificationFailureCategory.SemanticCardinalityFailure,
+        s"Optional semantic group '${group.name}' is only partially present.",
+        Vector(s"Matched $matched of ${group.events.size} required group events.") ++
+          assignmentBlockedReason.map(reason => s"Assignment prerequisite: $reason.").toVector ++
+          Option.when(wireFailures.nonEmpty)("Malformed lines may contain a missing group event.").toVector,
+        if (definite.contains(group.name) && wireFailures.isEmpty) SbtFindingDisposition.Violation
+        else SbtFindingDisposition.Blocked,
+        semanticIdentity = s"optional-group:${group.name}"
+      )).toVector
+      val nonAdjacent = Option.when(
+        matched == group.events.size && group.requiresAdjacency && !hasAdjacentStructuralPair(group, observed, contract)
+      )(SbtSemanticFailure(
+        SbtVerificationFailureCategory.OrderingFailure,
+        s"Optional compiler-bridge group '${group.name}' is present but not adjacent.",
+        assignmentBlockedReason.map(reason => s"Assignment prerequisite: $reason.").toVector,
+        if (definite.contains(group.name)) SbtFindingDisposition.Violation else SbtFindingDisposition.Blocked,
+        semanticIdentity = s"optional-group:${group.name}:adjacency"
+      )).toVector
+      partial ++ nonAdjacent
+    }
+    PartialOptionalAssessment(possible, definite, findings)
+  }
+
+  private def hasAdjacentStructuralPair(
+    group: PreparedOptionalSemanticEventGroup,
+    observed: Vector[ObservedServiceMessage],
+    contract: PreparedSemanticContract
+  ): Boolean = group.events match {
+    case Vector(first, second) => observed.indices.exists { firstIndex =>
+      observed.indices.exists { secondIndex =>
+        observed(secondIndex).sourceIndex == observed(firstIndex).sourceIndex + 1 &&
+          compatibleIgnoringOwnership(first, observed(firstIndex), contract) &&
+          compatibleIgnoringOwnership(second, observed(secondIndex), contract)
+      }
+    }
+    case _ => false
+  }
+
+  private def maximumCompatibleAssignments(
+    events: Vector[ExpectedSemanticEvent],
+    observed: Vector[ObservedServiceMessage],
+    contract: PreparedSemanticContract,
+    allowedObservationIndexes: Option[Set[Int]] = None
+  ): Int = {
+    val occurrenceByIndex = occurrences(observed)
+    val allowed = allowedObservationIndexes.getOrElse(observed.indices.toSet)
+    val candidates = events.map { event =>
+      allowed.toVector.sorted.filter { index =>
+        event.occurrence.forall(_ == occurrenceByIndex(index)) &&
+          matchEvent(event, observed(index), Map.empty, contract.distinctBindings, OwnershipMode.Ignore).nonEmpty
+      }.toVector
+    }
+    val observationToEvent = mutable.HashMap.empty[Int, Int]
+    def augment(eventIndex: Int, visited: mutable.Set[Int]): Boolean = candidates(eventIndex).exists { observationIndex =>
+      if (visited.contains(observationIndex)) false
+      else {
+        visited += observationIndex
+        observationToEvent.get(observationIndex) match {
+          case None =>
+            observationToEvent.update(observationIndex, eventIndex)
+            true
+          case Some(previousEvent) if augment(previousEvent, visited) =>
+            observationToEvent.update(observationIndex, eventIndex)
+            true
+          case _ => false
+        }
+      }
+    }
+    events.indices.count(eventIndex => augment(eventIndex, mutable.HashSet.empty))
+  }
+
+  private def compatibleIgnoringOwnership(
+    event: ExpectedSemanticEvent,
+    observed: ObservedServiceMessage,
+    contract: PreparedSemanticContract
+  ): Boolean = matchEvent(event, observed, Map.empty, contract.distinctBindings, OwnershipMode.Ignore).nonEmpty
+
   private def hasStructuralFailures(
     observed: Vector[ObservedServiceMessage],
     contract: PreparedSemanticContract
   ): Boolean =
-    cardinalityFailures(observed, contract, Vector.empty).nonEmpty || attributeFailures(observed, contract).nonEmpty
+    cardinalityFailures(observed, contract, Vector.empty).nonEmpty ||
+      attributeFailures(observed, contract, contract.events, Set.empty, Vector.empty)
+        .exists(_.disposition == SbtFindingDisposition.Violation)
+
+  private def analyzeOptionalActivation(
+    observed: Vector[ObservedServiceMessage],
+    contract: PreparedSemanticContract,
+    ownershipMode: OwnershipMode
+  ): (Set[String], Set[String]) = {
+    val analyses = contract.optionalGroups.map { group =>
+      val active = search(
+        observed,
+        contract,
+        ownershipMode,
+        optionalActivation = Map(group.name -> true),
+        solutionLimit = 1
+      )
+      val inactive = search(
+        observed,
+        contract,
+        ownershipMode,
+        optionalActivation = Map(group.name -> false),
+        solutionLimit = 1
+      )
+      val activePossible = active.solutions.nonEmpty || active.budgetExceeded
+      val inactiveImpossible = inactive.solutions.isEmpty && !inactive.budgetExceeded
+      val definitelyActive = active.solutions.nonEmpty && !active.budgetExceeded && inactiveImpossible
+      (group.name, activePossible, definitelyActive)
+    }
+    val possible = analyses.collect { case (name, true, _) => name }.toSet
+    val definite = analyses.collect { case (name, _, true) => name }.toSet
+    possible -> definite
+  }
 
   private def search(
     observed: Vector[ObservedServiceMessage],
     contract: PreparedSemanticContract,
-    ownershipMode: OwnershipMode
+    ownershipMode: OwnershipMode,
+    optionalActivation: Map[String, Boolean] = Map.empty,
+    solutionLimit: Int = 2
   ): SearchResult = {
     val occurrenceByIndex = occurrences(observed)
     val solutions = mutable.ArrayBuffer.empty[MatchSolution]
+    val structurallyPossibleGroups = contract.optionalGroups.filter { group =>
+      maximumCompatibleAssignments(group.events, observed, contract) == group.events.size
+    }.map(_.name).toSet
     var visitedStates = 0
     var budgetExceeded = false
 
@@ -273,38 +507,151 @@ private[logger] object SbtSemanticOutputVerifier {
       remaining: Vector[ExpectedSemanticEvent],
       available: Set[Int],
       bindings: Map[SemanticBindingKey, String],
-      mapping: Map[SemanticEventId, Int]
+      mapping: Map[SemanticEventId, Int],
+      expectedEvents: Vector[ExpectedSemanticEvent],
+      happensBefore: Set[HappensBefore],
+      activeOptionalGroups: Set[String]
     ): Unit = {
-      if (solutions.size >= 2 || budgetExceeded) return
+      if (solutions.size >= solutionLimit || budgetExceeded) return
       visitedStates += 1
       if (visitedStates > contract.matcherStateBudget) {
         budgetExceeded = true
         return
       }
       if (remaining.isEmpty) {
-        if (available.isEmpty) solutions += MatchSolution(mapping, bindings)
+        if (available.isEmpty && bridgeAdjacencySatisfied(activeOptionalGroups, mapping, observed, contract)) {
+          solutions += MatchSolution(mapping, bindings, expectedEvents, happensBefore, activeOptionalGroups)
+        }
         return
       }
 
-      val alternatives = remaining.map { event =>
+      val ready = remaining.filter(event => contract.canonicalPrevious.get(event.id).forall(mapping.contains))
+      val alternatives = ready.map { event =>
         val candidates = available.toVector.sorted.flatMap { index =>
           val occurrenceMatches = event.occurrence.forall(_ == occurrenceByIndex(index))
-          Option.when(occurrenceMatches)(
+          val canonicalOrderMatches = contract.canonicalPrevious.get(event.id)
+            .flatMap(mapping.get)
+            .forall(previous => observed(previous).sourceIndex < observed(index).sourceIndex)
+          Option.when(occurrenceMatches && canonicalOrderMatches)(
             matchEvent(event, observed(index), bindings, contract.distinctBindings, ownershipMode).map(index -> _)
           ).flatten
         }
         event -> candidates
       }
+      if (alternatives.isEmpty) return
       val (event, candidates) = alternatives.minBy(_._2.size)
       if (candidates.isEmpty) return
       val nextRemaining = remaining.filterNot(_.id == event.id)
       candidates.foreach { case (index, nextBindings) =>
-        loop(nextRemaining, available - index, nextBindings, mapping.updated(event.id, index))
+        loop(
+          nextRemaining,
+          available - index,
+          nextBindings,
+          mapping.updated(event.id, index),
+          expectedEvents,
+          happensBefore,
+          activeOptionalGroups
+        )
       }
     }
 
-    loop(contract.events, observed.indices.toSet, Map.empty, Map.empty)
+    def chooseOptionalGroups(
+      groupIndex: Int,
+      expectedEvents: Vector[ExpectedSemanticEvent],
+      happensBefore: Set[HappensBefore],
+      activeOptionalGroups: Set[String]
+    ): Unit = {
+      if (solutions.size >= solutionLimit || budgetExceeded) return
+      visitedStates += 1
+      if (visitedStates > contract.matcherStateBudget) {
+        budgetExceeded = true
+        return
+      }
+      if (!optionalSelectionFeasible(
+        groupIndex,
+        expectedEvents,
+        observed,
+        contract,
+        structurallyPossibleGroups,
+        optionalActivation
+      )) return
+      if (groupIndex == contract.optionalGroups.size) {
+        if (expectedEvents.size == observed.size) {
+          loop(
+            expectedEvents,
+            observed.indices.toSet,
+            Map.empty,
+            Map.empty,
+            expectedEvents,
+            happensBefore,
+            activeOptionalGroups
+          )
+        }
+      } else {
+        val group = contract.optionalGroups(groupIndex)
+        if (!optionalActivation.get(group.name).contains(true)) {
+          chooseOptionalGroups(groupIndex + 1, expectedEvents, happensBefore, activeOptionalGroups)
+        }
+        if (!optionalActivation.get(group.name).contains(false) && structurallyPossibleGroups.contains(group.name)) {
+          chooseOptionalGroups(
+            groupIndex + 1,
+            expectedEvents ++ group.events,
+            happensBefore ++ group.happensBefore,
+            activeOptionalGroups + group.name
+          )
+        }
+      }
+    }
+
+    if (contract.optionalGroups.isEmpty) {
+      if (contract.events.size == observed.size) {
+        loop(
+          contract.events,
+          observed.indices.toSet,
+          Map.empty,
+          Map.empty,
+          contract.events,
+          contract.happensBefore,
+          Set.empty
+        )
+      }
+    } else chooseOptionalGroups(0, contract.events, contract.happensBefore, Set.empty)
     SearchResult(solutions.toVector, budgetExceeded)
+  }
+
+  private def optionalSelectionFeasible(
+    groupIndex: Int,
+    expectedEvents: Vector[ExpectedSemanticEvent],
+    observed: Vector[ObservedServiceMessage],
+    contract: PreparedSemanticContract,
+    structurallyPossibleGroups: Set[String],
+    optionalActivation: Map[String, Boolean]
+  ): Boolean = {
+    if (expectedEvents.size > observed.size) return false
+    val remainingGroups = contract.optionalGroups.drop(groupIndex).filter { group =>
+      structurallyPossibleGroups.contains(group.name) && !optionalActivation.get(group.name).contains(false)
+    }
+    if (expectedEvents.size + remainingGroups.map(_.events.size).sum < observed.size) return false
+    val expectedByKind = expectedEvents.groupMapReduce(_.kind)(_ => 1)(_ + _)
+    val observedByKind = observed.groupMapReduce(_.kind)(_ => 1)(_ + _)
+    val remainingByKind = remainingGroups.flatMap(_.events).groupMapReduce(_.kind)(_ => 1)(_ + _)
+    (expectedByKind.keySet ++ observedByKind.keySet ++ remainingByKind.keySet).forall { kind =>
+      val current = expectedByKind.getOrElse(kind, 0)
+      val actual = observedByKind.getOrElse(kind, 0)
+      current <= actual && actual <= current + remainingByKind.getOrElse(kind, 0)
+    }
+  }
+
+  private def bridgeAdjacencySatisfied(
+    activeGroups: Set[String],
+    mapping: Map[SemanticEventId, Int],
+    observed: Vector[ObservedServiceMessage],
+    contract: PreparedSemanticContract
+  ): Boolean = contract.optionalGroups.filter(group =>
+    activeGroups.contains(group.name) && group.requiresAdjacency
+  ).forall { group =>
+    val sourceIndexes = group.events.flatMap(event => mapping.get(event.id).map(index => observed(index).sourceIndex)).sorted
+    sourceIndexes.size == 2 && sourceIndexes(1) == sourceIndexes(0) + 1
   }
 
   /**
@@ -313,16 +660,40 @@ private[logger] object SbtSemanticOutputVerifier {
    */
   private def safePartialMapping(
     observed: Vector[ObservedServiceMessage],
-    contract: PreparedSemanticContract
+    contract: PreparedSemanticContract,
+    events: Vector[ExpectedSemanticEvent]
   ): Map[SemanticEventId, Int] = {
     val occurrenceByIndex = occurrences(observed)
-    val uniqueCandidates = contract.events.flatMap { event =>
+    val activeIds = events.map(_.id).toSet
+    def canonicalRoot(id: SemanticEventId): SemanticEventId =
+      contract.canonicalPrevious.get(id).filter(activeIds.contains).fold(id)(canonicalRoot)
+    def canonicalDepth(id: SemanticEventId): Int =
+      contract.canonicalPrevious.get(id).filter(activeIds.contains).fold(0)(previous => canonicalDepth(previous) + 1)
+    val canonicalIds = activeIds.filter(id =>
+      contract.canonicalPrevious.contains(id) || contract.canonicalPrevious.values.toSet.contains(id)
+    )
+    val nonCanonicalEvents = events.filterNot(event => canonicalIds.contains(event.id))
+    val canonicalMappings = canonicalIds.groupBy(canonicalRoot).toVector.flatMap { case (_, ids) =>
+      val orderedIds = ids.toVector.sortBy(canonicalDepth)
+      val prototype = events.find(_.id == orderedIds.head).get
+      val candidates = observed.indices.filter { index =>
+        matchEvent(prototype, observed(index), Map.empty, contract.distinctBindings, OwnershipMode.Ignore).isDefined
+      }.toVector.sortBy(index => observed(index).sourceIndex)
+      val overlapsNonClone = candidates.exists { index =>
+        nonCanonicalEvents.exists { event =>
+          event.occurrence.forall(_ == occurrenceByIndex(index)) &&
+            matchEvent(event, observed(index), Map.empty, contract.distinctBindings, OwnershipMode.Ignore).isDefined
+        }
+      }
+      if (candidates.size <= orderedIds.size && !overlapsNonClone) orderedIds.zip(candidates) else Vector.empty
+    }
+    val uniqueCandidates = events.filterNot(event => canonicalIds.contains(event.id)).flatMap { event =>
       val candidates = observed.indices.filter { index =>
         event.occurrence.forall(_ == occurrenceByIndex(index)) &&
           matchEvent(event, observed(index), Map.empty, contract.distinctBindings, OwnershipMode.Ignore).isDefined
       }
       Option.when(candidates.size == 1)(event.id -> candidates.head)
-    }
+    } ++ canonicalMappings
     val collisions = uniqueCandidates.groupMap(_._2)(_._1).collect { case (index, ids) if ids.size > 1 => index }.toSet
     uniqueCandidates.filterNot { case (_, index) => collisions.contains(index) }.toMap
   }
@@ -337,10 +708,11 @@ private[logger] object SbtSemanticOutputVerifier {
   private def bindingConflictFailures(
     mapping: Map[SemanticEventId, Int],
     observed: Vector[ObservedServiceMessage],
-    contract: PreparedSemanticContract
+    contract: PreparedSemanticContract,
+    events: Vector[ExpectedSemanticEvent]
   ): Vector[SbtSemanticFailure] = {
     val values = mutable.HashMap.empty[SemanticBindingKey, Vector[CapturedBindingValue]].withDefaultValue(Vector.empty)
-    contract.events.foreach { event =>
+    events.foreach { event =>
       mapping.get(event.id).foreach { index =>
         val message = observed(index)
         event.attributes.foreach { case (attribute, pattern) =>
@@ -407,10 +779,11 @@ private[logger] object SbtSemanticOutputVerifier {
   private def blockedBindingFindings(
     mapping: Map[SemanticEventId, Int],
     contract: PreparedSemanticContract,
+    events: Vector[ExpectedSemanticEvent],
     wireFailures: Vector[SbtSemanticFailure],
     assignmentBlockedReason: Option[String]
   ): Vector[SbtSemanticFailure] = {
-    val uses = contract.events.flatMap { event =>
+    val uses = events.flatMap { event =>
       event.attributes.flatMap { case (_, pattern) =>
         bindingKey(pattern).map(event.id -> _)
       }
@@ -476,13 +849,87 @@ private[logger] object SbtSemanticOutputVerifier {
     ownershipMode: OwnershipMode
   ): Option[Map[SemanticBindingKey, String]] = pattern match {
     case SemanticValuePattern.Exact(expected) => Option.when(value == expected)(bindings)
-    case SemanticValuePattern.AnyValue => Some(bindings)
-    case SemanticValuePattern.NonEmpty => Option.when(value.nonEmpty)(bindings)
     case SemanticValuePattern.Bound(key) => bind(key, value, bindings, distinctBindings, ownershipMode)
     case SemanticValuePattern.Embedded(prefix, key, suffix) =>
       Option.when(value.startsWith(prefix) && value.endsWith(suffix) && value.length >= prefix.length + suffix.length) {
         value.substring(prefix.length, value.length - suffix.length)
       }.flatMap(captured => bind(key, captured, bindings, distinctBindings, ownershipMode))
+    case SemanticValuePattern.UnsignedDuration => Option.when(isUnsignedDuration(value))(bindings)
+    case resource: SemanticValuePattern.DependencyResource =>
+      Option.when(matchesDependencyResource(resource, value))(bindings)
+    case SemanticValuePattern.CompilerBridgeAnnouncement =>
+      Option.when(isCompilerBridgeAnnouncement(value))(bindings)
+    case SemanticValuePattern.CompilerBridgeCompletion =>
+      Option.when(isCompilerBridgeCompletion(value))(bindings)
+    case failure: SemanticValuePattern.UserFailure => Option.when(matchesUserFailure(failure, value))(bindings)
+  }
+
+  private val UnsignedDurationPattern = "[0-9]+(?:\\.[0-9]+)?".r
+  private val DownloadSizePattern = "(?:size unknown|[0-9]+ B|[0-9]+\\.[0-9] (?:KiB|MiB))"
+  private val SbtTaskSummaryPattern =
+    "^\\[(?:success|error)\\] (?:elapsed time: [0-9]+(?:\\.[0-9]+)? s, cache [0-9]+%, .+|Total time: [0-9]+(?:\\.[0-9]+)? s(?:, completed .+)?)$".r
+  private val CompilerBridgeAnnouncementPattern =
+    "^\\[info\\] Non-compiled module 'compiler-bridge_[A-Za-z0-9_.-]+' for Scala [0-9]+(?:\\.[0-9]+)+\\. Compiling\\.\\.\\.$".r
+  private val CompilerBridgeCompletionPattern =
+    "^\\[info\\]   Compilation completed in [0-9]+(?:\\.[0-9]+)?s\\.$".r
+
+  private def isUnsignedDuration(value: String): Boolean = UnsignedDurationPattern.matches(value)
+
+  private def matchesDependencyResource(
+    pattern: SemanticValuePattern.DependencyResource,
+    value: String
+  ): Boolean = {
+    val prefix = s"[${pattern.project} / ${pattern.configuration}] "
+    if (!value.startsWith(prefix)) return false
+    val detail = value.stripPrefix(prefix)
+    pattern.outcomes.exists {
+      case DependencyResourceOutcome.LocalCacheHit => detail == s"local cache hit ${pattern.url}"
+      case DependencyResourceOutcome.Downloaded =>
+        val metadataPrefix = s"downloaded ${pattern.url} ("
+        detail.startsWith(metadataPrefix) && detail.endsWith(")") && {
+          val metadata = detail.substring(metadataPrefix.length, detail.length - 1)
+          metadata.matches(s"$DownloadSizePattern, $UnsignedDurationPattern (?:ms|s)")
+        }
+      case DependencyResourceOutcome.FailedDownloadAttempt =>
+        val metadataPrefix = s"failed download attempt ${pattern.url} (after "
+        detail.startsWith(metadataPrefix) && detail.endsWith(")") && {
+          val duration = detail.substring(metadataPrefix.length, detail.length - 1)
+          duration.matches(s"$UnsignedDurationPattern (?:ms|s)")
+        }
+    }
+  }
+
+  private def isCompilerBridgeAnnouncement(value: String): Boolean =
+    CompilerBridgeAnnouncementPattern.matches(value)
+
+  private def isCompilerBridgeCompletion(value: String): Boolean =
+    CompilerBridgeCompletionPattern.matches(value)
+
+  private def matchesUserFailure(pattern: SemanticValuePattern.UserFailure, value: String): Boolean = {
+    val exactHead = (pattern.prefix +: pattern.userFrames).mkString("\n")
+    if (value == exactHead) return true
+    if (!value.startsWith(exactHead + "\n")) return false
+    val splitTail = value.substring(exactHead.length + 1).split("\n", -1).toVector
+    // One final newline is common in framework-rendered details; further/interior blank lines remain contractual.
+    val tail = if (splitTail.lastOption.contains("")) splitTail.dropRight(1) else splitTail
+    tail.size <= pattern.maximumFrameworkFrames && tail.forall(isRecognizedFrameworkFrame(pattern.framework, _))
+  }
+
+  private def isRecognizedFrameworkFrame(framework: RecognizedTestFramework, frame: String): Boolean = {
+    val trimmed = frame.stripPrefix("\t").trim
+    if (trimmed.matches("\\.\\.\\. [0-9]+ more")) return true
+    // A "Caused by:" line carries user-visible failure information; callers must include it in the exact prefix.
+    if (!trimmed.startsWith("at ")) return false
+    val location = trimmed.stripPrefix("at ")
+    val frameworkPrefixes = framework match {
+      case RecognizedTestFramework.ScalaTest => Set("org.scalatest.")
+      case RecognizedTestFramework.Specs2 => Set("org.specs2.")
+      case RecognizedTestFramework.JUnit => Set("org.junit.", "junit.", "com.novocode.junit.")
+    }
+    val commonPrefixes = Set(
+      "sbt.", "xsbti.", "scala.", "java.", "java.base/", "jdk.internal.", "sun.reflect."
+    )
+    (frameworkPrefixes ++ commonPrefixes).exists(location.startsWith)
   }
 
   private def bind(
@@ -516,7 +963,7 @@ private[logger] object SbtSemanticOutputVerifier {
     contract: PreparedSemanticContract,
     wireFailures: Vector[SbtSemanticFailure],
     assignmentBlockedReason: Option[String]
-  ): Vector[SbtSemanticFailure] = contract.happensBefore.toVector
+  ): Vector[SbtSemanticFailure] = solution.happensBefore.toVector
     .sortBy(edge => (edge.before.value, edge.after.value))
     .flatMap { edge =>
       val beforeIndex = solution.eventToObservation.get(edge.before)
@@ -527,8 +974,15 @@ private[logger] object SbtSemanticOutputVerifier {
           val after = observed(afterValue)
           Some(SbtSemanticFailure(
             SbtVerificationFailureCategory.OrderingFailure,
-            s"Required happens-before edge '${edge.before}' -> '${edge.after}' is reversed.",
-            Vector(describe(before), describe(after)),
+            if (solution.uncertainEdges.contains(edge))
+              s"Possible optional happens-before edge '${edge.before}' -> '${edge.after}' cannot be proven."
+            else s"Required happens-before edge '${edge.before}' -> '${edge.after}' is reversed.",
+            Vector(describe(before), describe(after)) ++
+              Option.when(solution.uncertainEdges.contains(edge))(
+                "Optional-group activation remains ambiguous."
+              ).toVector,
+            if (solution.uncertainEdges.contains(edge)) SbtFindingDisposition.Blocked
+            else SbtFindingDisposition.Violation,
             semanticIdentity = s"edge:${edge.before}->${edge.after}"
           ))
         case (Some(_), Some(_)) => None
@@ -602,6 +1056,15 @@ private[logger] object SbtSemanticOutputVerifier {
         rejected.map(describePlain),
         semanticIdentity = "plain-output"
       ))
+    case PlainOutputContract.Patterns(patterns) =>
+      val actual = observed.map(_.rawLine)
+      if (matchesPlainPatterns(patterns, actual)) Vector.empty
+      else Vector(SbtSemanticFailure(
+        SbtVerificationFailureCategory.PlainOutputFailure,
+        s"Plain output does not satisfy the declared finite ordered patterns (${patterns.size} top-level patterns, ${actual.size} observed lines).",
+        Vector(s"Expected patterns: ${patterns.mkString(" | ")}") ++ observed.map(describePlain),
+        semanticIdentity = "plain-output"
+      ))
     case PlainOutputContract.DelegatedToHybrid if delegated.plainOutputVerified => Vector.empty
     case PlainOutputContract.DelegatedToHybrid => Vector(SbtSemanticFailure(
       SbtVerificationFailureCategory.PlainOutputFailure,
@@ -609,6 +1072,45 @@ private[logger] object SbtSemanticOutputVerifier {
       disposition = SbtFindingDisposition.Blocked,
       semanticIdentity = "plain-output"
     ))
+  }
+
+  private def matchesPlainPatterns(
+    patterns: Vector[PlainOutputPattern],
+    lines: Vector[String]
+  ): Boolean = {
+    val memo = mutable.HashMap.empty[(Int, Int), Boolean]
+    def loop(patternIndex: Int, lineIndex: Int): Boolean = memo.getOrElseUpdate((patternIndex, lineIndex), {
+      if (patternIndex == patterns.size) lineIndex == lines.size
+      else patterns(patternIndex) match {
+        case PlainOutputPattern.OptionalGroup(_, children) =>
+          loop(patternIndex + 1, lineIndex) ||
+            matchesRequiredPlainPatterns(children, lines, lineIndex).exists { nextLineIndex =>
+              loop(patternIndex + 1, nextLineIndex)
+            }
+        case pattern if lineIndex < lines.size && matchesPlainLine(pattern, lines(lineIndex)) =>
+          loop(patternIndex + 1, lineIndex + 1)
+        case _ => false
+      }
+    })
+    loop(0, 0)
+  }
+
+  private def matchesRequiredPlainPatterns(
+    patterns: Vector[PlainOutputPattern],
+    lines: Vector[String],
+    start: Int
+  ): Option[Int] = patterns.foldLeft(Option(start)) {
+    case (Some(index), pattern) if index < lines.size && !pattern.isInstanceOf[PlainOutputPattern.OptionalGroup] &&
+      matchesPlainLine(pattern, lines(index)) => Some(index + 1)
+    case _ => None
+  }
+
+  private def matchesPlainLine(pattern: PlainOutputPattern, line: String): Boolean = pattern match {
+    case PlainOutputPattern.Exact(expected) => line == expected
+    case PlainOutputPattern.SbtTaskSummary => SbtTaskSummaryPattern.matches(line)
+    case PlainOutputPattern.CompilerBridgeAnnouncement => isCompilerBridgeAnnouncement(line)
+    case PlainOutputPattern.CompilerBridgeCompletion => isCompilerBridgeCompletion(line)
+    case _: PlainOutputPattern.OptionalGroup => false
   }
 
   private def verifyProcessResult(
