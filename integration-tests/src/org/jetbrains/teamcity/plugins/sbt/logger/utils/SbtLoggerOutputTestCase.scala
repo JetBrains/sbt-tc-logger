@@ -1,11 +1,11 @@
 package org.jetbrains.teamcity.plugins.sbt.logger.utils
 
 /**
- * One fixture-backed, exact-transcript integration scenario.
+ * One fixture-backed integration scenario, exact-transcript verified by default.
  *
  * Setup commands run before the logger-status boundary and may prepare the fixture without becoming part of the
- * product-output contract. Behaviour commands run after the boundary and their complete output is compared with the
- * profile-specific golden beside the fixture.
+ * product-output contract. Behaviour commands run after the boundary and their complete output is checked by the
+ * explicitly selected profile-aware verification contract.
  */
 final case class SbtLoggerOutputTestCase(
   scenarioId: String,
@@ -15,7 +15,8 @@ final case class SbtLoggerOutputTestCase(
   behaviorCommands: Seq[String],
   expectedResult: SbtProcessResultExpectation,
   sbtOptions: Seq[String] = Seq("--error"),
-  teamCityEnvironment: Boolean = true
+  teamCityEnvironment: Boolean = true,
+  verification: SbtOutputVerificationSelection = SbtOutputVerificationSelection.ExactByDefault
 ) {
   require(
     scenarioId.matches("[a-z0-9]+(?:-[a-z0-9]+)*"),

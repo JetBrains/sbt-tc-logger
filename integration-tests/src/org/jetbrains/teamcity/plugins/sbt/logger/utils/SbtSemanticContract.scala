@@ -211,6 +211,8 @@ private[logger] sealed trait ProcessResultContract
 
 private[logger] object ProcessResultContract {
   case object DelegatedToHarness extends ProcessResultContract
+  case object Success extends ProcessResultContract
+  case object Failure extends ProcessResultContract
   final case class ExitCode(expected: Int) extends ProcessResultContract
 }
 

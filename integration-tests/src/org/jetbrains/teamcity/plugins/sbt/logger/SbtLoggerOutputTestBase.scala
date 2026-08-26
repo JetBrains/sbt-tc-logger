@@ -1,8 +1,7 @@
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import org.jetbrains.teamcity.plugins.sbt.logger.utils.{IntegrationTestLayout, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerifier, SbtProcessResultExpectation, SbtTranscriptBoundary, TeamCityOutputNormaliser, TranscriptContext}
+import org.jetbrains.teamcity.plugins.sbt.logger.utils.{IntegrationTestLayout, SbtLoggerOutputTestCase, SbtLoggerPlugin, SbtOutputVerificationDispatcher, SbtOutputVerificationInputs, SbtOutputVerifier, SbtProcessResultExpectation, SbtTranscriptBoundary, TeamCityOutputNormaliser, TranscriptContext}
 import org.jetbrains.sbt.integrationTests.*
-import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.experimental.categories.Category
 
 import java.io.File
@@ -169,19 +168,24 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       root, workingDir, sbtGlobalBase, sbtBootDirectory, sbtCoursierHome, sbtIvyHome, javaHome, bounded.loggerVersion
     )
     val golden = SbtOutputVerifier.goldenFile(sourceWorkingDir, runtime.outputProfile, testCase.scenarioId)
+    val verificationInputs = SbtOutputVerificationInputs(
+      lines = bounded.lines,
+      exitCode = runResult.exitCode,
+      expectedResult = testCase.expectedResult,
+      runtimeProfile = runtime.outputProfile,
+      scenarioId = testCase.scenarioId,
+      repoRoot = root,
+      exactGolden = golden,
+      transcriptContext = context
+    )
     if (java.lang.Boolean.getBoolean(SbtOutputVerifier.CandidateModeProperty)) {
       val candidate = SbtOutputVerifier.candidateFile(root, runtime.outputProfile, testCase.scenarioId)
-      SbtOutputVerifier.writeCandidate(bounded.lines, candidate, context)
+      SbtOutputVerificationDispatcher.generateExactCandidate(verificationInputs, candidate)
       println(s"Exact transcript candidate: ${candidate.getAbsolutePath}")
+      SbtOutputVerificationDispatcher.verifyExpectedProcessResult(verificationInputs)
     } else {
-      SbtOutputVerifier.verify(bounded.lines, golden, context)
-    }
-
-    testCase.expectedResult match {
-      case SbtProcessResultExpectation.Success =>
-        assertEquals(s"Scenario '${testCase.scenarioId}' must succeed", 0, runResult.exitCode)
-      case SbtProcessResultExpectation.Failure =>
-        assertTrue(s"Scenario '${testCase.scenarioId}' must fail, but exited with 0", runResult.exitCode != 0)
+      val verificationMode = testCase.verification.forRuntimeProfile(runtime.outputProfile)
+      SbtOutputVerificationDispatcher.verify(verificationMode, verificationInputs)
     }
     runResult
   }

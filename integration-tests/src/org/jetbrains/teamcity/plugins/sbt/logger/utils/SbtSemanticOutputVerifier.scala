@@ -623,6 +623,18 @@ private[logger] object SbtSemanticOutputVerifier {
       disposition = SbtFindingDisposition.Blocked,
       semanticIdentity = "process-result"
     ))
+    case ProcessResultContract.Success if observedExitCode == 0 => Vector.empty
+    case ProcessResultContract.Success => Vector(SbtSemanticFailure(
+      SbtVerificationFailureCategory.ProcessResultFailure,
+      s"Expected the process to succeed with exit code 0, observed $observedExitCode.",
+      semanticIdentity = "process-result"
+    ))
+    case ProcessResultContract.Failure if observedExitCode != 0 => Vector.empty
+    case ProcessResultContract.Failure => Vector(SbtSemanticFailure(
+      SbtVerificationFailureCategory.ProcessResultFailure,
+      "Expected the process to fail with a nonzero exit code, observed 0.",
+      semanticIdentity = "process-result"
+    ))
     case ProcessResultContract.ExitCode(expected) if expected == observedExitCode => Vector.empty
     case ProcessResultContract.ExitCode(expected) => Vector(SbtSemanticFailure(
       SbtVerificationFailureCategory.ProcessResultFailure,

@@ -523,6 +523,29 @@ class SbtSemanticVerifierTest {
     ).isEmpty)
   }
 
+  @Test def processSuccessAndFailureContractsUseZeroVersusAnyNonzeroExitCode(): Unit = {
+    val output = Vector("##teamcity[message status='NORMAL' text='target']")
+    val base = SbtSemanticContract(
+      events = Vector(event("target", BuildLogMessage, "target")),
+      processResult = ProcessResultContract.Success
+    )
+
+    Assert.assertFalse(SbtSemanticOutputVerifier.collect(output, base, exitCode = 0).exists(
+      _.category == ProcessResultFailure))
+    Assert.assertTrue(SbtSemanticOutputVerifier.collect(output, base, exitCode = 3).exists(
+      _.category == ProcessResultFailure))
+    Assert.assertFalse(SbtSemanticOutputVerifier.collect(
+      output,
+      base.copy(processResult = ProcessResultContract.Failure),
+      exitCode = 3
+    ).exists(_.category == ProcessResultFailure))
+    Assert.assertTrue(SbtSemanticOutputVerifier.collect(
+      output,
+      base.copy(processResult = ProcessResultContract.Failure),
+      exitCode = 0
+    ).exists(_.category == ProcessResultFailure))
+  }
+
   private def nonOwnershipCase(
     key: SemanticBindingKey,
     output: Vector[String],
