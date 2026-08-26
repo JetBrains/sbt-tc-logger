@@ -9,7 +9,7 @@ import java.io.File
 /** Marks suites that launch a nested SBT runtime and therefore belong to the dedicated compatibility matrix. */
 trait SbtRuntimeMatrix
 
-/** Base runner for exact, fixture-backed sbt TeamCity logger transcripts. */
+/** Base runner for fixture-backed exact, semantic, and hybrid sbt TeamCity logger verification. */
 @Category(Array(classOf[SbtRuntimeMatrix]))
 abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
 

@@ -57,7 +57,7 @@ class SbtTaskLogAppenderTest {
   @Test
   def objectEventDetailsAreDisabledByDefault(): Unit = {
     withObjectEventDetailsOption(None) {
-      assertEquals("event payload", renderedObjectEvent)
+      assertEquals("[info] event payload", renderedObjectEvent)
     }
   }
 
@@ -65,7 +65,7 @@ class SbtTaskLogAppenderTest {
   def objectEventDetailsAreAppendedWhenEnabled(): Unit = {
     withObjectEventDetailsOption(Some("true")) {
       assertEquals(
-        "event payload (ObjectEvent details: level=info, message=event payload, channelName=Some(channel), " +
+        "[info] event payload (ObjectEvent details: level=info, message=event payload, channelName=Some(channel), " +
           "execId=Some(execution), contentType=plain, json=\"json\\nvalue\")",
         renderedObjectEvent
       )

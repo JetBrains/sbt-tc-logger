@@ -102,12 +102,12 @@ final class SbtTaskLogAppender(
    *   - `Seq("first line", "second line")` becomes `Some("first line\\nsecond line")`, which is sent as one
    *     multi-line TeamCity message.
    *
-   * If no codec is registered, the fallback is `event.message.toString`. For example, the known plain test event
-   * with content type `plain` and message `"event payload"` becomes `Some("event payload")`; it does not render the
-   * enclosing `ObjectEvent` object. When `teamcity.sbt.logger.renderObjectEventDetails` is enabled, every defined
-   * result additionally ends with all event fields: level, message, channel name, execution ID, content type, and
-   * compact JSON. Any physical line break in a field value, including JSON, is rendered as the two characters `\\n`
-   * to keep the diagnostic suffix on one line.
+   * SBT's `plain` codec includes the event level, so an info event with message `"event payload"` becomes
+   * `Some("[info] event payload")`. If no codec is registered, the fallback is `event.message.toString`; it does not
+   * render the enclosing `ObjectEvent` object. When `teamcity.sbt.logger.renderObjectEventDetails` is enabled, every
+   * defined result additionally ends with all event fields: level, message, channel name, execution ID, content type,
+   * and compact JSON. Any physical line break in a field value, including JSON, is rendered as the two characters
+   * `\\n` to keep the diagnostic suffix on one line.
    *
    * @return text to report, or `None` when the event intentionally has no screen representation
    */

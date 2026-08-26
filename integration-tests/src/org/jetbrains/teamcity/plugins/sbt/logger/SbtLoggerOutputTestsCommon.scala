@@ -11,7 +11,8 @@ import org.junit.Test
 abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtLoggerOutputTestBase(runtime) {
 
   @Test def pluginStatus_LoadedInTeamCity(): Unit = run(
-    "plugin-status-active", "compilation/failure", behavior = Seq("sbt-teamcity-logger"), success = true)
+    "plugin-status-active", "compilation/failure", behavior = Seq("sbt-teamcity-logger"), success = true,
+    verification = ExactCanary)
 
   @Test def pluginStatus_ReportsConfiguredLoggerOptions(): Unit = run(
     "plugin-status-configured", "compilation/failure",
@@ -22,20 +23,22 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       "-Dteamcity.sbt.logger.showTestTaskOutput=false",
       "-Dteamcity.sbt.logger.detailedDependencyResolution=true",
       "-Dteamcity.sbt.logger.renderObjectEventDetails=true"
-    ))
+    ), verification = ExactCanary)
 
   @Test def pluginStatus_DisabledOutsideTeamCity(): Unit = run(
     "plugin-status-outside-teamcity", "compilation/failure",
-    behavior = Seq("sbt-teamcity-logger"), success = true, teamCity = false)
+    behavior = Seq("sbt-teamcity-logger"), success = true, teamCity = false,
+    verification = ExactCanary)
 
   @Test def taskLogging_CompileStaysInactiveOutsideTeamCity(): Unit = run(
     "compile-outside-teamcity", "compilation/success",
     setup = Seq("clean"), behavior = Seq("compile"), success = true,
-    options = Seq("--info"), teamCity = false)
+    options = Seq("--info"), teamCity = false, verification = ExactCanary)
 
   @Test def testReporting_FailedTestsStillFailOutsideTeamCity(): Unit = run(
     "failed-tests-outside-teamcity", "testSupport/JUnit_PassAndFailure",
-    behavior = Seq("test"), success = false, teamCity = false)
+    behavior = Seq("test"), success = false, teamCity = false,
+    verification = ExactCanary)
 
   @Test def compilation_FailureReported(): Unit = run(
     "compilation-failure", "compilation/failure", behavior = Seq("compile"), success = false,
@@ -74,16 +77,19 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def taskLogging_GenericLevelsAreSingleStructuredMessages(): Unit = run(
     "logging-generic-levels", "logging/genericLevels",
-    behavior = Seq("genericLevels"), success = true, options = Seq("--debug"))
+    behavior = Seq("genericLevels"), success = true, options = Seq("--debug"),
+    verification = ExactCanary)
 
   @Test def taskLogging_CustomLogManagerIsReplacedByDefault(): Unit = run(
     "logging-custom-manager-replaced", "logging/customLogManager",
-    behavior = Seq("customManagerLog"), success = true, options = Seq("--info"))
+    behavior = Seq("customManagerLog"), success = true, options = Seq("--info"),
+    verification = ExactCanary)
 
   @Test def taskLogging_CustomLogManagerCanBePreservedExplicitly(): Unit = run(
     "logging-custom-manager-preserved", "logging/customLogManager",
     behavior = Seq("customManagerLog"), success = true,
-    options = Seq("--info", "-Dteamcity.sbt.logger.preserveConsole=true"))
+    options = Seq("--info", "-Dteamcity.sbt.logger.preserveConsole=true"),
+    verification = ExactCanary)
 
   @Test def compilation_MinimalModePreservesDefaultOutputAndReportsInspections(): Unit = run(
     "compilation-preserve-console", "logging/preserveConsole",
@@ -97,7 +103,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     options = Seq(
       "-Dteamcity.sbt.logger.preserveConsole=true",
       "-Dteamcity.sbt.logger.showTestTaskOutput=false"
-    ))
+    ), verification = ExactCanary)
 
   // Aggregate compiles are genuinely concurrent; the semantic contract deliberately has no cross-project edge.
   @Test def compilation_MultiProject_FailuresReported(): Unit = run(
@@ -225,6 +231,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     behavior = Seq("test"), success = false,
     options = Seq("--info", "-Dteamcity.sbt.logger.showTestTaskOutput=false"),
     verification = SbtScalaTestParallelEventsSemanticContracts.Failure)
+
+  private val ExactCanary = SbtOutputVerificationSelection.ExactByDefault
 
   private def run(
     scenarioId: String,

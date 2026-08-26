@@ -49,7 +49,7 @@ Run the tests:
 2. Each JUnit test copies its fixture to a scenario-qualified directory under `target/integration-tests/work/<runtime>/`, renders its `sbt.version=@SBT_VERSION@` template with that runtime's concrete version, then starts a fresh nested SBT server for that scenario.
 3. The nested command order is: load the logger, configure the scenario cache, run setup commands, print the `sbt-teamcity-logger` status handshake, then run behavior commands. Plain SBT output before the handshake is outside the product contract, but any pre-handshake TeamCity service message fails the test.
 4. Fixture-root names express their minimum SBT version: `testdata/1.4+` is the modern SBT 1 corpus, `testdata/1.9+` is the JaCoCo extension, and `testdata/2.0+` is the SBT 2 corpus. Every fixture must contain exactly one `sbt.version=@SBT_VERSION@` property; the harness rejects missing, concrete, or duplicate values before launching SBT.
-5. From the handshake through process completion, the harness compares every merged stdout/stderr line with the fixture's exact `expected/<profile>/<scenario-id>.txt` transcript. It also parses every TeamCity-looking line with TeamCity's service-message parser and checks the nested process result independently.
+5. From the handshake through process completion, the harness dispatches the scenario's explicit profile-aware verification contract. Exact mode compares the complete merged stdout/stderr transcript, semantic mode validates parsed TeamCity events and declared plain-output shapes, and hybrid mode combines semantic events with a dedicated ordinary-output contract. The nested process result is checked as part of the same final result.
 
 Useful targeted commands:
 
@@ -62,6 +62,54 @@ Useful targeted commands:
 `sbt testSbt2_0_Jdk17`
 
 `sbt testOther`
+
+## Test kinds and verification contracts
+
+The test suite deliberately uses several contract layers. A scenario selects its layer through `SbtOutputVerificationSelection`; selection is based only on the declared runtime profile and never on observed output.
+
+- Exact protocol-rendering unit tests run `StandardOutputTeamCityServiceMessageWriterTest` against both `loggerSbt1` and `loggerSbt2`. They freeze message names, attribute order, escaping, and raw wire rendering without launching nested SBT.
+- Exact-golden grammar and preflight tests are `SbtOutputVerifierTest` and `SbtFixtureTemplateContractTest`. They validate placeholders, unordered-lane matching, strict noise recognizers, candidate round trips, fixture templates, the complete profile/scenario golden inventory, and official TeamCity parsing.
+- Semantic runtime-matrix tests use `SbtOutputVerification.Semantic` and a profile-specific `SbtSemanticContract`. Every TeamCity-looking line is parsed by TeamCity's official parser; every valid service message must be consumed exactly once by an expected event, lifecycle, binding, or optional group. Extra, missing, malformed, or misowned messages fail closed.
+- Hybrid tests use `SbtOutputVerification.Hybrid`. They apply the same semantic service-message contract and a separate concrete `PlainOutputContract` to ordinary stdout/stderr. Use this for user output, preserve-console behavior, framework log lines, Java program output, and other cases where non-TeamCity text is itself contractual.
+- Exact end-to-end canaries use `SbtOutputVerification.ExactTranscript`. They prove that a real nested-SBT run reaches the exact writer and retains the intended complete raw presentation at a small, explicit set of scenario/profile coordinates.
+- Controlled listener-concurrency tests live in `SbtTestReportListenerTest` and run against both logger targets. They exercise ownership and lifecycle state directly with deterministic callback scheduling rather than relying on nested-SBT timing to reproduce a race.
+
+Use an exact golden when raw wire rendering, console preservation/suppression, or complete logger wiring is the behavior under test. Add or extend a semantic rule when the invariant is event cardinality, attributes, ownership, lifecycle balance, binding, or fixture-defined order and dependency/framework presentation is incidental. Use hybrid mode when both semantic protocol behavior and selected ordinary output matter. Do not introduce an open-ended regex: add an exact value, a typed binding, or a finite named recognizer with mutation coverage.
+
+Partial-order edges must come from fixture semantics. Add an edge for a real dependency such as suite start before child test start, test failure before test finish, or one project's main compilation finish before that same project's test compilation start. Do not add an edge merely because one observed run printed two independent callbacks in that order. Independent projects, child tests, and dependency-resource callbacks remain unordered while each declared lifecycle stays internally ordered.
+
+Candidate generation always writes an exact transcript, even for semantic and hybrid scenarios. It deliberately does not infer concurrency from one run. Review candidates manually and introduce `[[unordered]]` lanes only after repeated runs or controlled product tests establish that the lanes are independently scheduled.
+
+Useful focused commands:
+
+```text
+sbt ";loggerSbt1/testOnly org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.StandardOutputTeamCityServiceMessageWriterTest;loggerSbt2/testOnly org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.StandardOutputTeamCityServiceMessageWriterTest"
+sbt --client ";project integrationTests; testOnly org.jetbrains.teamcity.plugins.sbt.logger.utils.SbtOutputVerifierTest org.jetbrains.teamcity.plugins.sbt.logger.utils.SbtOutputVerificationDispatcherTest org.jetbrains.teamcity.plugins.sbt.logger.utils.SbtSemanticVerifierTest"
+sbt --client ";project integrationTests; testOnly org.jetbrains.teamcity.plugins.sbt.logger.SbtFixtureTemplateContractTest org.jetbrains.teamcity.plugins.sbt.logger.*SemanticContractTest"
+sbt ";loggerSbt1/testOnly org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtTestReportListenerTest;loggerSbt2/testOnly org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtTestReportListenerTest"
+```
+
+Use the runtime aliases above for nested-SBT verification. `sbt testOther` runs the auxiliary contract and coverage tests without rerunning the four runtime-matrix classes; `sbt test` runs the complete build.
+
+### Failure diagnostics
+
+Semantic and hybrid verification collect all independent findings before throwing one final assertion. A `[Violation]` is a mismatch proved from available evidence. A `[Blocked]` finding means a dependent conclusion cannot be proved because prerequisite evidence is malformed, missing, or ambiguously assigned; it is included to show the full impact without claiming a second proven mismatch. Fix violations first, then use the blocked identities to see which checks need another look. One malformed line or missing lifecycle event does not suppress unrelated violations.
+
+The failure categories are:
+
+| Category | Meaning |
+| --- | --- |
+| `GoldenSyntaxFailure` | The declared semantic contract or exact-golden grammar is invalid. |
+| `WireProtocolFailure` | A TeamCity-looking line is malformed or rejected by the official parser. |
+| `SemanticCardinalityFailure` | Required events are missing, duplicated, unexpected, or cannot be consumed exactly once. |
+| `FlowOwnershipFailure` | An event or reused typed binding belongs to the wrong flow, build, suite, task, or project. |
+| `LifecycleFailure` | A compilation, block, suite, or test lifecycle is incomplete, unbalanced, or owns the wrong members. |
+| `OrderingFailure` | A fixture-derived happens-before edge is reversed or cannot be established. |
+| `PlainOutputFailure` | Ordinary output is missing, extra, misplaced, or fails its finite pattern contract. |
+| `MatcherComplexityFailure` | Exact assignment exceeded its declared state budget or remained ambiguous and needs a more expressive contract. |
+| `ProcessResultFailure` | The nested process exit code disagrees with the scenario expectation. |
+
+Every exact, semantic, or hybrid assertion failure attempts to retain the complete bounded raw transcript at `target/integration-tests/failure-artifacts/<profile>/<scenario-id>/bounded-transcript.txt`. The assertion reports that path. An artifact write error is suppressed onto the original assertion and never replaces the mismatch diagnostics.
 
 ### Exact transcript goldens
 
@@ -102,6 +150,35 @@ sbt generateSbt2_0_Jdk17OutputCandidates
 ```
 
 Audit every candidate before copying it beside its source fixture. Preserve pinned SBT, Scala, Zinc, framework, dependency, and tool versions; add one-line or ordered lanes only for repeat-observed concurrency; never convert suspicious logger output into noise. After updating a profile, run its targeted test alias three complete times. The fixture contract tests reject missing, duplicate, empty, unknown-profile, and orphaned goldens, as well as legacy `output*.txt` or `excludes.txt` files.
+
+### Exact end-to-end canaries
+
+The following is the complete intentional exact-canary inventory. "All profiles" means `sbt-1.4-jdk8`, `sbt-1-jdk8`, `sbt-1-jdk17`, and `sbt-2-jdk17`.
+
+| Scenario IDs | Exact profiles | Rationale |
+| --- | --- | --- |
+| `plugin-status-active`, `plugin-status-configured`, `plugin-status-outside-teamcity` | All profiles | Freeze the handshake, option rendering, and inactive-outside-TeamCity boundary on every supported runtime. |
+| `compile-outside-teamcity`, `failed-tests-outside-teamcity` | All profiles | Prove that disabling the TeamCity environment leaves native compile/test behavior and process results untouched. |
+| `logging-generic-levels`, `logging-custom-manager-replaced`, `logging-custom-manager-preserved` | All profiles | Exercise complete appender/writer wiring, level rendering, and the custom-log-manager control. |
+| `tests-preserve-console` | All profiles | Freeze the strongest failed-test, preserve-console, configured-result, and hidden-task-output combination. |
+| `compilation-preserve-console` | `sbt-1.4-jdk8` | Cover the oldest supported SBT/JDK boundary with one complete compilation and preserved native console transcript. Newer profiles use hybrid contracts. |
+| `compilation-success` | `sbt-2-jdk17` | Keep one current SBT 2 compilation lifecycle on the exact writer while all profiles also have focused semantic coverage. |
+| `dependency-detailed-outcomes` | `sbt-2-jdk17` | Retain the supported raw detailed-dependency presentation, including genuinely concurrent resource callbacks. SBT 1 uses the semantic equivalent. |
+
+Unknown runtime profiles also fall back to exact verification. That is a compatibility guard, not an additional selected canary: a new profile must receive an explicit semantic/hybrid contract or an explicit canary decision before its exact golden can pass review.
+
+### Remaining unordered exact-golden blocks
+
+There are 22 `[[unordered]]` blocks in 20 adjacent exact-golden files. This is the complete inventory; every block represents independently scheduled output and every lane remains internally strict. Except for the noted SBT 2 canary, semantic or hybrid runtime contracts now own these scenarios, while the adjacent goldens remain available for candidate review and fail-closed unknown-profile fallback.
+
+| Golden group | Profiles/files | Blocks and justification |
+| --- | --- | --- |
+| `compilation/concurrentMainTest` / `compilation-concurrent-main-test.txt` | All four profiles | Four blocks, one per file. The `left` and `right` project compilation lifecycles are independent; each project's main-to-test edge is enforced semantically. |
+| `compilation/multiProject` / `compilation-multiproject-failure*.txt` | All four profiles, normal and debug files | Eight blocks. Root, `project1`, and `project2` compilation callbacks can interleave; semantic contracts enforce exact per-project ownership and lifecycle balance without a false cross-project edge. |
+| `compilation/success` / `dependency-detailed-outcomes.txt` | `sbt-1-jdk17`, `sbt-2-jdk17` | Four blocks, first and cached update in each file. Resource callbacks are independent within block boundaries. The SBT 2 file is the active exact canary; both profile shapes have focused semantic coverage. |
+| `dependencyResolution/updateFailure` / `dependency-detailed-failure.txt` | `sbt-1-jdk17` | One block. Independent failed resource attempts may arrive in any order; the hybrid contract owns warning/error boundaries and the task summary. |
+| `projectExecution/javaSources` / `java-sources-compile-run.txt` | `sbt-1.4-jdk8` | One block. Background-runner completion messages can race the Java program's stdout; the hybrid contract validates both lanes and their exact contents. |
+| `testSupport/ScalaTest_ParallelEvents` / `scalatest-parallel-events.txt` | All four profiles | Four blocks. The parallel and non-parallel suites are independently scheduled; semantic contracts enforce each suite/test chain and reject cross-suite flow ownership. |
 
 The integration matrix is intentionally limited rather than a full SBT × JDK cross-product:
 

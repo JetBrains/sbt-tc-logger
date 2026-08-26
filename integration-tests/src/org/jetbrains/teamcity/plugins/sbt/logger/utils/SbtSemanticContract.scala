@@ -517,7 +517,7 @@ private[logger] object ProcessResultContract {
   final case class ExitCode(expected: Int) extends ProcessResultContract
 }
 
-/** Evidence supplied by the future Hybrid/outer harness for explicitly delegated checks. */
+/** Evidence supplied by a Hybrid or outer harness for explicitly delegated checks. */
 private[logger] final case class SbtDelegatedVerification(
   plainOutputVerified: Boolean = false,
   processResultVerified: Boolean = false

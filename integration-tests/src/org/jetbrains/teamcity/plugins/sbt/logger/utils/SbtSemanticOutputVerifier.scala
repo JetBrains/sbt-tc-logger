@@ -26,7 +26,7 @@ private[logger] object SbtSemanticOutputVerifier {
     if (result.nonEmpty) throw new SbtSemanticVerificationException(result)
   }
 
-  /** Non-throwing entry point for the future harness to combine semantic and delegated findings. */
+  /** Non-throwing entry point used by the harness to combine semantic and delegated findings. */
   def collect(
     lines: Vector[String],
     contract: SbtSemanticContract,
