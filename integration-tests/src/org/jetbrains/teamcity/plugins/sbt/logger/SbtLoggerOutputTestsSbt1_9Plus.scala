@@ -32,5 +32,6 @@ trait SbtLoggerOutputTestsSbt1_9Plus { this: SbtLoggerOutputTestBase =>
       behaviorCommands = Seq("jacoco"),
       expectedResult = SbtProcessResultExpectation.Success,
       sbtOptions = Seq("--info"), // sbt-jacoco logs its report summary at info level.
+      verification = SbtJacocoSemanticContracts.Report
     ))
 }

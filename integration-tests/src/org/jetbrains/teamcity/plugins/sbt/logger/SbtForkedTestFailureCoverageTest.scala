@@ -18,6 +18,7 @@ class SbtForkedTestFailureCoverageTest {
       fixture = "testSupport/JUnit_ForkedChildFailure",
       setupCommands = Seq.empty,
       behaviorCommands = Seq("test"),
-      expectedResult = SbtProcessResultExpectation.Failure
+      expectedResult = SbtProcessResultExpectation.Failure,
+      verification = SbtTestExecutionFailureSemanticContracts.ForkedChildExit
     ))
 }

@@ -1906,6 +1906,34 @@ class SbtSemanticVerifierTest {
         "[debug] [zinc] Running cached compiler abc123 for Scala compiler version 2.13.18",
       StructuredSbtDebugKind.CompilerArguments ->
         "[debug] [zinc] The Scala compiler is invoked with:\n[debug] \t-classpath\n[debug] \t/tmp/classes",
+      StructuredSbtDebugKind.NoChanges -> "[debug] No changes",
+      StructuredSbtDebugKind.ScalaCompilationTiming -> "[debug] Scala compilation took 0.25 s",
+      StructuredSbtDebugKind.JavaCompilerArguments ->
+        "[debug] [zinc] The Java compiler is invoked with:\n[debug] \t-classpath\n[debug] \t/tmp/classes",
+      StructuredSbtDebugKind.JavacInvocation ->
+        "[debug] Attempting to call com.sun.tools.javac.api.JavacTool@abc123 directly...",
+      StructuredSbtDebugKind.JavaCompilationTiming -> "[debug] Java compilation took 0.25 s",
+      StructuredSbtDebugKind.JavaClassfileParsing ->
+        "[debug] [zinc] classfile.Parser parsing com.jetbrains.sbt.test.HelloWorld",
+      StructuredSbtDebugKind.JavaAnalysisTiming -> "[debug] Java analysis took 0.25 s",
+      StructuredSbtDebugKind.JavaCompilationAndAnalysisTiming ->
+        "[debug] Java compilation + analysis took 0.5 s",
+      StructuredSbtDebugKind.PackageInputMappings -> (
+        "[debug] Input file mappings:\n" +
+          "[debug] \tcom/jetbrains/sbt/test/HelloScala.class\n" +
+          "[debug] \t  /tmp/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/com/jetbrains/sbt/test/HelloScala.class\n" +
+          "[debug] \tcom/jetbrains/sbt/test/HelloScala$.class\n" +
+          "[debug] \t  /tmp/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/com/jetbrains/sbt/test/HelloScala$.class\n" +
+          "[debug] \tcom/jetbrains/sbt/test/HelloWorld.class\n" +
+          "[debug] \t  /tmp/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/com/jetbrains/sbt/test/HelloWorld.class\n" +
+          "[debug] \tcom/jetbrains/sbt/test/HelloScala.tasty\n" +
+          "[debug] \t  /tmp/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/com/jetbrains/sbt/test/HelloScala.tasty"),
+      StructuredSbtDebugKind.SbtRunClasspath -> (
+        "[debug]   Classpath:\n" +
+          "[debug] \t/tmp/target/bg-jobs/sbt_abcdef/job-1/target/123456/abcdef/java-sources-compile-run_2.13-0.1.0-SNAPSHOT.jar\n" +
+          "[debug] \t/tmp/target/bg-jobs/sbt_abcdef/target/123456/abcdef/scala-library-2.13.18.jar"),
+      StructuredSbtDebugKind.WrotePackage ->
+        "[debug] wrote /tmp/java-sources-compile-run_3-0.1.0-SNAPSHOT.jar",
       StructuredSbtDebugKind.CompilationFailed -> "[debug] Compilation failed (CompilerInterface)",
       StructuredSbtDebugKind.CreatedClassFileManager ->
         "[debug] Created transactional ClassFileManager with tempDir = /tmp/classes.bak",

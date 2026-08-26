@@ -1140,6 +1140,32 @@ private[logger] object SbtSemanticOutputVerifier {
       case StructuredSbtDebugKind.CompilerArguments => Vector(
         """^\[debug\] \[zinc\] The Scala compiler is invoked with:(?:\n\[debug\] \t?[^\r\n]+)+$""".r
       )
+      case StructuredSbtDebugKind.NoChanges =>
+        Vector("""^\[debug\] No changes$""".r)
+      case StructuredSbtDebugKind.ScalaCompilationTiming =>
+        Vector("""^\[debug\] Scala compilation took [0-9]+(?:\.[0-9]+)? s$""".r)
+      case StructuredSbtDebugKind.JavaCompilerArguments => Vector(
+        """^\[debug\] \[zinc\] The Java compiler is invoked with:(?:\n\[debug\] \t?[^\r\n]+)+$""".r
+      )
+      case StructuredSbtDebugKind.JavacInvocation => Vector(
+        """^\[debug\] Attempting to call com\.sun\.tools\.javac\.api\.JavacTool@[0-9a-fA-F]{6,16} directly\.\.\.$""".r
+      )
+      case StructuredSbtDebugKind.JavaCompilationTiming =>
+        Vector("""^\[debug\] Java compilation took [0-9]+(?:\.[0-9]+)? s$""".r)
+      case StructuredSbtDebugKind.JavaClassfileParsing => Vector(
+        """^\[debug\] \[zinc\] classfile\.Parser parsing com\.jetbrains\.sbt\.test\.HelloWorld$""".r
+      )
+      case StructuredSbtDebugKind.JavaAnalysisTiming =>
+        Vector("""^\[debug\] Java analysis took [0-9]+(?:\.[0-9]+)? s$""".r)
+      case StructuredSbtDebugKind.JavaCompilationAndAnalysisTiming =>
+        Vector("""^\[debug\] Java compilation \+ analysis took [0-9]+(?:\.[0-9]+)? s$""".r)
+      case StructuredSbtDebugKind.PackageInputMappings =>
+        Vector("""(?s)^\[debug\] Input file mappings:.+$""".r).filter(_ => isJavaSourcesInputMapping(value))
+      case StructuredSbtDebugKind.SbtRunClasspath =>
+        Vector("""(?s)^\[debug\]   Classpath:.+$""".r).filter(_ => isJavaSourcesRunClasspath(value))
+      case StructuredSbtDebugKind.WrotePackage => Vector(
+        """^\[debug\] wrote \S+/java-sources-compile-run_(?:2\.13|3)-0\.1\.0-SNAPSHOT\.jar$""".r
+      )
       case StructuredSbtDebugKind.CompilationFailed =>
         Vector("""^\[debug\] Compilation failed(?: \(CompilerInterface\))?$""".r)
       case StructuredSbtDebugKind.CreatedClassFileManager => Vector(
@@ -1162,6 +1188,69 @@ private[logger] object SbtSemanticOutputVerifier {
         Vector("""^\[debug\] wrote \S+/classes$""".r)
     }
     patterns.exists(_.matches(value))
+  }
+
+  private def isJavaSourcesInputMapping(value: String): Boolean = {
+    val debugPrefix = "[debug] "
+    val entryPrefix = debugPrefix + "\t"
+    val mappingPrefix = debugPrefix + "\t  "
+    val lines = value.split("\n", -1).toVector
+    if (lines.headOption != Some(debugPrefix + "Input file mappings:")) return false
+    val pairs = lines.drop(1).grouped(2).collect { case Vector(entry, path) => entry -> path }.toVector
+    if (lines.size != 1 + pairs.size * 2) return false
+
+    val directories = Vector("com", "com/jetbrains", "com/jetbrains/sbt", "com/jetbrains/sbt/test")
+    val sbt1Classes = Set(
+      "com/jetbrains/sbt/test/HelloScala.class",
+      "com/jetbrains/sbt/test/HelloScala$.class",
+      "com/jetbrains/sbt/test/HelloWorld.class"
+    )
+    val sbt2Classes = sbt1Classes + "com/jetbrains/sbt/test/HelloScala.tasty"
+
+    def commonRoot(expected: Set[String], suffix: String): Option[String] = {
+      val names = pairs.map(_._1.stripPrefix(entryPrefix))
+      val roots = pairs.map { case (entry, path) =>
+        val name = entry.stripPrefix(entryPrefix)
+        val output = path.stripPrefix(mappingPrefix)
+        Option.when(entry.startsWith(entryPrefix) && path.startsWith(mappingPrefix) && output.endsWith(name))(
+          output.stripSuffix(name)
+        )
+      }
+      Option.when(
+        pairs.size == expected.size && names.toSet == expected && roots.forall(_.isDefined)
+      )(roots.flatten.distinct).collect { case Vector(root) if root.endsWith(suffix) => root }
+    }
+
+    val sbt1Expected = directories.toSet ++ sbt1Classes
+    val sbt1 = commonRoot(sbt1Expected, "/target/scala-2.13/classes/").exists { root =>
+      val directoryPairs = pairs.take(directories.size)
+      val classPairs = pairs.drop(directories.size)
+      directoryPairs.zip(directories).forall { case ((entry, path), directory) =>
+        entry == entryPrefix + directory && path == mappingPrefix + root + directory
+      } && classPairs.map(_._1.stripPrefix(entryPrefix)).toSet == sbt1Classes &&
+        classPairs.forall { case (entry, path) =>
+          val name = entry.stripPrefix(entryPrefix)
+          path == mappingPrefix + root + name
+        }
+    }
+    val sbt2 = commonRoot(
+      sbt2Classes,
+      "/target/out/jvm/scala-3.8.4/java-sources-compile-run/classes/"
+    ).exists { root =>
+      pairs.forall { case (entry, path) =>
+        val name = entry.stripPrefix(entryPrefix)
+        path == mappingPrefix + root + name
+      }
+    }
+    sbt1 || sbt2
+  }
+
+  private def isJavaSourcesRunClasspath(value: String): Boolean = {
+    val lines = value.split("\n", -1).toVector
+    lines.headOption.contains("[debug]   Classpath:") &&
+      lines.size == 3 &&
+      matchesJavaRunClasspathEntry(lines(1), "java-sources-compile-run_2.13-0.1.0-SNAPSHOT.jar", jobScoped = true) &&
+      matchesJavaRunClasspathEntry(lines(2), "scala-library-2.13.18.jar", jobScoped = false)
   }
 
   private def matchesUserFailure(pattern: SemanticValuePattern.UserFailure, value: String): Boolean = {
@@ -1715,6 +1804,12 @@ private[logger] object SbtSemanticOutputVerifier {
         line.rawLine, workspace, sourceSuffix, level, column, serviceMessages, bindings)
     case PlainOutputPattern.ScalaTestLogbackLine(thread, level, exactSuffix) =>
       matchScalaTestLogbackLine(line.rawLine, thread, level, exactSuffix, bindings)
+    case PlainOutputPattern.JavaRuntimeVersion(majorVersion) =>
+      Option.when(matchesJavaRuntimeVersion(line.rawLine, majorVersion))(bindings)
+    case PlainOutputPattern.JavaRuntimeHome(jdk8JreSuffix) =>
+      Option.when(matchesJavaRuntimeHome(line.rawLine, jdk8JreSuffix))(bindings)
+    case PlainOutputPattern.JavaRunClasspathEntry(fileName, jobScoped) =>
+      Option.when(matchesJavaRunClasspathEntry(line.rawLine, fileName, jobScoped))(bindings)
     case PlainOutputPattern.BeforeServiceMessages(child) =>
       if (ignoredPlacements.contains("plain-placement:before-service-messages") ||
         serviceMessages.headOption.exists(line.sourceIndex < _.sourceIndex))
@@ -1871,6 +1966,27 @@ private[logger] object SbtSemanticOutputVerifier {
     case RawSbtDebugKind.TaskEvaluation => line.matches("""^\[debug\] Evaluating tasks: [^\r\n]+$""")
     case RawSbtDebugKind.TaskRun => line.matches(
       """^\[debug\] Running task\.\.\. Cancel: [^,\r\n]+, check cycles: (?:true|false), forcegc: (?:true|false)$"""
+    )
+  }
+
+  private def matchesJavaRuntimeVersion(line: String, majorVersion: Int): Boolean = majorVersion match {
+    case 8 => line.matches("""^1\.8\.0_[0-9]+(?:-b[0-9]+)?$""")
+    case 17 => line.matches("""^17\.0\.[0-9]+$""")
+    case _ => false
+  }
+
+  private def matchesJavaRuntimeHome(line: String, jdk8JreSuffix: Boolean): Boolean =
+    line.startsWith("/") && !line.exists("\r\n".contains(_)) &&
+      (if (jdk8JreSuffix) line.endsWith("/jre") else !line.endsWith("/jre"))
+
+  private def matchesJavaRunClasspathEntry(line: String, fileName: String, jobScoped: Boolean): Boolean = {
+    val hash = "[0-9a-fA-F]{6,16}"
+    val scope = if (jobScoped)
+      s"job-[0-9]+/target/$hash/$hash"
+    else
+      s"target/$hash/$hash"
+    line.matches(
+      s"^\\[debug\\] \\t/[^\\r\\n]+/target/bg-jobs/sbt_$hash/$scope/${java.util.regex.Pattern.quote(fileName)}$$"
     )
   }
 

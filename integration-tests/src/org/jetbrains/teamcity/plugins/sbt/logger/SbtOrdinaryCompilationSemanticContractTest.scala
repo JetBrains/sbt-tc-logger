@@ -92,7 +92,8 @@ class SbtOrdinaryCompilationSemanticContractTest {
         )
         Assert.assertEquals(
           s"Plain output for $scenarioId on $profile",
-          summaryContract(expectedSummaryCount(scenarioId, profile)),
+          if (scenarioId == "compile-inputs" && isSbt2(profile)) Patterns(Vector(SbtTaskSummary))
+          else summaryContract(expectedSummaryCount(scenarioId, profile)),
           contract.plainOutput
         )
       }

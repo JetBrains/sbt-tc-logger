@@ -59,6 +59,7 @@ trait SbtLoggerOutputTestsSbt2Plus { this: SbtLoggerOutputTestBase =>
       behaviorCommands = Seq("jacoco"),
       expectedResult = SbtProcessResultExpectation.Success,
       sbtOptions = Seq("--info"), // sbt-jacoco logs its report summary at info level.
+      verification = SbtJacocoSemanticContracts.Report
     ))
 
   private def runTestFullConfiguredResultWithoutTaskOutputCase(scenarioId: String): Unit =

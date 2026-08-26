@@ -315,6 +315,7 @@ class SbtMultiProjectSemanticContractTest {
     }
     case SemanticBindingKind.Flow => s"flow-${key.name}"
     case SemanticBindingKind.DurationMillis => "1250"
+    case SemanticBindingKind.DurationSeconds => "1.25"
     case SemanticBindingKind.LogbackThread => "pool-1-thread-1"
     case SemanticBindingKind.Value => s"value-${key.name}"
   }
@@ -351,6 +352,7 @@ class SbtMultiProjectSemanticContractTest {
     case RemoveTemporaryDirectory =>
       "[debug] Removing the temporary directory used for backing up class files: /tmp/classes.bak"
     case WroteProducts => "[debug] wrote /tmp/classes"
+    case other => throw new AssertionError(s"Unexpected structured debug kind in multiproject fixture: $other")
   }
 
   private enum SyntheticPlainPlacement {

@@ -386,7 +386,10 @@ private[logger] object SbtOrdinaryCompilationSemanticContracts {
   private def inputsContract(profile: Profile): SbtSemanticContract =
     SbtSemanticContract(
       events = Vector.empty,
-      plainOutput = summaryContract(if (profile.isSbt2) 1 else 0)
+      // A direct SBT 2 input task emits only its raw task summary, so there is no service-message anchor.
+      plainOutput = if (profile.isSbt2)
+        PlainOutputContract.Patterns(Vector(SbtTaskSummary))
+      else PlainOutputContract.RejectAll
     )
 
   private def assemble(part: CompilationPart, summaryCount: Int): SbtSemanticContract =

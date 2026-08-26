@@ -197,7 +197,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def projectExecution_JavaSourcesCompileAndRun(): Unit = run(
     "java-sources-compile-run", "projectExecution/javaSources",
-    behavior = Seq("compile", "run"), success = true, options = Seq("--debug"))
+    behavior = Seq("compile", "run"), success = true, options = Seq("--debug"),
+    verification = SbtJavaSourcesExecutionSemanticContracts.CompileAndRun)
 
   @Test def testReporting_Specs2_IgnoredTestsReported(): Unit = run(
     "specs2-ignored-tests", "testSupport/Specs2_IgnoredTests",

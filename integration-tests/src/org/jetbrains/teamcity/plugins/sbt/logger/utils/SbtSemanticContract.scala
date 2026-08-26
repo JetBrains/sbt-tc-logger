@@ -222,6 +222,17 @@ private[logger] enum StructuredSbtDebugKind(val id: String) {
   case CompilerBridgeRetrieval extends StructuredSbtDebugKind("compiler-bridge-retrieval")
   case CachedCompiler extends StructuredSbtDebugKind("cached-compiler")
   case CompilerArguments extends StructuredSbtDebugKind("compiler-arguments")
+  case NoChanges extends StructuredSbtDebugKind("no-changes")
+  case ScalaCompilationTiming extends StructuredSbtDebugKind("scala-compilation-timing")
+  case JavaCompilerArguments extends StructuredSbtDebugKind("java-compiler-arguments")
+  case JavacInvocation extends StructuredSbtDebugKind("javac-invocation")
+  case JavaCompilationTiming extends StructuredSbtDebugKind("java-compilation-timing")
+  case JavaClassfileParsing extends StructuredSbtDebugKind("java-classfile-parsing")
+  case JavaAnalysisTiming extends StructuredSbtDebugKind("java-analysis-timing")
+  case JavaCompilationAndAnalysisTiming extends StructuredSbtDebugKind("java-compilation-and-analysis-timing")
+  case PackageInputMappings extends StructuredSbtDebugKind("package-input-mappings")
+  case SbtRunClasspath extends StructuredSbtDebugKind("sbt-run-classpath")
+  case WrotePackage extends StructuredSbtDebugKind("wrote-package")
   case CompilationFailed extends StructuredSbtDebugKind("compilation-failed")
   case CreatedClassFileManager extends StructuredSbtDebugKind("created-class-file-manager")
   case AboutToDeleteClassFiles extends StructuredSbtDebugKind("about-to-delete-class-files")
@@ -459,6 +470,12 @@ private[logger] object PlainOutputPattern {
     level: LogbackLevel,
     exactSuffix: String
   ) extends PlainOutputPattern
+  /** One exact supported Java-major rendering with patch/build variation kept structural. */
+  final case class JavaRuntimeVersion(majorVersion: Int) extends PlainOutputPattern
+  /** The fixture's java.home output: an absolute home, with `/jre` required only on JDK 8. */
+  final case class JavaRuntimeHome(jdk8JreSuffix: Boolean) extends PlainOutputPattern
+  /** One controlled background-runner classpath entry with an exact terminal file name. */
+  final case class JavaRunClasspathEntry(fileName: String, jobScoped: Boolean) extends PlainOutputPattern
   /** The line must precede every parsed TeamCity service message in the bounded transcript. */
   final case class BeforeServiceMessages(pattern: PlainOutputPattern) extends PlainOutputPattern
   /** The line must follow every parsed TeamCity service message in the bounded transcript. */
@@ -1086,6 +1103,11 @@ private[utils] object SbtSemanticContractValidator {
           if thread.kind != SemanticBindingKind.LogbackThread || !thread.name.matches(StableName) ||
             !isNonEmptySingleLine(exactSuffix) =>
           problems += "ScalaTest Logback line requires a valid Logback-thread binding and a non-empty single-line exact suffix."
+        case PlainOutputPattern.JavaRuntimeVersion(major) if major != 8 && major != 17 =>
+          problems += s"Java runtime version requires supported major 8 or 17, got $major."
+        case PlainOutputPattern.JavaRunClasspathEntry(fileName, _)
+          if !isNonEmptySingleLine(fileName) || fileName.contains('/') || fileName.contains('\\') =>
+          problems += s"Java run classpath entry requires one exact terminal file name, got '$fileName'."
         case _ => ()
       }
     case _ => ()

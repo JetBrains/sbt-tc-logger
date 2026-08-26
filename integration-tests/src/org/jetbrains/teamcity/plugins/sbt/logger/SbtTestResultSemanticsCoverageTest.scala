@@ -18,6 +18,7 @@ class SbtTestResultSemanticsCoverageTest {
       fixture = "testSupport/JUnit_TestResultIncomplete",
       setupCommands = Seq.empty,
       behaviorCommands = Seq("verifyTestResultIsIncomplete"),
-      expectedResult = SbtProcessResultExpectation.Success
+      expectedResult = SbtProcessResultExpectation.Success,
+      verification = SbtTestExecutionFailureSemanticContracts.IncompleteResult
     ))
 }
