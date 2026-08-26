@@ -85,6 +85,23 @@ private[logger] object SemanticValuePattern {
     outcomes: Set[DependencyResourceOutcome]
   ) extends SemanticValuePattern
 
+  /** Stable resolution failure data with a reusable Ivy home and bounded dependency-owned implementation frames. */
+  final case class DependencyResolveFailure(
+    coordinate: String,
+    repositoryUrl: String,
+    ivyHome: SemanticBindingKey,
+    taskScoped: Boolean,
+    maximumInternalFrames: Int
+  ) extends SemanticValuePattern
+
+  /** Exact detailed-resolution outcome counts with only the dependency-owned duration treated structurally. */
+  final case class DependencyResolutionSummary(
+    localCacheHits: Int,
+    downloads: Int,
+    failedDownloadAttempts: Int,
+    updateReportCacheHits: Int
+  ) extends SemanticValuePattern
+
   /** The cold compiler-bridge announcement. Module and Scala versions are validated structurally. */
   case object CompilerBridgeAnnouncement extends SemanticValuePattern
 
@@ -133,6 +150,25 @@ private[logger] object SemanticValuePattern {
     url: String,
     outcomes: Set[DependencyResourceOutcome]
   ): SemanticValuePattern = DependencyResource(project, configuration, url, outcomes)
+  def dependencyResolveFailure(
+    coordinate: String,
+    repositoryUrl: String,
+    ivyHome: SemanticBindingKey,
+    taskScoped: Boolean,
+    maximumInternalFrames: Int = 32
+  ): SemanticValuePattern =
+    DependencyResolveFailure(coordinate, repositoryUrl, ivyHome, taskScoped, maximumInternalFrames)
+  def dependencyResolutionSummary(
+    localCacheHits: Int,
+    downloads: Int,
+    failedDownloadAttempts: Int,
+    updateReportCacheHits: Int
+  ): SemanticValuePattern = DependencyResolutionSummary(
+    localCacheHits,
+    downloads,
+    failedDownloadAttempts,
+    updateReportCacheHits
+  )
   def compilerBridgeAnnouncement: SemanticValuePattern = CompilerBridgeAnnouncement
   def compilerBridgeCompletion: SemanticValuePattern = CompilerBridgeCompletion
   def structuredSbtDebug(kind: StructuredSbtDebugKind): SemanticValuePattern = StructuredSbtDebug(kind)
@@ -753,6 +789,31 @@ private[utils] object SbtSemanticContractValidator {
         Option.when(configuration.isEmpty)("declares a dependency resource with an empty configuration.").toVector ++
         Option.when(!isExactHttpUrl(url))(s"declares an invalid exact dependency URL '$url'.").toVector ++
         Option.when(outcomes.isEmpty)("declares a dependency resource without an allowed outcome.").toVector
+    case SemanticValuePattern.DependencyResolveFailure(
+      coordinate,
+      repositoryUrl,
+      _,
+      _,
+      maximumInternalFrames
+    ) =>
+      Option.when(!coordinate.matches("[^:\\s]+:[^:\\s]+:[^:\\s]+"))(
+        s"declares an invalid exact dependency coordinate '$coordinate'."
+      ).toVector ++
+        Option.when(!isExactHttpUrl(repositoryUrl))(
+          s"declares an invalid exact dependency repository URL '$repositoryUrl'."
+        ).toVector ++
+        Option.when(maximumInternalFrames < 0)(
+          s"declares a negative dependency-internal-frame bound $maximumInternalFrames."
+        ).toVector
+    case SemanticValuePattern.DependencyResolutionSummary(local, downloads, failed, reportCache) =>
+      Vector(
+        "local-cache-hit" -> local,
+        "download" -> downloads,
+        "failed-download-attempt" -> failed,
+        "update-report-cache-hit" -> reportCache
+      ).collect {
+        case (name, value) if value < 0 => s"declares negative $name count $value."
+      }
     case SemanticValuePattern.UserFailure(prefix, frames, framework, maximum, allowedGeneratedOwners) =>
       Option.when(prefix.isEmpty)("declares an empty user-failure prefix.").toVector ++
         Option.when(frames.isEmpty)("declares no exact user stack frames.").toVector ++
@@ -842,6 +903,28 @@ private[utils] object SbtSemanticContractValidator {
               case _ => Vector(s"must declare exact status '$status' for its dependency outcome family.")
             }
           }
+      case _: SemanticValuePattern.DependencyResolveFailure =>
+        Option.when(attribute != "text")(
+          "must use DependencyResolveFailure only for attribute 'text'."
+        ).toVector ++
+          Option.when(event.kind != ObservedServiceMessageKind.BuildLogMessage)(
+            "must use DependencyResolveFailure only on a message event."
+          ).toVector ++
+          (event.attributes.find(_._1 == "status") match {
+            case Some((_, SemanticValuePattern.Exact("ERROR"))) => Vector.empty
+            case _ => Vector("must declare exact status 'ERROR' for a dependency resolution failure.")
+          })
+      case _: SemanticValuePattern.DependencyResolutionSummary =>
+        Option.when(attribute != "text")(
+          "must use DependencyResolutionSummary only for attribute 'text'."
+        ).toVector ++
+          Option.when(event.kind != ObservedServiceMessageKind.BuildLogMessage)(
+            "must use DependencyResolutionSummary only on a message event."
+          ).toVector ++
+          (event.attributes.find(_._1 == "status") match {
+            case Some((_, SemanticValuePattern.Exact("NORMAL"))) => Vector.empty
+            case _ => Vector("must declare exact status 'NORMAL' for a dependency resolution summary.")
+          })
       case SemanticValuePattern.StructuredSbtDebug(_) =>
         Option.when(attribute != "text")(
           "must use StructuredSbtDebug only for attribute 'text'."
@@ -1109,6 +1192,7 @@ private[utils] object SbtSemanticContractValidator {
   private def bindingKeys(pattern: SemanticValuePattern): Vector[SemanticBindingKey] = pattern match {
     case SemanticValuePattern.Bound(key) => Vector(key)
     case SemanticValuePattern.Embedded(_, key, _) => Vector(key)
+    case SemanticValuePattern.DependencyResolveFailure(_, _, ivyHome, _, _) => Vector(ivyHome)
     case _ => Vector.empty
   }
 

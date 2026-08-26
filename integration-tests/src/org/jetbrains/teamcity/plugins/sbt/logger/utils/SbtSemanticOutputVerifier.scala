@@ -966,6 +966,11 @@ private[logger] object SbtSemanticOutputVerifier {
     case SemanticValuePattern.UnsignedDuration => Option.when(isUnsignedDuration(value))(bindings)
     case resource: SemanticValuePattern.DependencyResource =>
       Option.when(matchesDependencyResource(resource, value))(bindings)
+    case failure: SemanticValuePattern.DependencyResolveFailure =>
+      matchesDependencyResolveFailure(failure, value).flatMap(captured =>
+        bind(failure.ivyHome, captured, bindings, distinctBindings, ownershipMode))
+    case summary: SemanticValuePattern.DependencyResolutionSummary =>
+      Option.when(matchesDependencyResolutionSummary(summary, value))(bindings)
     case SemanticValuePattern.CompilerBridgeAnnouncement =>
       Option.when(isCompilerBridgeAnnouncement(value))(bindings)
     case SemanticValuePattern.CompilerBridgeCompletion =>
@@ -1034,6 +1039,60 @@ private[logger] object SbtSemanticOutputVerifier {
           duration.matches(s"$UnsignedDurationPattern (?:ms|s)")
         }
     }
+  }
+
+  private val DependencyInternalFramePattern =
+    """^\[error\][ \t]+at (?:lmcoursier\.[A-Za-z0-9_$.<>]+|scala\.util\.Either\$LeftProjection\.[A-Za-z0-9_$<>]+)\((?:[A-Za-z0-9_$.-]+(?::[0-9]+)?|Unknown Source)\)$""".r
+
+  private def matchesDependencyResolveFailure(
+    pattern: SemanticValuePattern.DependencyResolveFailure,
+    value: String
+  ): Option[String] = {
+    val lines = value.split("\n", -1).toVector
+    if (lines.size < 5 || lines.size > 5 + pattern.maximumInternalFrames) return None
+
+    val taskPrefix = if (pattern.taskScoped) "(update) " else ""
+    val expectedHeader =
+      s"[error] ${taskPrefix}sbt.librarymanagement.ResolveException: Error downloading ${pattern.coordinate}"
+    if (lines.head != expectedHeader ||
+      lines(1) != "[error]   Not found" ||
+      lines(2) != "[error]   Not found" ||
+      lines(4) != s"[error]   not found: ${pattern.repositoryUrl}") return None
+
+    val ivyPrefix = "[error]   not found: "
+    val (organization, module, revision) = pattern.coordinate.split(":", -1) match {
+      case Array(org, name, version) => (org, name, version)
+      case _ => return None
+    }
+    val ivySuffixes = Vector(
+      s"/local/$organization/$module/$revision/ivys/ivy.xml",
+      s"/local$organization/$module/$revision/ivys/ivy.xml"
+    )
+    val ivyLine = lines(3)
+    val ivyHome = ivySuffixes.collectFirst {
+      case suffix if ivyLine.startsWith(ivyPrefix) && ivyLine.endsWith(suffix) =>
+        ivyLine.substring(ivyPrefix.length, ivyLine.length - suffix.length)
+    }
+    Option.when(
+      lines.drop(5).forall(line => DependencyInternalFramePattern.matches(line))
+    )(ivyHome).flatten
+  }
+
+  private def matchesDependencyResolutionSummary(
+    pattern: SemanticValuePattern.DependencyResolutionSummary,
+    value: String
+  ): Boolean = {
+    def count(value: Int, singular: String): String =
+      s"$value $singular${if (value == 1) "" else "s"}"
+    val suffix = Vector(
+      count(pattern.localCacheHits, "local cache hit"),
+      count(pattern.downloads, "download"),
+      count(pattern.failedDownloadAttempts, "failed download attempt"),
+      count(pattern.updateReportCacheHits, "sbt update report cache hit")
+    ).mkString(", ")
+    value.matches(
+      s"Dependency resolution finished in $UnsignedDurationPattern (?:ms|s): ${java.util.regex.Pattern.quote(suffix)}"
+    )
   }
 
   private def isCompilerBridgeAnnouncement(value: String): Boolean =

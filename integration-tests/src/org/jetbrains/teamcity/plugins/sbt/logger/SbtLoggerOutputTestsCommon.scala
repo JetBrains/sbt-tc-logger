@@ -56,10 +56,11 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     setup = Seq("clean"), behavior = Seq("compile", "compile"), success = true, options = Seq("--info"),
     verification = SbtOrdinaryCompilationSemanticContracts.UpToDate)
 
-  // A direct update is intentionally in the ordinary corpus: its exact golden proves detailed reporting stays absent.
+  // A direct update stays in the ordinary corpus: its default-deny contract proves detailed reporting remains absent.
   @Test def dependencyResolution_DirectUpdateIsSilentByDefault(): Unit = run(
     "dependency-update-default", "compilation/success",
-    setup = Seq("clean"), behavior = Seq("update"), success = true, options = Seq("--info"))
+    setup = Seq("clean"), behavior = Seq("update"), success = true, options = Seq("--info"),
+    verification = SbtDependencyDetailedOutcomesSemanticContracts.DefaultUpdate)
 
   @Test def compilation_DirectCompileInputsDoesNotInventCompilerLifecycle(): Unit = run(
     "compile-inputs", "compilation/success",
@@ -68,7 +69,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def dependencyResolution_UpdateFailureIsSilentByDefault(): Unit = run(
     "dependency-update-failure-default", "dependencyResolution/updateFailure",
-    behavior = Seq("update"), success = false, options = Seq("--info"))
+    behavior = Seq("update"), success = false, options = Seq("--info"),
+    verification = SbtDependencyDetailedOutcomesSemanticContracts.DefaultUpdateFailure)
 
   @Test def taskLogging_GenericLevelsAreSingleStructuredMessages(): Unit = run(
     "logging-generic-levels", "logging/genericLevels",

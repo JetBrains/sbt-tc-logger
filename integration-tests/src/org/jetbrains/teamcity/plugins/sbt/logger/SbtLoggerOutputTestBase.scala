@@ -31,7 +31,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       setupCommands = Seq.empty,
       behaviorCommands = Seq("update"),
       expectedResult = SbtProcessResultExpectation.Failure,
-      sbtOptions = Seq("-Dteamcity.sbt.logger.detailedDependencyResolution=true")
+      sbtOptions = Seq("-Dteamcity.sbt.logger.detailedDependencyResolution=true"),
+      verification = SbtDependencyDetailedOutcomesSemanticContracts.Failure
     ))
 
   protected final def detailedDependencyResolution_DebugKeepsNativeLogging(): Unit =
@@ -41,7 +42,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       setupCommands = Seq.empty,
       behaviorCommands = Seq("update"),
       expectedResult = SbtProcessResultExpectation.Success,
-      sbtOptions = Seq("--debug", "-Dteamcity.sbt.logger.detailedDependencyResolution=true")
+      sbtOptions = Seq("--debug", "-Dteamcity.sbt.logger.detailedDependencyResolution=true"),
+      verification = SbtDependencyDetailedOutcomesSemanticContracts.DebugDisabled
     ))
 
   protected final def detailedDependencyResolution_PreserveConsoleDisablesDetailedMode(): Unit =
@@ -54,7 +56,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       sbtOptions = Seq(
         "-Dteamcity.sbt.logger.preserveConsole=true",
         "-Dteamcity.sbt.logger.detailedDependencyResolution=true"
-      )
+      ),
+      verification = SbtDependencyDetailedOutcomesSemanticContracts.PreserveConsoleDisabled
     ))
 
   protected final def runScalaTestErrorLikeOutputNotCompilationFailureCase(): Unit =
