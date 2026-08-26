@@ -15,7 +15,8 @@ trait SbtLoggerOutputTestsSbt2Plus { this: SbtLoggerOutputTestBase =>
       fixture = "testSupport/Specs2_TestOnlyExamples",
       setupCommands = Seq.empty,
       behaviorCommands = Seq("test"),
-      expectedResult = SbtProcessResultExpectation.Success
+      expectedResult = SbtProcessResultExpectation.Success,
+      verification = SbtSpecs2SemanticContracts.Descriptions
     ))
 
   // TW-53224 - SBT 2's slash syntax invokes the same IntegrationTest quick-test task as SBT 1's `it:testQuick`.

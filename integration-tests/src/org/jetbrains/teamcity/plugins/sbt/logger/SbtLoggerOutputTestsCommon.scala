@@ -199,7 +199,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testReporting_Specs2_IgnoredTestsReported(): Unit = run(
     "specs2-ignored-tests", "testSupport/Specs2_IgnoredTests",
-    behavior = Seq("test"), success = true, options = Seq("--info"))
+    behavior = Seq("test"), success = true, options = Seq("--info"),
+    verification = SbtSpecs2SemanticContracts.IgnoredTests)
 
   @Test def testReporting_ScalaTest_NestedSuitesReported(): Unit = run(
     "scalatest-nested-suites", "testSupport/ScalaTest_NestedSuites",
@@ -213,7 +214,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testReporting_Specs2_TestOnlyExamplesReported(): Unit = run(
     "specs2-test-only", "testSupport/Specs2_TestOnlyExamples",
-    behavior = Seq("testOnly"), success = true)
+    behavior = Seq("testOnly"), success = true,
+    verification = SbtSpecs2SemanticContracts.TestOnlyExamples)
 
   @Test def testReporting_ScalaTest_ParallelEventsReported(): Unit = run(
     "scalatest-parallel-events", "testSupport/ScalaTest_ParallelEvents",
