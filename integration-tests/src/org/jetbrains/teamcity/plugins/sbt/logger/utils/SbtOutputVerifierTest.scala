@@ -458,7 +458,8 @@ class SbtOutputVerifierTest {
 
   @Test def candidateRenderingNormalisesOnlyBackgroundJobStagingHashes(): Unit = {
     val actual = Vector(
-      "[debug] \t/repo/target/integration-tests/work/profile/scenario/target/bg-jobs/sbt_cafebabe/job-1/target/1234abcd/stable.jar",
+      "[debug] \t/repo/target/integration-tests/work/profile/scenario/target/bg-jobs/sbt_cafebabe/job-1/target/1234abcd/5678efab/product.jar",
+      "[debug] \t/repo/target/integration-tests/work/profile/scenario/target/bg-jobs/sbt_cafebabe/target/8765dcba/80cde419/dependency.jar",
       "[debug] \t/repo/target/1234abcd/must-stay-literal.jar"
     )
     val destination = FileUtils.createTempFile("background-job-candidate", ".txt")
@@ -467,10 +468,14 @@ class SbtOutputVerifierTest {
 
     val rendered = FileUtils.readLines(destination).toVector
     Assert.assertEquals(
-      "[debug] \t{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/job-1/target/{{hash:bg-job-target}}/stable.jar",
+      "[debug] \t{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/job-1/target/{{hash:bg-job-target}}/{{hash:bg-job-content}}/product.jar",
       rendered.head
     )
-    Assert.assertEquals("[debug] \t{{path:repo-root}}/target/1234abcd/must-stay-literal.jar", rendered(1))
+    Assert.assertEquals(
+      "[debug] \t{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/target/{{hash:bg-job-target}}/80cde419/dependency.jar",
+      rendered(1)
+    )
+    Assert.assertEquals("[debug] \t{{path:repo-root}}/target/1234abcd/must-stay-literal.jar", rendered(2))
     verify(actual, destination)
   }
 

@@ -925,6 +925,10 @@ private[logger] object SbtOutputVerifier {
         "(target/bg-jobs/sbt_(?:\\{\\{hash:bg-job\\}\\}|[0-9a-fA-F]{6,16})/(?:job-[0-9]+/)?target/)[0-9a-fA-F]{6,16}(?=/)",
         "$1{{hash:bg-job-target}}"
       )
+      line = line.replaceAll(
+        "(target/bg-jobs/sbt_\\{\\{hash:bg-job\\}\\}/job-[0-9]+/target/\\{\\{hash:bg-job-target\\}\\}/)[0-9a-fA-F]{6,16}(?=/)",
+        "$1{{hash:bg-job-content}}"
+      )
       line = line.replaceAll("local cache hit (https?://[^ '\\]]+)", "{{dependency-outcome}} $1{{dependency-metadata}}")
       line = line.replaceAll("downloaded (https?://[^ ']+) \\([^']+\\)", "{{dependency-outcome}} $1{{dependency-metadata}}")
       tokenizeFrameworkTail(line)

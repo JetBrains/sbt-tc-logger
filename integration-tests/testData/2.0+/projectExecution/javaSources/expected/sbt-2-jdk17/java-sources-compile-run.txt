@@ -47,7 +47,7 @@
 ##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='|[debug|] wrote ${OUT}/jvm/scala-3.8.4/java-sources-compile-run/java-sources-compile-run_3-0.1.0-SNAPSHOT.jar']
 [info] running com.jetbrains.sbt.test.HelloWorld 
 [debug]   Classpath:
-[debug] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/job-1/target/{{hash:bg-job-target}}/a4dfc625/java-sources-compile-run_3-0.1.0-SNAPSHOT.jar
+[debug] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/job-1/target/{{hash:bg-job-target}}/{{hash:bg-job-content}}/java-sources-compile-run_3-0.1.0-SNAPSHOT.jar
 [debug] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/target/{{hash:bg-job-target}}/d4993a22/scala3-library_3-3.8.4.jar
 [debug] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/target/{{hash:bg-job-target}}/97ac0ce1/scala-library.jar
 Hello, World!
