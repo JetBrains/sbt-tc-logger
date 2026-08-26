@@ -2,13 +2,19 @@
 package org.jetbrains.teamcity.plugins.sbt.logger
 
 import org.jetbrains.teamcity.plugins.sbt.logger.SbtTestResultLoggerSettings.SbtTestResultLoggerTask
-import sbt.Keys.{logLevel, test, testOnly, testQuick, testResultLogger, update, useCoursier}
+import org.jetbrains.teamcity.plugins.sbt.logger.reporting.SbtTestReportListener
+import sbt.Keys.{logLevel, test, testListeners, testOnly, testQuick, testResultLogger, update, useCoursier}
 import sbt.internal.util.AttributeKey
-import sbt.{Configuration, Extracted, Global, ProjectRef, Scope, TestResultLogger}
+import sbt.{Configuration, Def, Extracted, Global, ProjectRef, Scope, TestResultLogger}
 import sbt.util.Level
 
 /** SBT 1 compatibility boundary for APIs that differ from the SBT 2 target. */
 object SbtApiAdapter {
+  final case class SbtTestReportListenerTask(
+    taskKey: AttributeKey[?],
+    install: (Configuration, () => SbtTestReportListener) => Def.Setting[?]
+  )
+
   /** SBT 1 has no build-wide task-result cache to opt out of. */
   def uncached[T](value: T): T = value
 
@@ -19,6 +25,24 @@ object SbtApiAdapter {
       configuration / testOnly / testResultLogger ~= transform),
     SbtTestResultLoggerTask(testQuick.key, (configuration, transform) =>
       configuration / testQuick / testResultLogger ~= transform)
+  )
+
+  val testReportListenerTasks: Seq[SbtTestReportListenerTask] = Seq(
+    SbtTestReportListenerTask(test.key, (configuration, create) =>
+      configuration / test / testListeners := uncached {
+        val configured = (configuration / test / testListeners).value
+        configured.filterNot(SbtTestReportListener.isPluginOwned) :+ create()
+      }),
+    SbtTestReportListenerTask(testOnly.key, (configuration, create) =>
+      configuration / testOnly / testListeners := uncached {
+        val configured = (configuration / testOnly / testListeners).value
+        configured.filterNot(SbtTestReportListener.isPluginOwned) :+ create()
+      }),
+    SbtTestReportListenerTask(testQuick.key, (configuration, create) =>
+      configuration / testQuick / testListeners := uncached {
+        val configured = (configuration / testQuick / testListeners).value
+        configured.filterNot(SbtTestReportListener.isPluginOwned) :+ create()
+      })
   )
 
   val testTaskKeys: Set[AttributeKey[?]] = testResultLoggerTasks.map(_.taskKey).toSet

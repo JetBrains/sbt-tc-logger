@@ -40,6 +40,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
     val transformedProjectSettings = extractedStructure.allProjectPairs.flatMap { case (resolvedProject, projectRef) =>
       val project = projectScope(projectRef)
       transformSettings(project, projectRef.build, rootProject, SbtTeamCityLogger.projectSettings) ++
+        (if (isRunningUnderTeamCity) transformSettings(project, projectRef.build, rootProject, testReportListenerSettings(projectRef, resolvedProject.configurations)) else Nil) ++
         (if (isRunningUnderTeamCity) transformSettings(project, projectRef.build, rootProject, compilerReporterSettings(getScopeId(project.project), projectRef.project)) else Nil) ++
         (if (isRunningUnderTeamCity && !preserveConsole) {
           val scopeId = getScopeId(project.project)
@@ -62,7 +63,6 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
   private lazy val sbtBuildLogMessageReporter = new SbtBuildLogMessageReporter(teamCityServiceMessageWriter)
   private lazy val sbtCompilationReporter = new SbtCompilationReporter(teamCityServiceMessageWriter, sbtBuildLogMessageReporter)
   private lazy val sbtDependencyResolutionReporter = new SbtDependencyResolutionReporter(teamCityServiceMessageWriter)
-  private lazy val sbtTestReportListener = new SbtTestReportListener(teamCityServiceMessageWriter)
 
   private val settings = SbtTeamCityLoggerSettings.extract()
   val teamCityVersion: Option[String] = settings.teamCityVersion
@@ -108,12 +108,7 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
       }
     )
 
-    Seq(
-      commands += teamCityLoggerStatusCommand,
-      // Keep this unscoped so every configuration that defines SBT test tasks, including SBT 1's IntegrationTest
-      // and a custom SBT 2 Runtime-derived test configuration, inherits the TeamCity test listener.
-      testListeners += sbtTestReportListener
-    ) ++ ordinaryTaskLogging
+    Seq(commands += teamCityLoggerStatusCommand) ++ ordinaryTaskLogging
   }
 
   private lazy val loggerOffSettings: Seq[Def.Setting[?]] = Seq(
@@ -154,6 +149,30 @@ object SbtTeamCityLogger extends AutoPlugin with (State => State) {
       compilationFlow(scope, Some(projectName), SbtCompilationConfiguration.Test),
       reportCompilerOutput = !preserveConsole
     )))
+
+  /**
+   * Creates a listener for each concrete scoped test-task evaluation instead of sharing callback state across the
+   * build or through configuration/task delegation.
+   *
+   * SBT serializes repeated executions of one scoped test task and de-duplicates that task inside one execution
+   * graph. The target adapter binds every supported task API because `test`, `testOnly`, and related input tasks can
+   * each have their own `testListeners` value. Each binding preserves user listeners, removes only an inherited
+   * plugin-owned listener, and appends a fresh instance; SBT 2 additionally marks the value uncached.
+   */
+  private def testReportListenerSettings(
+    projectRef: ProjectRef,
+    configurations: Seq[Configuration]
+  ): Seq[Def.Setting[?]] =
+    configurations.flatMap { configuration =>
+      SbtApiAdapter.testReportListenerTasks.map { task =>
+        val flowNamespace =
+          s"${projectRef.build.toASCIIString}#${projectRef.project}:${configuration.name}:${task.taskKey.label}"
+        task.install(
+          configuration,
+          () => SbtTestReportListener.pluginOwned(teamCityServiceMessageWriter, flowNamespace)
+        )
+      }
+    }
 
   def teamCityLoggerStatusCommand: Command = Command.command("sbt-teamcity-logger") { state =>
     println("TeamCity sbt logger")

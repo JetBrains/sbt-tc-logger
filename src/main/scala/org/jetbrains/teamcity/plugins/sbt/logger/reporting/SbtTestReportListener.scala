@@ -9,38 +9,101 @@ import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityService
 import org.jetbrains.teamcity.plugins.sbt.logger.serviceMessages.TeamCityServiceMessageWriter
 import sbt.*
 import sbt.testing.{NestedTestSelector, OptionalThrowable, Status, TestSelector}
-import scala.collection.concurrent.TrieMap
+import scala.collection.mutable
 
 /**
  * Adapts SBT test callbacks to typed TeamCity test messages.
  *
  * This listener only contributes to TeamCity's Tests tab. Ordinary SBT task output and aggregate result-logger
  * output travel through the separate Build Log path.
+ *
+ * SBT de-duplicates top-level tests by name within one test task and brackets each runner invocation with
+ * `startGroup(name)` and one `endGroup(name, ...)`. Different named groups may run concurrently. The callback API
+ * carries no task, project, parent-suite, or invocation identity, so the plugin creates a separate listener for
+ * every concrete project/configuration/test-task evaluation. An overlapping same-name group which still reaches
+ * one listener is inherently ambiguous: both starts are closed as failed and the name is quarantined until their
+ * end callbacks arrive.
  */
-final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends TestReportListener {
-  private val startedGroupFlows = TrieMap.empty[String, String]
+final class SbtTestReportListener private (
+  writer: TeamCityServiceMessageWriter,
+  flowNamespace: String,
+  evaluationOrdinal: Long,
+  private val ownerToken: AnyRef
+) extends TestReportListener {
+  /** Retains the original constructor for integrations which instantiate the listener directly. */
+  def this(writer: TeamCityServiceMessageWriter) = this(
+    writer,
+    "legacy-unscoped-listener",
+    SbtTestReportListener.nextEvaluationOrdinal("legacy-unscoped-listener"),
+    null
+  )
 
-  override def startGroup(name: String): Unit = {
-    val groupFlowId = stableGroupFlowId(name)
-    startedGroupFlows.put(name, groupFlowId)
-    writer.write(TestSuiteStarted(name, groupFlowId))
-  }
+  /** Allows integrations to provide a stable namespace without marking their listener as plugin-owned. */
+  def this(writer: TeamCityServiceMessageWriter, flowNamespace: String) =
+    this(writer, flowNamespace, SbtTestReportListener.nextEvaluationOrdinal(flowNamespace), null)
 
-  override def testEvent(event: TestEvent): Unit =
-    event.detail.foreach(reportSingleTest)
+  private[reporting] def this(
+    writer: TeamCityServiceMessageWriter,
+    flowNamespace: String,
+    evaluationOrdinal: Long
+  ) = this(writer, flowNamespace, evaluationOrdinal, null)
 
-  override def endGroup(name: String, throwable: Throwable): Unit = {
-    finishStartedGroup(name) { groupFlowId =>
-      writer.write(TestSuiteFinished(name, groupFlowId, Some(TestSuiteFailure(throwable.getMessage, formattedStackTrace(throwable)))))
+  private final class StartedGroup(val flowId: String)
+
+  private val lifecycleLock = new AnyRef
+  private val startedGroups = mutable.Map.empty[String, StartedGroup]
+  private val quarantinedGroupEnds = mutable.Map.empty[String, Int]
+  private val nextInvocationOrdinalByName = mutable.Map.empty[String, Long]
+
+  override def startGroup(name: String): Unit = lifecycleLock.synchronized {
+    val startedGroup = new StartedGroup(nextGroupFlowId(name))
+    writer.write(TestSuiteStarted(name, startedGroup.flowId))
+
+    quarantinedGroupEnds.get(name) match {
+      case Some(pendingEnds) =>
+        quarantinedGroupEnds.update(name, pendingEnds + 1)
+        val diagnostic = overlappingGroupDiagnostic(name)
+        writer.write(BuildLogMessage(BuildLogStatus.Warning, diagnostic, Some(startedGroup.flowId)))
+        writer.write(unsupportedOverlapFinish(name, startedGroup, diagnostic))
+      case None =>
+        startedGroups.remove(name) match {
+          case Some(previousGroup) =>
+            val diagnostic = overlappingGroupDiagnostic(name)
+            writer.write(BuildLogMessage(BuildLogStatus.Warning, diagnostic, Some(startedGroup.flowId)))
+            writer.write(unsupportedOverlapFinish(name, previousGroup, diagnostic))
+            writer.write(unsupportedOverlapFinish(name, startedGroup, diagnostic))
+            quarantinedGroupEnds.put(name, 2)
+          case None =>
+            startedGroups.put(name, startedGroup)
+        }
     }
   }
 
-  override def endGroup(name: String, result: TestResult): Unit =
-    finishStartedGroup(name) { groupFlowId => writer.write(TestSuiteFinished(name, groupFlowId)) }
+  override def testEvent(event: TestEvent): Unit = lifecycleLock.synchronized {
+    event.detail.foreach(reportSingleTest)
+  }
+
+  override def endGroup(name: String, throwable: Throwable): Unit = lifecycleLock.synchronized {
+    finishGroup(name) { groupFlowId =>
+      TestSuiteFinished(name, groupFlowId, Some(TestSuiteFailure(throwable.getMessage, formattedStackTrace(throwable))))
+    }
+  }
+
+  override def endGroup(name: String, result: TestResult): Unit = lifecycleLock.synchronized {
+    finishGroup(name)(groupFlowId => TestSuiteFinished(name, groupFlowId))
+  }
 
   private def reportSingleTest(event: _root_.sbt.testing.Event): Unit = {
     val testName = qualifiedTestName(event)
-    val eventFlowId = startedGroupFlowFor(testName).getOrElse(flowId)
+    val eventFlowId = unambiguousStartedGroupFlowFor(testName).getOrElse {
+      val orphanFlowId = stableFlowId(s"orphan-test:$testName")
+      writer.write(BuildLogMessage(
+        BuildLogStatus.Warning,
+        s"Received SBT test callback for '$testName' without one unambiguous active test group; reporting it without suite ownership.",
+        Some(orphanFlowId)
+      ))
+      orphanFlowId
+    }
     writer.write(TestStarted(testName, eventFlowId))
 
     event.status match {
@@ -112,35 +175,110 @@ final class SbtTestReportListener(writer: TeamCityServiceMessageWriter) extends 
   // ANSI styles are useful in an interactive terminal, but TeamCity renders their escaped bytes as literal text.
   private val AnsiEscapeSequence = "\\u001B\\[[0-?]*[ -/]*[@-~]".r
 
-  private def finishStartedGroup(name: String)(writeFinished: String => Unit): Unit =
-    startedGroupFlows.remove(name).foreach(writeFinished)
+  private def finishGroup(name: String)(finishedMessage: String => TestSuiteFinished): Unit =
+    quarantinedGroupEnds.get(name) match {
+      case Some(pendingEnds) =>
+        if (pendingEnds == 1) quarantinedGroupEnds.remove(name)
+        else quarantinedGroupEnds.update(name, pendingEnds - 1)
+        writer.write(BuildLogMessage(
+          BuildLogStatus.Warning,
+          s"Ignored SBT end callback for unsupported overlapping test group '$name'; its suite was already closed when the overlap was detected.",
+          Some(stableFlowId(s"quarantined-group-end:$name"))
+        ))
+      case None =>
+        startedGroups.remove(name) match {
+          case Some(startedGroup) => writer.write(finishedMessage(startedGroup.flowId))
+          case None =>
+            writer.write(BuildLogMessage(
+              BuildLogStatus.Warning,
+              s"Received SBT end callback for test group '$name' without an active start; no suite finish was emitted.",
+              Some(stableFlowId(s"orphan-group-end:$name"))
+            ))
+        }
+    }
+
+  private def unsupportedOverlapFinish(
+    name: String,
+    startedGroup: StartedGroup,
+    diagnostic: String
+  ): TestSuiteFinished =
+    TestSuiteFinished(
+      name,
+      startedGroup.flowId,
+      Some(TestSuiteFailure("Unsupported overlapping SBT test groups", diagnostic))
+    )
+
+  private def overlappingGroupDiagnostic(name: String): String =
+    s"SBT reported overlapping test groups named '$name', but TestReportListener callbacks have no invocation identity. " +
+      "The overlapping groups were closed as failed, and their remaining callbacks will be reported without suite ownership."
 
   /**
-   * Returns the active test group which owns a test event.
+   * Returns the only active test group which can own a test event.
    *
    * Test frameworks are allowed to invoke [[testEvent]] from a worker other than the one that invoked
    * [[startGroup]]. A thread-derived flow therefore detached leaf events from their suite whenever executor
    * scheduling changed. A qualified test name belongs to its exact group or to the most-specific active group
    * which prefixes it. Selecting the longest prefix keeps nested framework suites associated with their inner
-   * group rather than an outer one.
+   * group rather than an outer one. A quarantined same-name overlap takes precedence over all prefix candidates:
+   * the API cannot identify either owner, so the event is reported explicitly as an orphan.
    */
-  private def startedGroupFlowFor(testName: String): Option[String] =
-    startedGroupFlows.iterator.collect {
-      case (groupName, groupFlowId) if testName == groupName || testName.startsWith(s"$groupName.") =>
-        groupName -> groupFlowId
-    }.toSeq.sortBy { case (groupName, _) => -groupName.length }.headOption.map(_._2)
+  private def unambiguousStartedGroupFlowFor(testName: String): Option[String] = {
+    val quarantinedMatch = quarantinedGroupEnds.keysIterator.exists(groupName => ownsTest(groupName, testName))
+    if (quarantinedMatch) None
+    else
+      startedGroups.iterator.collect {
+        case (groupName, startedGroup) if ownsTest(groupName, testName) => groupName -> startedGroup.flowId
+      }.toSeq.sortBy { case (groupName, _) => -groupName.length }.headOption.map(_._2)
+  }
+
+  private def ownsTest(groupName: String, testName: String): Boolean =
+    testName == groupName || testName.startsWith(s"$groupName.")
 
   /**
-   * Creates a deterministic, protocol-safe flow ID from an SBT group name.
+   * Creates a distinct, deterministic, protocol-safe flow ID for one supported group invocation.
    *
-   * The UUID is name-based (rather than random), so all callbacks for one group share a flow even when the
-   * framework moves them across threads. It also avoids placing arbitrary framework-provided group text directly
-   * into a TeamCity attribute.
+   * The namespace isolates the project/configuration/task scope, the evaluation ordinal distinguishes fresh
+   * listeners for that scope, and the per-name ordinal distinguishes repeated group names without coupling flows to
+   * unrelated start order. The UUID avoids placing arbitrary SBT text directly into a TeamCity attribute. State
+   * lookup, rather than a callback thread, preserves the flow through the finish.
    */
-  private def stableGroupFlowId(name: String): String =
-    s"teamcity-sbt-test-${UUID.nameUUIDFromBytes(name.getBytes(StandardCharsets.UTF_8))}"
+  private def nextGroupFlowId(name: String): String = {
+    val nextInvocationOrdinal = nextInvocationOrdinalByName.getOrElse(name, 0L) + 1L
+    nextInvocationOrdinalByName.update(name, nextInvocationOrdinal)
+    stableFlowId(s"group:$nextInvocationOrdinal:$name")
+  }
 
-  // A framework callback without a matching started group is unexpected, but keeping the legacy thread flow lets
-  // us report it without inventing suite ownership.
-  private def flowId: String = Thread.currentThread().getId.toString
+  private def stableFlowId(identity: String): String = {
+    val flowIdentity = s"${flowNamespace.length}:$flowNamespace:$evaluationOrdinal:$identity"
+    s"teamcity-sbt-test-${UUID.nameUUIDFromBytes(flowIdentity.getBytes(StandardCharsets.UTF_8))}"
+  }
+}
+
+object SbtTestReportListener {
+  private object PluginOwnerToken
+
+  private val evaluationOrdinalsByNamespace = mutable.Map.empty[String, Long]
+
+  private[logger] def pluginOwned(
+    writer: TeamCityServiceMessageWriter,
+    flowNamespace: String
+  ): SbtTestReportListener =
+    new SbtTestReportListener(writer, flowNamespace, nextEvaluationOrdinal(flowNamespace), PluginOwnerToken)
+
+  private[logger] def isPluginOwned(listener: TestReportListener): Boolean = listener match {
+    case teamCityListener: SbtTestReportListener => teamCityListener.ownerToken eq PluginOwnerToken
+    case _ => false
+  }
+
+  /**
+   * Distinguishes fresh evaluations of one scoped `testListeners` task without coupling other task namespaces.
+   * SBT serializes repeated evaluations of one scoped task, so construction order is deterministic for a namespace.
+   * The counter is process-local: reuse after an SBT JVM restart is safe because no flow from that process remains
+   * open, while distinct concurrent project/configuration/task scopes have distinct namespaces.
+   */
+  private def nextEvaluationOrdinal(flowNamespace: String): Long = synchronized {
+    val next = evaluationOrdinalsByNamespace.getOrElse(flowNamespace, 0L) + 1L
+    evaluationOrdinalsByNamespace.update(flowNamespace, next)
+    next
+  }
 }
