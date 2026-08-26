@@ -125,15 +125,18 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testReporting_JUnit_PassAndFailureReported(): Unit = run(
     "junit-pass-and-failure", "testSupport/JUnit_PassAndFailure",
-    behavior = Seq("test"), success = false)
+    behavior = Seq("test"), success = false,
+    verification = SbtJUnitTaskSemanticContracts.PassAndFailure)
 
   @Test def testReporting_JUnit_TestQuickPassAndFailureReported(): Unit = run(
     "junit-test-quick", "testSupport/JUnit_PassAndFailure",
-    behavior = Seq("testQuick"), success = false)
+    behavior = Seq("testQuick"), success = false,
+    verification = SbtJUnitTaskSemanticContracts.TestQuick)
 
   @Test def testReporting_JUnit_TestOnlyPassAndFailureReported(): Unit = run(
     "junit-test-only", "testSupport/JUnit_PassAndFailure",
-    behavior = Seq("testOnly thisis.a.test.ATest"), success = false)
+    behavior = Seq("testOnly thisis.a.test.ATest"), success = false,
+    verification = SbtJUnitTaskSemanticContracts.TestOnly)
 
   @Test def testReporting_TeamCityResultLoggerCanHideTestTaskOutput(): Unit = run(
     "junit-teamcity-result-no-task-output", "testSupport/JUnit_PassAndFailure",

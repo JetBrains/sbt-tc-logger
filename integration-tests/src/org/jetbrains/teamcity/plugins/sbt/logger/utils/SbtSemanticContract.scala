@@ -36,6 +36,10 @@ private[logger] object SemanticBindingKind {
     val displayName = "duration in milliseconds"
     def accepts(value: String): Boolean = value.matches("[0-9]+")
   }
+  case object DurationSeconds extends SemanticBindingKind {
+    val displayName = "duration in seconds"
+    def accepts(value: String): Boolean = value.matches("[0-9]+(?:\\.[0-9]+)?")
+  }
   case object LogbackThread extends SemanticBindingKind {
     val displayName = "Logback thread"
     def accepts(value: String): Boolean = value.matches("pool-[0-9]+-thread-[0-9]+")
@@ -55,6 +59,7 @@ private[logger] object SemanticBindingKey {
   def buildId(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.BuildId)
   def path(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.Path)
   def duration(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.DurationMillis)
+  def durationSeconds(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.DurationSeconds)
   def logbackThread(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.LogbackThread)
   def value(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.Value)
 }
@@ -88,6 +93,9 @@ private[logger] object SemanticValuePattern {
 
   /** One dependency-owned SBT/Zinc debug sentence from a finite structural family. */
   final case class StructuredSbtDebug(kind: StructuredSbtDebugKind) extends SemanticValuePattern
+
+  /** One JDK 17 reflection frame from the finite task-failure rendering emitted by SBT 1. */
+  final case class JdkMethodReflectionFrame(role: JdkMethodReflectionFrameRole) extends SemanticValuePattern
 
   /** Exact user-owned failure content surrounded by a finite, bounded set of recognized framework frames. */
   final case class UserFailure(
@@ -128,6 +136,8 @@ private[logger] object SemanticValuePattern {
   def compilerBridgeAnnouncement: SemanticValuePattern = CompilerBridgeAnnouncement
   def compilerBridgeCompletion: SemanticValuePattern = CompilerBridgeCompletion
   def structuredSbtDebug(kind: StructuredSbtDebugKind): SemanticValuePattern = StructuredSbtDebug(kind)
+  def jdkMethodReflectionFrame(role: JdkMethodReflectionFrameRole): SemanticValuePattern =
+    JdkMethodReflectionFrame(role)
   def userFailure(
     prefix: String,
     userFrames: Seq[String],
@@ -185,6 +195,13 @@ private[logger] enum StructuredSbtDebugKind(val id: String) {
   case RestoreClassFiles extends StructuredSbtDebugKind("restore-class-files")
   case RemoveTemporaryDirectory extends StructuredSbtDebugKind("remove-temporary-directory")
   case WroteProducts extends StructuredSbtDebugKind("wrote-products")
+}
+
+private[logger] enum JdkMethodReflectionFrameRole(val id: String) {
+  case NativeAccessorInvoke0 extends JdkMethodReflectionFrameRole("native-accessor-invoke0")
+  case NativeAccessorInvoke extends JdkMethodReflectionFrameRole("native-accessor-invoke")
+  case DelegatingAccessorInvoke extends JdkMethodReflectionFrameRole("delegating-accessor-invoke")
+  case MethodInvoke extends JdkMethodReflectionFrameRole("method-invoke")
 }
 
 private[logger] enum DependencyResourceOutcome {
@@ -835,6 +852,17 @@ private[utils] object SbtSemanticContractValidator {
           (event.attributes.find(_._1 == "status") match {
             case Some((_, SemanticValuePattern.Exact("NORMAL"))) => Vector.empty
             case _ => Vector("must declare exact status 'NORMAL' for structured SBT/Zinc debug output.")
+          })
+      case SemanticValuePattern.JdkMethodReflectionFrame(_) =>
+        Option.when(attribute != "text")(
+          "must use JdkMethodReflectionFrame only for attribute 'text'."
+        ).toVector ++
+          Option.when(event.kind != ObservedServiceMessageKind.BuildLogMessage)(
+            "must use JdkMethodReflectionFrame only on a message event."
+          ).toVector ++
+          (event.attributes.find(_._1 == "status") match {
+            case Some((_, SemanticValuePattern.Exact("ERROR"))) => Vector.empty
+            case _ => Vector("must declare exact status 'ERROR' for a JDK reflection task-failure frame.")
           })
       case _: SemanticValuePattern.LinePrefixedThrowableChain =>
         Option.when(attribute != "text")(

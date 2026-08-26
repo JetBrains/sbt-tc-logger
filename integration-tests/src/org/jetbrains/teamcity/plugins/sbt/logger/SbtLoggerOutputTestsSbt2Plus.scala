@@ -26,7 +26,8 @@ trait SbtLoggerOutputTestsSbt2Plus { this: SbtLoggerOutputTestBase =>
       fixture = "testSupport/IntegrationTest_TestQuick",
       setupCommands = Seq.empty,
       behaviorCommands = Seq("IntegrationTest / testQuick"),
-      expectedResult = SbtProcessResultExpectation.Failure
+      expectedResult = SbtProcessResultExpectation.Failure,
+      verification = SbtJUnitTaskSemanticContracts.IntegrationTestQuick
     ))
 
   @Test
@@ -36,7 +37,8 @@ trait SbtLoggerOutputTestsSbt2Plus { this: SbtLoggerOutputTestBase =>
       fixture = "testSupport/JUnit_PassAndFailure",
       setupCommands = Seq.empty,
       behaviorCommands = Seq("testFull"),
-      expectedResult = SbtProcessResultExpectation.Failure
+      expectedResult = SbtProcessResultExpectation.Failure,
+      verification = SbtJUnitTaskSemanticContracts.TestFull
     ))
 
   @Test

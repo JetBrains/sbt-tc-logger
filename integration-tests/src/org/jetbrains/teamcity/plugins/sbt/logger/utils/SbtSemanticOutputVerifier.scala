@@ -972,6 +972,8 @@ private[logger] object SbtSemanticOutputVerifier {
       Option.when(isCompilerBridgeCompletion(value))(bindings)
     case SemanticValuePattern.StructuredSbtDebug(kind) =>
       Option.when(matchesStructuredSbtDebug(kind, value))(bindings)
+    case SemanticValuePattern.JdkMethodReflectionFrame(role) =>
+      Option.when(matchesJdkMethodReflectionFrame(role, value))(bindings)
     case failure: SemanticValuePattern.UserFailure => Option.when(matchesUserFailure(failure, value))(bindings)
     case chain: SemanticValuePattern.LinePrefixedThrowableChain =>
       Option.when(matchesLinePrefixedThrowableChain(chain, value))(bindings)
@@ -983,6 +985,28 @@ private[logger] object SbtSemanticOutputVerifier {
     "^\\[(?:success|error)\\] (?:elapsed time: [0-9]+(?:\\.[0-9]+)? s, cache [0-9]+%, .+|Total time: [0-9]+(?:\\.[0-9]+)? s(?:, completed .+)?)$".r
   private val CompilerBridgeAnnouncementPattern =
     "^\\[info\\] Non-compiled module 'compiler-bridge_[A-Za-z0-9_.-]+' for Scala [0-9]+(?:\\.[0-9]+)+\\. Compiling\\.\\.\\.$".r
+
+  private val JdkReflectionSourceLocation = "[A-Za-z0-9_$.-]+:[0-9]+"
+
+  private def matchesJdkMethodReflectionFrame(role: JdkMethodReflectionFrameRole, value: String): Boolean = {
+    val ownerAndMethod = role match {
+      case JdkMethodReflectionFrameRole.NativeAccessorInvoke0 =>
+        "jdk.internal.reflect.NativeMethodAccessorImpl.invoke0"
+      case JdkMethodReflectionFrameRole.NativeAccessorInvoke =>
+        "jdk.internal.reflect.NativeMethodAccessorImpl.invoke"
+      case JdkMethodReflectionFrameRole.DelegatingAccessorInvoke =>
+        "jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke"
+      case JdkMethodReflectionFrameRole.MethodInvoke =>
+        "java.lang.reflect.Method.invoke"
+    }
+    val location = role match {
+      case JdkMethodReflectionFrameRole.NativeAccessorInvoke0 => "Native Method"
+      case _ => JdkReflectionSourceLocation
+    }
+    value.matches(
+      s"\\[error\\] {5}at (?:java.base/)?${java.util.regex.Pattern.quote(ownerAndMethod)}\\($location\\)"
+    )
+  }
   private val CompilerBridgeCompletionPattern =
     "^\\[info\\]   Compilation completed in [0-9]+(?:\\.[0-9]+)?s\\.$".r
 
