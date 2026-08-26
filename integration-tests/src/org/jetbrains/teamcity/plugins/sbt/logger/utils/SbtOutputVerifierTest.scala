@@ -6,6 +6,12 @@ import org.junit.{Assert, Test}
 import java.io.File
 
 class SbtOutputVerifierTest {
+  private val JavaSourceClassFiles = Vector(
+    "com/jetbrains/sbt/test/HelloScala.class",
+    "com/jetbrains/sbt/test/HelloScala$.class",
+    "com/jetbrains/sbt/test/HelloWorld.class"
+  )
+
   private val context = TranscriptContext(
     repoRoot = new File("/repo"),
     workDir = new File("/repo/target/integration-tests/work/profile/scenario"),
@@ -267,8 +273,16 @@ class SbtOutputVerifierTest {
     val golden = goldenFile(
       "##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='{{input-file-mappings:java-sources}}']"
     )
-    val inExpectedOrder = javaSourcesMapping(Vector("HelloScala.class", "HelloWorld.class", "HelloScala$.class"))
-    val reordered = javaSourcesMapping(Vector("HelloWorld.class", "HelloScala$.class", "HelloScala.class"))
+    val inExpectedOrder = javaSourcesMapping(Vector(
+      "com/jetbrains/sbt/test/HelloScala.class",
+      "com/jetbrains/sbt/test/HelloWorld.class",
+      "com/jetbrains/sbt/test/HelloScala$.class"
+    ))
+    val reordered = javaSourcesMapping(Vector(
+      "com/jetbrains/sbt/test/HelloWorld.class",
+      "com/jetbrains/sbt/test/HelloScala$.class",
+      "com/jetbrains/sbt/test/HelloScala.class"
+    ))
 
     verify(Vector(packageMappingMessage(inExpectedOrder)), golden)
     verify(Vector(packageMappingMessage(reordered)), golden)
@@ -279,10 +293,17 @@ class SbtOutputVerifierTest {
       "com/jetbrains/sbt/test/HelloScala$.class"
     )))), golden)
     expectAssertionError(verify(Vector(packageMappingMessage(javaSourcesMapping(Vector(
-      "HelloScala.class", "HelloScala.class", "HelloWorld.class"
+      "com/jetbrains/sbt/test/HelloScala.class",
+      "com/jetbrains/sbt/test/HelloScala.class",
+      "com/jetbrains/sbt/test/HelloWorld.class"
     )))), golden))
     expectAssertionError(verify(Vector(packageMappingMessage(javaSourcesMapping(Vector(
-      "HelloScala.class", "HelloWorld.class", "Unexpected.class"
+      "com/jetbrains/sbt/test/HelloScala.class",
+      "com/jetbrains/sbt/test/HelloWorld.class",
+      "com/jetbrains/sbt/test/Unexpected.class"
+    )))), golden))
+    expectAssertionError(verify(Vector(packageMappingMessage(javaSourcesMapping(Vector(
+      "HelloScala.class", "HelloScala$.class", "HelloWorld.class"
     )))), golden))
 
     val candidate = FileUtils.createTempFile("input-mappings-candidate", ".txt")
@@ -295,11 +316,24 @@ class SbtOutputVerifierTest {
       "##teamcity[message status='NORMAL' flowId='{{build-id:root}}:compile:general:packageBin' text='{{input-file-mappings:java-sources}}']"
     )
     val mapping = javaSourcesMapping(
-      Vector("HelloScala.class", "HelloWorld.class", "HelloScala$.class"),
+      JavaSourceClassFiles,
       classesDirectory = "/tmp/unrelated/classes/"
     )
 
     expectAssertionError(verify(Vector(packageMappingMessage(mapping)), golden))
+  }
+
+  @Test def javaVersionPlaceholdersAcceptOnlyTheSelectedMajorAndRenderCandidates(): Unit = {
+    val golden = goldenFile("{{java-version:8}}", "{{java-version:17}}")
+    val actual = Vector("1.8.0_462", "17.0.16")
+    val candidate = FileUtils.createTempFile("java-version-candidate", ".txt")
+
+    verify(actual, golden)
+    expectAssertionError(verify(Vector("1.8.0_462", "21.0.8"), golden))
+    expectIllegalArgument(verify(actual, goldenFile("{{java-version:21}}")))
+
+    SbtOutputVerifier.writeCandidate(actual, candidate, context)
+    Assert.assertEquals(Vector("{{java-version:8}}", "{{java-version:17}}"), FileUtils.readLines(candidate).toVector)
   }
 
   @Test def candidateRenderingNormalisesOnlyBackgroundJobStagingHashes(): Unit = {

@@ -51,6 +51,6 @@
 [debug] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/target/{{hash:bg-job-target}}/d4993a22/scala3-library_3-3.8.4.jar
 [debug] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/target/{{hash:bg-job-target}}/97ac0ce1/scala-library.jar
 Hello, World!
-17.0.12
+{{java-version:17}}
 {{path:java-home}}
 [[noise:sbt-task-summary]]

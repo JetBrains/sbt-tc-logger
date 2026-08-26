@@ -53,5 +53,5 @@
 [debug] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/job-1/target/{{hash:bg-job-target}}/aa18925f/java-sources-compile-run_2.13-0.1.0-SNAPSHOT.jar
 [debug] 	{{path:work-dir}}/target/bg-jobs/sbt_{{hash:bg-job}}/target/{{hash:bg-job-target}}/80cde419/scala-library-2.13.18.jar
 Hello, World!
-17.0.12
+{{java-version:17}}
 {{path:java-home}}

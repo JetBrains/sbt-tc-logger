@@ -365,6 +365,10 @@ private[logger] object SbtOutputVerifier {
       case Named("timestamp", _) => ValidatedPlaceholder("(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+|[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3})")
       case Named("thread", _) => ValidatedPlaceholder("pool-[0-9]+-thread-[0-9]+")
       case Named("hash", _) => ValidatedPlaceholder("[0-9a-fA-F]{6,16}")
+      case Named("java-version", major) =>
+        JavaVersion.regex(major).fold {
+          invalid(file, lineNumber, s"Unsupported Java major version '$major'.")
+        }(ValidatedPlaceholder(_))
       case "dependency-metadata" => ValidatedPlaceholder("(?: \\([^)]*?, [0-9]+(?:\\.[0-9]+)? ?(?:ms|s)\\))?")
       case Named("framework-stack-tail", framework) =>
         ValidatedPlaceholder("(?:(?:\\|.)|[^'])*+", (tail, _) => FrameworkStackTail.isRecognized(framework, tail))
@@ -401,6 +405,10 @@ private[logger] object SbtOutputVerifier {
         case value if value.startsWith("timestamp:") => ValidatedPlaceholder("(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+|[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3})")
         case value if value.startsWith("thread:") => ValidatedPlaceholder("pool-[0-9]+-thread-[0-9]+")
         case value if value.startsWith("hash:") => ValidatedPlaceholder("[0-9a-fA-F]{6,16}")
+        case value if value.startsWith("java-version:") =>
+          JavaVersion.regex(value.stripPrefix("java-version:")).fold {
+            throw new IllegalArgumentException(s"Unsupported Java version placeholder {{$value}}.")
+          }(ValidatedPlaceholder(_))
         case "dependency-metadata" => ValidatedPlaceholder("(?: \\([^)]*?, [0-9]+(?:\\.[0-9]+)? ?(?:ms|s)\\))?")
         case value if value.startsWith("framework-stack-tail:") =>
           val framework = value.stripPrefix("framework-stack-tail:")
@@ -450,7 +458,11 @@ private[logger] object SbtOutputVerifier {
     private val EntryPrefix = DebugPrefix + "\t"
     private val MappingPrefix = DebugPrefix + "\t  "
     private val Directories = Vector("com", "com/jetbrains", "com/jetbrains/sbt", "com/jetbrains/sbt/test")
-    private val JavaSourceClasses = Set("HelloScala.class", "HelloScala$.class", "HelloWorld.class")
+    private val JavaSourceClasses = Set(
+      "com/jetbrains/sbt/test/HelloScala.class",
+      "com/jetbrains/sbt/test/HelloScala$.class",
+      "com/jetbrains/sbt/test/HelloWorld.class"
+    )
     private val Scala3JavaSourceEntries = Set(
       "com/jetbrains/sbt/test/HelloScala.class",
       "com/jetbrains/sbt/test/HelloScala$.class",
@@ -532,6 +544,21 @@ private[logger] object SbtOutputVerifier {
         pairs.forall { case (entry, path) =>
           entry.startsWith(EntryPrefix) && path == MappingPrefix + classesRoot + entry.stripPrefix(EntryPrefix)
         }
+  }
+
+  /** Recognizes the Java-version values emitted by the fixture without coupling transcripts to an agent patch level. */
+  private object JavaVersion {
+    private val Versions = Vector(
+      "8" -> "1\\.8\\.0_[0-9]+(?:-b[0-9]+)?",
+      "17" -> "17\\.0\\.[0-9]+"
+    )
+
+    def regex(major: String): Option[String] = Versions.collectFirst { case (`major`, pattern) => pattern }
+
+    def tokenize(line: String): String =
+      Versions.collectFirst {
+        case (major, pattern) if line.matches(pattern) => s"{{java-version:$major}}"
+      }.getOrElse(line)
   }
 
   private object ExactMatcher {
@@ -783,6 +810,7 @@ private[logger] object SbtOutputVerifier {
     ): String = {
       var line = original
       line = InputFileMappings.tokenize(line)
+      line = JavaVersion.tokenize(line)
       context.paths.toVector.sortBy { case (_, value) => -value.length }.foreach { case (name, value) =>
         val path = Pattern.compile(Pattern.quote(value) + "(?=$|[^A-Za-z0-9._-])")
         line = path.matcher(line).replaceAll(Matcher.quoteReplacement(s"{{path:$name}}"))

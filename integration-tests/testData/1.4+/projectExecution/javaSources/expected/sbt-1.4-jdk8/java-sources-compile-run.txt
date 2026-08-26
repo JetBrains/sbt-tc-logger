@@ -52,7 +52,7 @@
 [[/lane]]
 [[lane:program-stdout]]
 Hello, World!
-1.8.0_372
+{{java-version:8}}
 {{path:java-home}}/jre
 [[/lane]]
 [[/unordered]]
