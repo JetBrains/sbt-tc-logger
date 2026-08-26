@@ -1,9 +1,13 @@
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import org.jetbrains.teamcity.plugins.sbt.logger.utils.{SbtLoggerOutputTestCase, SbtProcessResultExpectation}
+import org.jetbrains.teamcity.plugins.sbt.logger.utils.{
+  SbtLoggerOutputTestCase,
+  SbtOutputVerificationSelection,
+  SbtProcessResultExpectation
+}
 import org.junit.Test
 
-/** Common exact-transcript scenarios shared by every supported SBT runtime. */
+/** Common output-verification scenarios shared by every supported SBT runtime; exact remains the default. */
 abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtLoggerOutputTestBase(runtime) {
 
   @Test def pluginStatus_LoadedInTeamCity(): Unit = run(
@@ -87,14 +91,16 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
       "-Dteamcity.sbt.logger.showTestTaskOutput=false"
     ))
 
-  // Aggregate compiles are genuinely concurrent; their goldens use ordered lanes instead of imposing a total order.
+  // Aggregate compiles are genuinely concurrent; the semantic contract deliberately has no cross-project edge.
   @Test def compilation_MultiProject_FailuresReported(): Unit = run(
     "compilation-multiproject-failure", "compilation/multiProject",
-    behavior = Seq("compile"), success = false)
+    behavior = Seq("compile"), success = false,
+    verification = SbtMultiProjectSemanticContracts.Failure)
 
   @Test def compilation_MultiProject_FailuresReportedWithDebug(): Unit = run(
     "compilation-multiproject-failure-debug", "compilation/multiProject",
-    behavior = Seq("compile"), success = false, options = Seq("--debug"))
+    behavior = Seq("compile"), success = false, options = Seq("--debug"),
+    verification = SbtMultiProjectSemanticContracts.FailureDebug)
 
   @Test def testCompilation_ConcurrentProjectsKeepMainBeforeOwnTest(): Unit = run(
     "compilation-concurrent-main-test", "compilation/concurrentMainTest",
@@ -198,7 +204,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     behavior: Seq[String],
     success: Boolean,
     options: Seq[String] = Seq("--error"),
-    teamCity: Boolean = true
+    teamCity: Boolean = true,
+    verification: SbtOutputVerificationSelection = SbtOutputVerificationSelection.ExactByDefault
   ): Unit = runCase(SbtLoggerOutputTestCase(
     scenarioId = scenarioId,
     fixture = fixture,
@@ -206,6 +213,7 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     behaviorCommands = behavior,
     expectedResult = if (success) SbtProcessResultExpectation.Success else SbtProcessResultExpectation.Failure,
     sbtOptions = options,
-    teamCityEnvironment = teamCity
+    teamCityEnvironment = teamCity,
+    verification = verification
   ))
 }

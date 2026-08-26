@@ -84,6 +84,32 @@ class SbtOutputVerificationDispatcherTest {
       Assert.assertTrue(failure.getMessage.contains("Bounded raw transcript:"))
     }
 
+  @Test def semanticDispatchKeepsMultipleIndependentSemanticMismatchesInTheFinalAssertion(): Unit =
+    withEnvironment { environment =>
+      val contract = SbtSemanticContract(events = Vector(
+        ExpectedSemanticEvent("first-message", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("first expected")),
+        ExpectedSemanticEvent("second-message", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("second expected"))
+      ))
+      val failure = expectCompositeFailure {
+        SbtOutputVerificationDispatcher.verify(
+          Semantic(contract),
+          environment.inputs(
+            Vector(message("first actual"), message("second actual")),
+            exitCode = 0,
+            SbtProcessResultExpectation.Success
+          )
+        )
+      }
+      val identities = failure.findings.map(_.semanticIdentity).toSet
+
+      Assert.assertTrue(identities.contains("event:first-message"))
+      Assert.assertTrue(identities.contains("event:second-message"))
+      Assert.assertTrue(failure.getMessage.contains("event:first-message"))
+      Assert.assertTrue(failure.getMessage.contains("event:second-message"))
+    }
+
   @Test def hybridRequiresAndRunsItsConcretePlainOutputContractWithoutDelegatedEvidence(): Unit =
     withEnvironment { environment =>
       val delegatedSemanticContract = semanticContract().copy(plainOutput = DelegatedToHybrid)

@@ -81,6 +81,9 @@ private[logger] object SemanticValuePattern {
   /** The cold compiler-bridge completion line with a typed seconds duration. */
   case object CompilerBridgeCompletion extends SemanticValuePattern
 
+  /** One dependency-owned SBT/Zinc debug sentence from a finite structural family. */
+  final case class StructuredSbtDebug(kind: StructuredSbtDebugKind) extends SemanticValuePattern
+
   /** Exact user-owned failure content followed by a finite, bounded framework-owned stack tail. */
   final case class UserFailure(
     prefix: String,
@@ -101,12 +104,41 @@ private[logger] object SemanticValuePattern {
   ): SemanticValuePattern = DependencyResource(project, configuration, url, outcomes)
   def compilerBridgeAnnouncement: SemanticValuePattern = CompilerBridgeAnnouncement
   def compilerBridgeCompletion: SemanticValuePattern = CompilerBridgeCompletion
+  def structuredSbtDebug(kind: StructuredSbtDebugKind): SemanticValuePattern = StructuredSbtDebug(kind)
   def userFailure(
     prefix: String,
     userFrames: Seq[String],
     framework: RecognizedTestFramework,
     maximumFrameworkFrames: Int = 64
   ): SemanticValuePattern = UserFailure(prefix, userFrames.toVector, framework, maximumFrameworkFrames)
+}
+
+private[logger] enum StructuredSbtDebugKind(val id: String) {
+  case DependencyCheck extends StructuredSbtDebugKind("dependency-check")
+  case DependencyUpdate extends StructuredSbtDebugKind("dependency-update")
+  case DependencyDone extends StructuredSbtDebugKind("dependency-done")
+  case IncrementalHeader extends StructuredSbtDebugKind("incremental-header")
+  case IncrementalCompile extends StructuredSbtDebugKind("incremental-compile")
+  case PreviousStamps extends StructuredSbtDebugKind("previous-stamps")
+  case CurrentSources extends StructuredSbtDebugKind("current-sources")
+  case InitialChanges extends StructuredSbtDebugKind("initial-changes")
+  case FullCompilation extends StructuredSbtDebugKind("full-compilation")
+  case InvalidatedSources extends StructuredSbtDebugKind("invalidated-sources")
+  case InitialIncludedNodes extends StructuredSbtDebugKind("initial-included-nodes")
+  case RecompileAllSources extends StructuredSbtDebugKind("recompile-all-sources")
+  case CompilationCycle extends StructuredSbtDebugKind("compilation-cycle")
+  case CompilerBridgeRetrieval extends StructuredSbtDebugKind("compiler-bridge-retrieval")
+  case CachedCompiler extends StructuredSbtDebugKind("cached-compiler")
+  case CompilerArguments extends StructuredSbtDebugKind("compiler-arguments")
+  case CompilationFailed extends StructuredSbtDebugKind("compilation-failed")
+  case CreatedClassFileManager extends StructuredSbtDebugKind("created-class-file-manager")
+  case AboutToDeleteClassFiles extends StructuredSbtDebugKind("about-to-delete-class-files")
+  case BackupClassFiles extends StructuredSbtDebugKind("backup-class-files")
+  case RollbackClassFiles extends StructuredSbtDebugKind("rollback-class-files")
+  case RemoveGeneratedClasses extends StructuredSbtDebugKind("remove-generated-classes")
+  case RestoreClassFiles extends StructuredSbtDebugKind("restore-class-files")
+  case RemoveTemporaryDirectory extends StructuredSbtDebugKind("remove-temporary-directory")
+  case WroteProducts extends StructuredSbtDebugKind("wrote-products")
 }
 
 private[logger] enum DependencyResourceOutcome {
@@ -312,10 +344,21 @@ private[logger] sealed trait PlainOutputPattern
 private[logger] object PlainOutputPattern {
   final case class Exact(line: String) extends PlainOutputPattern
   case object SbtTaskSummary extends PlainOutputPattern
+  final case class SbtDebug(kind: RawSbtDebugKind) extends PlainOutputPattern
+  /** The line must precede every parsed TeamCity service message in the bounded transcript. */
+  final case class BeforeServiceMessages(pattern: PlainOutputPattern) extends PlainOutputPattern
+  /** The line must follow every parsed TeamCity service message in the bounded transcript. */
+  final case class AfterServiceMessages(pattern: PlainOutputPattern) extends PlainOutputPattern
   case object CompilerBridgeAnnouncement extends PlainOutputPattern
   case object CompilerBridgeCompletion extends PlainOutputPattern
   /** Every child line is consumed, or none is. Nested optional groups are rejected. */
   final case class OptionalGroup(name: String, patterns: Vector[PlainOutputPattern]) extends PlainOutputPattern
+}
+
+private[logger] enum RawSbtDebugKind {
+  case CommandExecution
+  case TaskEvaluation
+  case TaskRun
 }
 
 private[logger] sealed trait ProcessResultContract
@@ -379,6 +422,7 @@ private[utils] object SbtSemanticContractValidator {
     val problems = mutable.ArrayBuffer.empty[String]
     if (contract.matcherStateBudget <= 0) problems += s"Matcher state budget must be positive, got ${contract.matcherStateBudget}."
 
+    val requiredPrototypeIds = contract.events.map(_.id).toSet
     val prototypes = contract.events ++ contract.optionalGroups.flatMap(_.events)
     prototypes.groupBy(_.id).foreach { case (id, values) =>
       if (values.size > 1) problems += s"Duplicate semantic event id '$id'."
@@ -421,9 +465,13 @@ private[utils] object SbtSemanticContractValidator {
         validateOwnership(ownership).foreach(message => problems += s"Optional semantic group '${group.name}' $message")
       }
       val ids = group.events.map(_.id).toSet
-      validateEdges(group.happensBefore, ids, s"Optional semantic group '${group.name}'", problems)
-      if (group.happensBefore.forall(edge => ids.contains(edge.before) && ids.contains(edge.after))) {
-        findCycle(ids, group.happensBefore).foreach { cycle =>
+      val allowedIds = requiredPrototypeIds ++ ids
+      validateEdges(group.happensBefore, allowedIds, s"Optional semantic group '${group.name}'", problems)
+      group.happensBefore.filterNot(edge => ids.contains(edge.before) || ids.contains(edge.after)).foreach { edge =>
+        problems += s"Optional semantic group '${group.name}' edge '${edge.before}' -> '${edge.after}' must involve a group event."
+      }
+      if (group.happensBefore.forall(edge => allowedIds.contains(edge.before) && allowedIds.contains(edge.after))) {
+        findCycle(allowedIds, group.happensBefore).foreach { cycle =>
           problems += s"Optional semantic group '${group.name}' happens-before graph contains a cycle: ${cycle.mkString(" -> ")}."
         }
       }
@@ -437,7 +485,6 @@ private[utils] object SbtSemanticContractValidator {
       if (values.size > 1) problems += s"Duplicate lifecycle name '$name'."
     }
 
-    val requiredPrototypeIds = contract.events.map(_.id).toSet
     var ownedRequiredEvents = contract.events
     val lifecycleEdges = mutable.HashSet.empty[HappensBefore]
     val lifecycleEventIds = mutable.HashSet.empty[SemanticEventId]
@@ -536,6 +583,13 @@ private[utils] object SbtSemanticContractValidator {
       val edges = group.happensBefore.flatMap(edge => expandEdge(edge, expandedByPrototype))
       PreparedOptionalSemanticEventGroup(group.name, events, edges, group.events.exists(containsCompilerBridgePattern))
     }
+    if (problems.isEmpty) {
+      val allExpandedIds = expandedByPrototype.valuesIterator.flatten.map(_.id).toSet
+      val allPossibleEdges = allEdges ++ preparedOptionalGroups.flatMap(_.happensBefore)
+      findCycle(allExpandedIds, allPossibleEdges).foreach { cycle =>
+        problems += s"Semantic graph with all optional groups active contains a cycle: ${cycle.mkString(" -> ")}."
+      }
+    }
 
     val capturedKeys = (expandedEvents ++ preparedOptionalGroups.flatMap(_.events)).iterator.flatMap(_.attributes.iterator.flatMap { case (_, pattern) =>
       bindingKeys(pattern)
@@ -629,6 +683,17 @@ private[utils] object SbtSemanticContractValidator {
               case _ => Vector(s"must declare exact status '$status' for its dependency outcome family.")
             }
           }
+      case SemanticValuePattern.StructuredSbtDebug(_) =>
+        Option.when(attribute != "text")(
+          "must use StructuredSbtDebug only for attribute 'text'."
+        ).toVector ++
+          Option.when(event.kind != ObservedServiceMessageKind.BuildLogMessage)(
+            "must use StructuredSbtDebug only on a message event."
+          ).toVector ++
+          (event.attributes.find(_._1 == "status") match {
+            case Some((_, SemanticValuePattern.Exact("NORMAL"))) => Vector.empty
+            case _ => Vector("must declare exact status 'NORMAL' for structured SBT/Zinc debug output.")
+          })
       case _ => Vector.empty
     }}
 
@@ -683,8 +748,8 @@ private[utils] object SbtSemanticContractValidator {
         "must declare the announcement before the completion."
       ).toVector ++
       Option.when(group.ownership.isEmpty)("requires shared Flow or BuildId ownership.").toVector ++
-      Option.when(expectedEdge.forall(edge => group.happensBefore != Set(edge)))(
-        "requires exactly the announcement-to-completion edge."
+      Option.when(expectedEdge.exists(edge => !group.happensBefore.contains(edge)))(
+        "requires the announcement-to-completion edge."
       ).toVector
   }
 
@@ -714,9 +779,10 @@ private[utils] object SbtSemanticContractValidator {
     problems: mutable.ArrayBuffer[String]
   ): Unit = contract match {
     case PlainOutputContract.Patterns(patterns) =>
-      patterns.collect {
+      patterns.map(stripPlainPatternPlacement).collect {
         case PlainOutputPattern.CompilerBridgeAnnouncement | PlainOutputPattern.CompilerBridgeCompletion => ()
       }.foreach(_ => problems += "Compiler-bridge plain patterns must belong to one optional announcement/completion group.")
+      patterns.foreach(pattern => validatePlainPatternPlacement(pattern, problems))
       val groups = patterns.collect { case group: PlainOutputPattern.OptionalGroup => group }
       groups.groupBy(_.name).foreach { case (name, values) =>
         if (values.size > 1) problems += s"Duplicate optional plain-output group name '$name'."
@@ -727,7 +793,7 @@ private[utils] object SbtSemanticContractValidator {
         if (group.patterns.exists(_.isInstanceOf[PlainOutputPattern.OptionalGroup])) {
           problems += s"Optional plain-output group '${group.name}' cannot contain another optional group."
         }
-        val bridgePatterns = group.patterns.filter {
+        val bridgePatterns = group.patterns.flatMap(plainPatternLeaves).filter {
           case PlainOutputPattern.CompilerBridgeAnnouncement | PlainOutputPattern.CompilerBridgeCompletion => true
           case _ => false
         }
@@ -739,6 +805,38 @@ private[utils] object SbtSemanticContractValidator {
         }
       }
     case _ => ()
+  }
+
+  private def validatePlainPatternPlacement(
+    pattern: PlainOutputPattern,
+    problems: mutable.ArrayBuffer[String]
+  ): Unit = pattern match {
+    case PlainOutputPattern.BeforeServiceMessages(_: PlainOutputPattern.BeforeServiceMessages) |
+         PlainOutputPattern.BeforeServiceMessages(_: PlainOutputPattern.AfterServiceMessages) |
+         PlainOutputPattern.AfterServiceMessages(_: PlainOutputPattern.BeforeServiceMessages) |
+         PlainOutputPattern.AfterServiceMessages(_: PlainOutputPattern.AfterServiceMessages) =>
+      problems += "Plain-output service-message placement wrappers cannot be nested."
+    case PlainOutputPattern.BeforeServiceMessages(_: PlainOutputPattern.OptionalGroup) |
+         PlainOutputPattern.AfterServiceMessages(_: PlainOutputPattern.OptionalGroup) =>
+      problems += "A plain-output optional group must own any service-message placement wrappers on its child lines."
+    case PlainOutputPattern.BeforeServiceMessages(child) => validatePlainPatternPlacement(child, problems)
+    case PlainOutputPattern.AfterServiceMessages(child) => validatePlainPatternPlacement(child, problems)
+    case PlainOutputPattern.OptionalGroup(_, children) =>
+      children.foreach(child => validatePlainPatternPlacement(child, problems))
+    case _ => ()
+  }
+
+  private def plainPatternLeaves(pattern: PlainOutputPattern): Vector[PlainOutputPattern] = pattern match {
+    case PlainOutputPattern.BeforeServiceMessages(child) => plainPatternLeaves(child)
+    case PlainOutputPattern.AfterServiceMessages(child) => plainPatternLeaves(child)
+    case PlainOutputPattern.OptionalGroup(_, children) => children.flatMap(plainPatternLeaves)
+    case leaf => Vector(leaf)
+  }
+
+  private def stripPlainPatternPlacement(pattern: PlainOutputPattern): PlainOutputPattern = pattern match {
+    case PlainOutputPattern.BeforeServiceMessages(child) => stripPlainPatternPlacement(child)
+    case PlainOutputPattern.AfterServiceMessages(child) => stripPlainPatternPlacement(child)
+    case other => other
   }
 
   private def expandEvent(event: ExpectedSemanticEvent): Vector[ExpectedSemanticEvent] = {

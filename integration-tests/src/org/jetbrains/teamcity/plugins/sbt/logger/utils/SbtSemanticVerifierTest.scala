@@ -1098,6 +1098,126 @@ class SbtSemanticVerifierTest {
     ).foreach(line => assertCategory(expectFailure(verify(Vector(line), contract)), PlainOutputFailure))
   }
 
+  @Test def structuredSbtDebugClassifiersAcceptEveryFiniteCategory(): Unit = {
+    val representatives = Vector(
+      StructuredSbtDebugKind.DependencyCheck -> "[debug] not up to date. inChanged = true, force = false",
+      StructuredSbtDebugKind.DependencyUpdate -> "[debug] Updating root...",
+      StructuredSbtDebugKind.DependencyDone -> "[debug] Done updating root",
+      StructuredSbtDebugKind.IncrementalHeader -> "[debug] [zinc] IncrementalCompile -----------",
+      StructuredSbtDebugKind.IncrementalCompile -> "[debug] IncrementalCompile.incrementalCompile",
+      StructuredSbtDebugKind.PreviousStamps ->
+        "[debug] previous = Stamps for: 0 products, 0 sources, 0 libraries",
+      StructuredSbtDebugKind.CurrentSources -> "[debug] current source = Set()",
+      StructuredSbtDebugKind.InitialChanges -> "[debug] > initialChanges = InitialChanges(...)",
+      StructuredSbtDebugKind.FullCompilation -> "[debug] Full compilation, no sources in previous analysis.",
+      StructuredSbtDebugKind.InvalidatedSources -> "[debug] all 1 sources are invalidated",
+      StructuredSbtDebugKind.InitialIncludedNodes -> "[debug] Initial set of included nodes: source",
+      StructuredSbtDebugKind.RecompileAllSources ->
+        "[debug] Recompiling all sources: number of invalidated sources > 50.0% of all sources",
+      StructuredSbtDebugKind.CompilationCycle -> "[debug] compilation cycle 1",
+      StructuredSbtDebugKind.CompilerBridgeRetrieval ->
+        "[debug] Getting org.scala-sbt:compiler-bridge_2.13:1.12.0:compile for Scala 2.13.16",
+      StructuredSbtDebugKind.CachedCompiler ->
+        "[debug] [zinc] Running cached compiler abc123 for Scala compiler version 2.13.18",
+      StructuredSbtDebugKind.CompilerArguments ->
+        "[debug] [zinc] The Scala compiler is invoked with:\n[debug] \t-classpath\n[debug] \t/tmp/classes",
+      StructuredSbtDebugKind.CompilationFailed -> "[debug] Compilation failed (CompilerInterface)",
+      StructuredSbtDebugKind.CreatedClassFileManager ->
+        "[debug] Created transactional ClassFileManager with tempDir = /tmp/classes.bak",
+      StructuredSbtDebugKind.AboutToDeleteClassFiles -> "[debug] About to delete class files:\n[debug] ",
+      StructuredSbtDebugKind.BackupClassFiles -> "[debug] We backup class files:\n[debug] ",
+      StructuredSbtDebugKind.RollbackClassFiles -> "[debug] Rolling back changes to class files.",
+      StructuredSbtDebugKind.RemoveGeneratedClasses -> "[debug] Removing generated classes:\n[debug] ",
+      StructuredSbtDebugKind.RestoreClassFiles -> "[debug] Restoring class files: \n[debug] ",
+      StructuredSbtDebugKind.RemoveTemporaryDirectory ->
+        "[debug] Removing the temporary directory used for backing up class files: /tmp/classes.bak",
+      StructuredSbtDebugKind.WroteProducts -> "[debug] wrote /tmp/classes"
+    )
+    Assert.assertEquals(StructuredSbtDebugKind.values.toSet, representatives.map(_._1).toSet)
+
+    representatives.foreach { case (kind, text) =>
+      val contract = SbtSemanticContract(Vector(ExpectedSemanticEvent("debug", BuildLogMessage,
+        "status" -> exact("NORMAL"), "text" -> structuredSbtDebug(kind))))
+      verify(Vector(message("NORMAL", text)), contract)
+    }
+    Vector(
+      StructuredSbtDebugKind.DependencyUpdate -> "[debug] Updating ...",
+      StructuredSbtDebugKind.DependencyDone -> "[debug] Done updating ",
+      StructuredSbtDebugKind.RecompileAllSources ->
+        "[debug] Recompiling all sources: number of invalidated sources > 50.0 percent of all sources",
+      StructuredSbtDebugKind.CompilerBridgeRetrieval ->
+        "[debug] Returning already retrieved and compiled bridge: /cache/scala3-sbt-bridge-3.8.4.jar.",
+      StructuredSbtDebugKind.CachedCompiler ->
+        "[debug] [zinc] Running cached compiler abc123 for Scala Compiler version 3.8.4",
+      StructuredSbtDebugKind.CompilationFailed -> "[debug] Compilation failed"
+    ).foreach { case (kind, text) =>
+      val contract = SbtSemanticContract(Vector(ExpectedSemanticEvent("debug", BuildLogMessage,
+        "status" -> exact("NORMAL"), "text" -> structuredSbtDebug(kind))))
+      verify(Vector(message("NORMAL", text)), contract)
+    }
+  }
+
+  @Test def structuredSbtDebugClassifiersRejectUnknownAndNearMissSentences(): Unit = {
+    val nearMisses = Vector(
+      StructuredSbtDebugKind.DependencyCheck -> "[debug] not up to date. unknown state",
+      StructuredSbtDebugKind.CurrentSources -> "[debug] current source = Set(unclosed",
+      StructuredSbtDebugKind.FullCompilation -> "[debug] Full compilation unexpectedly succeeded",
+      StructuredSbtDebugKind.CompilerArguments -> "[debug] [zinc] The Scala compiler is invoked with:",
+      StructuredSbtDebugKind.CompilationFailed -> "[debug] Compilation failed but recovered",
+      StructuredSbtDebugKind.CreatedClassFileManager -> "[debug] Created transactional ClassFileManager",
+      StructuredSbtDebugKind.WroteProducts -> "[debug] wrote definitely-not-an-output-directory"
+    )
+    nearMisses.foreach { case (kind, text) =>
+      val contract = SbtSemanticContract(Vector(ExpectedSemanticEvent("debug", BuildLogMessage,
+        "status" -> exact("NORMAL"), "text" -> structuredSbtDebug(kind))))
+      assertCategory(expectFailure(verify(Vector(message("NORMAL", text)), contract)), SemanticCardinalityFailure)
+    }
+  }
+
+  @Test def structuredSbtDebugRequiresNormalBuildLogText(): Unit = {
+    val pattern = structuredSbtDebug(StructuredSbtDebugKind.FullCompilation)
+    val invalid = Vector(
+      ExpectedSemanticEvent("missing-status", BuildLogMessage, "text" -> pattern),
+      ExpectedSemanticEvent("wrong-status", BuildLogMessage,
+        "status" -> exact("WARNING"), "text" -> pattern),
+      ExpectedSemanticEvent("wrong-attribute", BuildLogMessage,
+        "status" -> exact("NORMAL"), "message" -> pattern),
+      ExpectedSemanticEvent("wrong-kind", Inspection,
+        "status" -> exact("NORMAL"), "text" -> pattern)
+    )
+    invalid.foreach { expected =>
+      assertCategory(expectFailure(verify(Vector.empty, SbtSemanticContract(Vector(expected)))), GoldenSyntaxFailure)
+    }
+  }
+
+  @Test def rawSbtDebugPatternsEnforceCategoryOrderAndExactCardinality(): Unit = {
+    val contract = SbtSemanticContract(
+      events = Vector.empty,
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.SbtDebug(RawSbtDebugKind.CommandExecution),
+        PlainOutputPattern.SbtDebug(RawSbtDebugKind.TaskEvaluation),
+        PlainOutputPattern.SbtDebug(RawSbtDebugKind.TaskRun)
+      ))
+    )
+    val valid = Vector(
+      "[debug] > Exec(compile, None, None)",
+      "[debug] Evaluating tasks: Compile / compile",
+      "[debug] Running task... Cancel: Null, check cycles: false, forcegc: true"
+    )
+    verify(valid, contract)
+    Vector(
+      valid.updated(0, "[debug] Executing compile"),
+      valid.updated(0, "[debug] > Exec(unclosed"),
+      valid.updated(1, "[debug] Evaluating tasks:"),
+      valid.updated(2, "[debug] Running task... unexpected same-prefix text"),
+      Vector(valid(1), valid(0), valid(2)),
+      valid.dropRight(1),
+      valid :+ valid.last
+    ).foreach { lines =>
+      assertCategory(expectFailure(verify(lines, contract)), PlainOutputFailure)
+    }
+  }
+
   @Test def optionalAndLifecycleValidatorsRejectInvalidStructureDeterministically(): Unit = {
     val pathOwnership = SemanticBindingKey.path("not-ownership")
     val invalid = Vector(
@@ -1240,6 +1360,17 @@ class SbtSemanticVerifierTest {
 
   private def buildMessage(flow: String, text: String): String =
     s"##teamcity[message status='NORMAL' flowId='$flow' text='$text']"
+
+  private def message(status: String, text: String): String =
+    s"##teamcity[message status='$status' text='${teamCityEscape(text)}']"
+
+  private def teamCityEscape(value: String): String = value
+    .replace("|", "||")
+    .replace("'", "|'")
+    .replace("\n", "|n")
+    .replace("\r", "|r")
+    .replace("[", "|[")
+    .replace("]", "|]")
 
   private def verify(lines: Vector[String], contract: SbtSemanticContract): Unit =
     SbtSemanticOutputVerifier.verify(

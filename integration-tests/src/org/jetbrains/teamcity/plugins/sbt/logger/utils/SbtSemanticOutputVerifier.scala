@@ -1,6 +1,7 @@
 package org.jetbrains.teamcity.plugins.sbt.logger.utils
 
 import scala.collection.mutable
+import scala.util.matching.Regex
 
 /** Default-deny semantic verifier for a bounded SBT logger transcript. */
 private[logger] object SbtSemanticOutputVerifier {
@@ -53,12 +54,12 @@ private[logger] object SbtSemanticOutputVerifier {
       case Left(syntaxFailures) =>
         failures ++= syntaxFailures
         failures ++= run.wireFailures
-        failures ++= verifyPlainOutput(run.plainOutput, contract.plainOutput, delegated)
+        failures ++= verifyPlainOutput(run.plainOutput, run.serviceMessages, contract.plainOutput, delegated)
         failures ++= verifyProcessResult(run.exitCode, contract.processResult, delegated)
       case Right(prepared) =>
         failures ++= run.wireFailures
         failures ++= verifyServiceMessages(run.serviceMessages, prepared, run.wireFailures)
-        failures ++= verifyPlainOutput(run.plainOutput, prepared.plainOutput, delegated)
+        failures ++= verifyPlainOutput(run.plainOutput, run.serviceMessages, prepared.plainOutput, delegated)
         failures ++= verifyProcessResult(run.exitCode, prepared.processResult, delegated)
     }
 
@@ -861,6 +862,8 @@ private[logger] object SbtSemanticOutputVerifier {
       Option.when(isCompilerBridgeAnnouncement(value))(bindings)
     case SemanticValuePattern.CompilerBridgeCompletion =>
       Option.when(isCompilerBridgeCompletion(value))(bindings)
+    case SemanticValuePattern.StructuredSbtDebug(kind) =>
+      Option.when(matchesStructuredSbtDebug(kind, value))(bindings)
     case failure: SemanticValuePattern.UserFailure => Option.when(matchesUserFailure(failure, value))(bindings)
   }
 
@@ -904,6 +907,69 @@ private[logger] object SbtSemanticOutputVerifier {
 
   private def isCompilerBridgeCompletion(value: String): Boolean =
     CompilerBridgeCompletionPattern.matches(value)
+
+  private def matchesStructuredSbtDebug(kind: StructuredSbtDebugKind, value: String): Boolean = {
+    val patterns: Vector[Regex] = kind match {
+      case StructuredSbtDebugKind.DependencyCheck =>
+        Vector("""^\[debug\] not up to date\. inChanged = (?:true|false), force = (?:true|false)$""".r)
+      case StructuredSbtDebugKind.DependencyUpdate =>
+        Vector("""^\[debug\] Updating (?:\.\.\.|[A-Za-z0-9_.-]+\.\.\.)$""".r)
+      case StructuredSbtDebugKind.DependencyDone =>
+        Vector("""^\[debug\] Done updating [A-Za-z0-9_.-]*$""".r)
+      case StructuredSbtDebugKind.IncrementalHeader =>
+        Vector("""^\[debug\] \[zinc\] IncrementalCompile -+$""".r)
+      case StructuredSbtDebugKind.IncrementalCompile =>
+        Vector("""^\[debug\] IncrementalCompile\.incrementalCompile$""".r)
+      case StructuredSbtDebugKind.PreviousStamps =>
+        Vector("""^\[debug\] previous = Stamps for: [0-9]+ products, [0-9]+ sources, [0-9]+ libraries$""".r)
+      case StructuredSbtDebugKind.CurrentSources =>
+        Vector("""^\[debug\] current source = Set\([^\r\n]*\)$""".r)
+      case StructuredSbtDebugKind.InitialChanges =>
+        Vector("""^\[debug\] > initialChanges = InitialChanges\([^\r\n]+\)$""".r)
+      case StructuredSbtDebugKind.FullCompilation =>
+        Vector("""^\[debug\] Full compilation, no sources in previous analysis\.$""".r)
+      case StructuredSbtDebugKind.InvalidatedSources =>
+        Vector("""^\[debug\] all [0-9]+ sources are invalidated$""".r)
+      case StructuredSbtDebugKind.InitialIncludedNodes =>
+        Vector("""^\[debug\] Initial set of included nodes: ?[^\r\n]*$""".r)
+      case StructuredSbtDebugKind.RecompileAllSources => Vector(
+        """^\[debug\] Recompiling all sources: number of invalidated sources > [0-9]+(?:\.[0-9]+)?(?:%| percent) of all sources$""".r
+      )
+      case StructuredSbtDebugKind.CompilationCycle =>
+        Vector("""^\[debug\] compilation cycle [0-9]+$""".r)
+      case StructuredSbtDebugKind.CompilerBridgeRetrieval => Vector(
+        """^\[debug\] Getting org\.scala-sbt:compiler-bridge_[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:compile for Scala [0-9]+(?:\.[0-9]+)+$""".r,
+        """^\[debug\] Returning already retrieved and compiled bridge: \S+\.$""".r
+      )
+      case StructuredSbtDebugKind.CachedCompiler => Vector(
+        """^\[debug\] \[zinc\] Running cached compiler \S+ for Scala [Cc]ompiler version [0-9]+(?:\.[0-9]+)+$""".r
+      )
+      case StructuredSbtDebugKind.CompilerArguments => Vector(
+        """^\[debug\] \[zinc\] The Scala compiler is invoked with:(?:\n\[debug\] \t?[^\r\n]+)+$""".r
+      )
+      case StructuredSbtDebugKind.CompilationFailed =>
+        Vector("""^\[debug\] Compilation failed(?: \(CompilerInterface\))?$""".r)
+      case StructuredSbtDebugKind.CreatedClassFileManager => Vector(
+        """^\[debug\] Created transactional ClassFileManager with tempDir = \S+/classes\.bak$""".r
+      )
+      case StructuredSbtDebugKind.AboutToDeleteClassFiles =>
+        Vector("""^\[debug\] About to delete class files:(?:\n\[debug\] [^\r\n]*)+$""".r)
+      case StructuredSbtDebugKind.BackupClassFiles =>
+        Vector("""^\[debug\] We backup class files:(?:\n\[debug\] [^\r\n]*)+$""".r)
+      case StructuredSbtDebugKind.RollbackClassFiles =>
+        Vector("""^\[debug\] Rolling back changes to class files\.$""".r)
+      case StructuredSbtDebugKind.RemoveGeneratedClasses =>
+        Vector("""^\[debug\] Removing generated classes:(?:\n\[debug\] [^\r\n]*)+$""".r)
+      case StructuredSbtDebugKind.RestoreClassFiles =>
+        Vector("""^\[debug\] Restoring class files: ?(?:\n\[debug\] [^\r\n]*)+$""".r)
+      case StructuredSbtDebugKind.RemoveTemporaryDirectory => Vector(
+        """^\[debug\] Removing the temporary directory used for backing up class files: \S+/classes\.bak$""".r
+      )
+      case StructuredSbtDebugKind.WroteProducts =>
+        Vector("""^\[debug\] wrote \S+/classes$""".r)
+    }
+    patterns.exists(_.matches(value))
+  }
 
   private def matchesUserFailure(pattern: SemanticValuePattern.UserFailure, value: String): Boolean = {
     val exactHead = (pattern.prefix +: pattern.userFrames).mkString("\n")
@@ -1027,6 +1093,7 @@ private[logger] object SbtSemanticOutputVerifier {
 
   private def verifyPlainOutput(
     observed: Vector[ObservedPlainLine],
+    serviceMessages: Vector[ObservedServiceMessage],
     contract: PlainOutputContract,
     delegated: SbtDelegatedVerification
   ): Vector[SbtSemanticFailure] = contract match {
@@ -1057,11 +1124,11 @@ private[logger] object SbtSemanticOutputVerifier {
         semanticIdentity = "plain-output"
       ))
     case PlainOutputContract.Patterns(patterns) =>
-      val actual = observed.map(_.rawLine)
-      if (matchesPlainPatterns(patterns, actual)) Vector.empty
+      if (matchesPlainPatterns(patterns, observed, serviceMessages)) Vector.empty
       else Vector(SbtSemanticFailure(
         SbtVerificationFailureCategory.PlainOutputFailure,
-        s"Plain output does not satisfy the declared finite ordered patterns (${patterns.size} top-level patterns, ${actual.size} observed lines).",
+        s"Plain output does not satisfy the declared finite ordered patterns or transcript placement " +
+          s"(${patterns.size} top-level patterns, ${observed.size} observed lines).",
         Vector(s"Expected patterns: ${patterns.mkString(" | ")}") ++ observed.map(describePlain),
         semanticIdentity = "plain-output"
       ))
@@ -1076,7 +1143,8 @@ private[logger] object SbtSemanticOutputVerifier {
 
   private def matchesPlainPatterns(
     patterns: Vector[PlainOutputPattern],
-    lines: Vector[String]
+    lines: Vector[ObservedPlainLine],
+    serviceMessages: Vector[ObservedServiceMessage]
   ): Boolean = {
     val memo = mutable.HashMap.empty[(Int, Int), Boolean]
     def loop(patternIndex: Int, lineIndex: Int): Boolean = memo.getOrElseUpdate((patternIndex, lineIndex), {
@@ -1084,10 +1152,10 @@ private[logger] object SbtSemanticOutputVerifier {
       else patterns(patternIndex) match {
         case PlainOutputPattern.OptionalGroup(_, children) =>
           loop(patternIndex + 1, lineIndex) ||
-            matchesRequiredPlainPatterns(children, lines, lineIndex).exists { nextLineIndex =>
+            matchesRequiredPlainPatterns(children, lines, lineIndex, serviceMessages).exists { nextLineIndex =>
               loop(patternIndex + 1, nextLineIndex)
             }
-        case pattern if lineIndex < lines.size && matchesPlainLine(pattern, lines(lineIndex)) =>
+        case pattern if lineIndex < lines.size && matchesPlainLine(pattern, lines(lineIndex), serviceMessages) =>
           loop(patternIndex + 1, lineIndex + 1)
         case _ => false
       }
@@ -1097,20 +1165,40 @@ private[logger] object SbtSemanticOutputVerifier {
 
   private def matchesRequiredPlainPatterns(
     patterns: Vector[PlainOutputPattern],
-    lines: Vector[String],
-    start: Int
+    lines: Vector[ObservedPlainLine],
+    start: Int,
+    serviceMessages: Vector[ObservedServiceMessage]
   ): Option[Int] = patterns.foldLeft(Option(start)) {
     case (Some(index), pattern) if index < lines.size && !pattern.isInstanceOf[PlainOutputPattern.OptionalGroup] &&
-      matchesPlainLine(pattern, lines(index)) => Some(index + 1)
+      matchesPlainLine(pattern, lines(index), serviceMessages) => Some(index + 1)
     case _ => None
   }
 
-  private def matchesPlainLine(pattern: PlainOutputPattern, line: String): Boolean = pattern match {
-    case PlainOutputPattern.Exact(expected) => line == expected
-    case PlainOutputPattern.SbtTaskSummary => SbtTaskSummaryPattern.matches(line)
-    case PlainOutputPattern.CompilerBridgeAnnouncement => isCompilerBridgeAnnouncement(line)
-    case PlainOutputPattern.CompilerBridgeCompletion => isCompilerBridgeCompletion(line)
+  private def matchesPlainLine(
+    pattern: PlainOutputPattern,
+    line: ObservedPlainLine,
+    serviceMessages: Vector[ObservedServiceMessage]
+  ): Boolean = pattern match {
+    case PlainOutputPattern.Exact(expected) => line.rawLine == expected
+    case PlainOutputPattern.SbtTaskSummary => SbtTaskSummaryPattern.matches(line.rawLine)
+    case PlainOutputPattern.SbtDebug(kind) => matchesRawSbtDebug(kind, line.rawLine)
+    case PlainOutputPattern.BeforeServiceMessages(child) =>
+      serviceMessages.headOption.forall(line.sourceIndex < _.sourceIndex) &&
+        matchesPlainLine(child, line, serviceMessages)
+    case PlainOutputPattern.AfterServiceMessages(child) =>
+      serviceMessages.lastOption.forall(line.sourceIndex > _.sourceIndex) &&
+        matchesPlainLine(child, line, serviceMessages)
+    case PlainOutputPattern.CompilerBridgeAnnouncement => isCompilerBridgeAnnouncement(line.rawLine)
+    case PlainOutputPattern.CompilerBridgeCompletion => isCompilerBridgeCompletion(line.rawLine)
     case _: PlainOutputPattern.OptionalGroup => false
+  }
+
+  private def matchesRawSbtDebug(kind: RawSbtDebugKind, line: String): Boolean = kind match {
+    case RawSbtDebugKind.CommandExecution => line.matches("""^\[debug\] > Exec\([^\r\n]+\)$""")
+    case RawSbtDebugKind.TaskEvaluation => line.matches("""^\[debug\] Evaluating tasks: [^\r\n]+$""")
+    case RawSbtDebugKind.TaskRun => line.matches(
+      """^\[debug\] Running task\.\.\. Cancel: [^,\r\n]+, check cycles: (?:true|false), forcegc: (?:true|false)$"""
+    )
   }
 
   private def verifyProcessResult(
