@@ -38,19 +38,23 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     behavior = Seq("test"), success = false, teamCity = false)
 
   @Test def compilation_FailureReported(): Unit = run(
-    "compilation-failure", "compilation/failure", behavior = Seq("compile"), success = false)
+    "compilation-failure", "compilation/failure", behavior = Seq("compile"), success = false,
+    verification = SbtOrdinaryCompilationSemanticContracts.Failure)
 
   @Test def compilation_SuccessReported(): Unit = run(
     "compilation-success", "compilation/success",
-    setup = Seq("clean"), behavior = Seq("compile"), success = true, options = Seq("--info"))
+    setup = Seq("clean"), behavior = Seq("compile"), success = true, options = Seq("--info"),
+    verification = SbtOrdinaryCompilationSemanticContracts.Success)
 
   @Test def compilation_DirectCompileIncrementalReported(): Unit = run(
     "compile-incremental", "compilation/success",
-    setup = Seq("clean"), behavior = Seq("Compile / compileIncremental"), success = true, options = Seq("--info"))
+    setup = Seq("clean"), behavior = Seq("Compile / compileIncremental"), success = true, options = Seq("--info"),
+    verification = SbtOrdinaryCompilationSemanticContracts.Incremental)
 
   @Test def compilation_UpToDateInfoDoesNotCreateEmptyBlock(): Unit = run(
     "compilation-up-to-date", "compilation/success",
-    setup = Seq("clean"), behavior = Seq("compile", "compile"), success = true, options = Seq("--info"))
+    setup = Seq("clean"), behavior = Seq("compile", "compile"), success = true, options = Seq("--info"),
+    verification = SbtOrdinaryCompilationSemanticContracts.UpToDate)
 
   // A direct update is intentionally in the ordinary corpus: its exact golden proves detailed reporting stays absent.
   @Test def dependencyResolution_DirectUpdateIsSilentByDefault(): Unit = run(
@@ -59,7 +63,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def compilation_DirectCompileInputsDoesNotInventCompilerLifecycle(): Unit = run(
     "compile-inputs", "compilation/success",
-    behavior = Seq("Compile / dependencyClasspath"), success = true, options = Seq("--info"))
+    behavior = Seq("Compile / dependencyClasspath"), success = true, options = Seq("--info"),
+    verification = SbtOrdinaryCompilationSemanticContracts.Inputs)
 
   @Test def dependencyResolution_UpdateFailureIsSilentByDefault(): Unit = run(
     "dependency-update-failure-default", "dependencyResolution/updateFailure",
@@ -113,7 +118,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def projectConfiguration_NoBuildFileCompiles(): Unit = run(
     "project-no-build-file", "projectConfiguration/noBuildFile",
-    behavior = Seq("compile"), success = true)
+    behavior = Seq("compile"), success = true,
+    verification = SbtOrdinaryCompilationSemanticContracts.NoBuildFile)
 
   @Test def testReporting_JUnit_PassAndFailureReported(): Unit = run(
     "junit-pass-and-failure", "testSupport/JUnit_PassAndFailure",
@@ -155,7 +161,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def compilation_WarningsReportedAsInspections(): Unit = run(
     "compilation-warnings", "compilation/warnings",
-    setup = Seq("clean"), behavior = Seq("compile"), success = true, options = Seq.empty)
+    setup = Seq("clean"), behavior = Seq("compile"), success = true, options = Seq.empty,
+    verification = SbtOrdinaryCompilationSemanticContracts.Warnings)
 
   @Test def compilerLogLevel_DebugOutputSuppressedAtError(): Unit = run(
     "compiler-log-level-error", "compilerLogLevel/error",
@@ -167,7 +174,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def compilation_SubprojectLifecycleReported(): Unit = run(
     "compilation-subproject", "compilation/subproject",
-    behavior = Seq("backend/compile"), success = true)
+    behavior = Seq("backend/compile"), success = true, options = Seq("--info"),
+    verification = SbtOrdinaryCompilationSemanticContracts.Subproject)
 
   @Test def testReporting_ScalaTest_PassAndFailureReported(): Unit = run(
     "scalatest-pass-and-failure", "testSupport/ScalaTest_PassAndFailure",
