@@ -972,14 +972,35 @@ private[logger] object SbtSemanticOutputVerifier {
   }
 
   private def matchesUserFailure(pattern: SemanticValuePattern.UserFailure, value: String): Boolean = {
-    val exactHead = (pattern.prefix +: pattern.userFrames).mkString("\n")
-    if (value == exactHead) return true
-    if (!value.startsWith(exactHead + "\n")) return false
-    val splitTail = value.substring(exactHead.length + 1).split("\n", -1).toVector
     // One final newline is common in framework-rendered details; further/interior blank lines remain contractual.
-    val tail = if (splitTail.lastOption.contains("")) splitTail.dropRight(1) else splitTail
-    tail.size <= pattern.maximumFrameworkFrames && tail.forall(isRecognizedFrameworkFrame(pattern.framework, _))
+    val normalized = if (value.endsWith("\n")) value.dropRight(1) else value
+    if (normalized.endsWith("\n") || !normalized.startsWith(pattern.prefix + "\n")) return false
+    val frames = normalized.substring(pattern.prefix.length + 1).split("\n", -1).toVector
+    if (frames.exists(_.isEmpty) || frames.size < pattern.userFrames.size) return false
+
+    val userFrameStarts = (0 to (frames.size - pattern.userFrames.size)).filter { start =>
+      frames.slice(start, start + pattern.userFrames.size) == pattern.userFrames
+    }
+    if (userFrameStarts.size != 1) return false
+    // Each exact user frame must occur only in that one ordered sequence, even if it resembles a framework frame.
+    if (pattern.userFrames.exists(frame => frames.count(_ == frame) != 1)) return false
+
+    val userStart = userFrameStarts.head
+    val frameworkFrames = frames.take(userStart) ++ frames.drop(userStart + pattern.userFrames.size)
+    frameworkFrames.size <= pattern.maximumFrameworkFrames &&
+      frameworkFramesAreRecognized(pattern, frameworkFrames)
   }
+
+  private def frameworkFramesAreRecognized(
+    pattern: SemanticValuePattern.UserFailure,
+    frames: Vector[String]
+  ): Boolean =
+    frames.forall { frame =>
+      isRecognizedFrameworkFrame(pattern.framework, frame) ||
+        (pattern.framework == RecognizedTestFramework.ScalaTest && frameLocation(frame)
+          .flatMap(scalaTestGeneratedExecutionOwner(_, allowPlainRun = true))
+          .exists(pattern.allowedGeneratedOwners.contains))
+    }
 
   private def isRecognizedFrameworkFrame(framework: RecognizedTestFramework, frame: String): Boolean = {
     val trimmed = frame.stripPrefix("\t").trim
@@ -996,6 +1017,35 @@ private[logger] object SbtSemanticOutputVerifier {
       "sbt.", "xsbti.", "scala.", "java.", "java.base/", "jdk.internal.", "sun.reflect."
     )
     (frameworkPrefixes ++ commonPrefixes).exists(location.startsWith)
+  }
+
+  private def frameLocation(frame: String): Option[String] = {
+    val trimmed = frame.stripPrefix("\t").trim
+    Option.when(trimmed.startsWith("at "))(trimmed.stripPrefix("at "))
+  }
+
+  private def scalaTestGeneratedExecutionOwner(
+    location: String,
+    allowPlainRun: Boolean
+  ): Option[String] = {
+    val open = location.lastIndexOf('(')
+    if (open <= 0 || !location.endsWith(")")) return None
+    val ownerAndMethod = location.substring(0, open)
+    val separator = ownerAndMethod.lastIndexOf('.')
+    if (separator <= 0) return None
+    val owner = ownerAndMethod.substring(0, separator)
+    val method = ownerAndMethod.substring(separator + 1)
+    val className = owner.substring(owner.lastIndexOf('.') + 1)
+    val source = location.substring(open + 1, location.length - 1)
+    val scalaTestMixinMethod =
+      method.startsWith("org$scalatest$") && Set("$run", "$runTest", "$runTests").exists(method.endsWith)
+    val generatedMethod = scalaTestMixinMethod || (allowPlainRun && Set("run", "runTest", "runTests").contains(method))
+
+    Option.when(
+      className.endsWith("Test") &&
+      generatedMethod &&
+      source.matches(s"${java.util.regex.Pattern.quote(className)}\\.scala:[0-9]+")
+    )(owner)
   }
 
   private def bind(

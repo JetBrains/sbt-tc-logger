@@ -1049,35 +1049,108 @@ class SbtSemanticVerifierTest {
       finding.semanticIdentity == "optional-group:bridge-pair:adjacency" && finding.disposition == Violation))
   }
 
-  @Test def userFailureTailIsBoundedNonblankFrameworkSpecificAndNeverOwnsCauses(): Unit = {
+  @Test def userFailureAllowsBoundedFrameworkPrefixAndTailAroundOneExactOrderedUserSequence(): Unit = {
     val cases = Vector(
       RecognizedTestFramework.ScalaTest -> "org.scalatest.Suite.run(Suite.scala:1)",
       RecognizedTestFramework.Specs2 -> "org.specs2.runner.SpecificationsFinder.run(SpecificationsFinder.scala:1)",
       RecognizedTestFramework.JUnit -> "org.junit.runners.ParentRunner.run(ParentRunner.java:1)"
     )
     cases.foreach { case (framework, frameworkFrame) =>
+      val userFrames = Vector(
+        "\tat fixture.Spec.prepare(Spec.scala:6)",
+        "\tat fixture.Spec.fails(Spec.scala:7)"
+      )
+      val detailsPattern = framework match {
+        case RecognizedTestFramework.ScalaTest => userFailure(
+          "java.lang.AssertionError: boom",
+          userFrames,
+          framework,
+          maximumFrameworkFrames = 2,
+          allowedGeneratedOwners = Set("fixture.ParallelTest")
+        )
+        case _ => userFailure(
+          "java.lang.AssertionError: boom",
+          userFrames,
+          framework,
+          maximumFrameworkFrames = 2
+        )
+      }
       val contract = SbtSemanticContract(Vector(ExpectedSemanticEvent("failure", TestFailed,
         "name" -> exact("fixture.fails"),
-        "details" -> userFailure(
-          "java.lang.AssertionError: boom",
-          Seq("\tat fixture.Spec.fails(Spec.scala:7)"),
-          framework,
-          maximumFrameworkFrames = 1
-        ),
+        "details" -> detailsPattern,
         "flowId" -> exact("test"))))
-      val prefix = "##teamcity[testFailed name='fixture.fails' details='java.lang.AssertionError: boom|n\tat fixture.Spec.fails(Spec.scala:7)"
-      val suffix = "' flowId='test']"
-      verify(Vector(s"$prefix|n\tat $frameworkFrame$suffix"), contract)
-      verify(Vector(s"$prefix|n\tat $frameworkFrame|n$suffix"), contract)
+      def failure(details: String): String =
+        s"##teamcity[testFailed name='fixture.fails' details='${teamCityEscape(details)}' flowId='test']"
+      val exactUser = userFrames.mkString("\n")
+      val recognized = s"\tat $frameworkFrame"
+
       Vector(
-        s"$prefix|n|n\tat $frameworkFrame$suffix",
-        s"$prefix|n\tat $frameworkFrame|n|n$suffix",
-        s"$prefix|n\tat $frameworkFrame|n\tat $frameworkFrame$suffix",
-        s"$prefix|n\tat com.foreign.Runner.run(Runner.scala:1)$suffix",
-        s"$prefix|nCaused by: java.lang.IllegalStateException: hidden$suffix"
-      ).foreach { line =>
-        assertCategory(expectFailure(verify(Vector(line), contract)), SemanticCardinalityFailure)
+        s"java.lang.AssertionError: boom\n$exactUser",
+        s"java.lang.AssertionError: boom\n$recognized\n$exactUser",
+        s"java.lang.AssertionError: boom\n$exactUser\n$recognized",
+        s"java.lang.AssertionError: boom\n$recognized\n$exactUser\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:2)",
+        s"java.lang.AssertionError: boom\n$recognized\n$exactUser\n"
+      ).foreach(details => verify(Vector(failure(details)), contract))
+      if (framework == RecognizedTestFramework.ScalaTest) {
+        verify(Vector(failure(
+          s"java.lang.AssertionError: boom\n$exactUser\n" +
+            "\tat fixture.ParallelTest.org$scalatest$ParallelTestExecution$$super$runTest(ParallelTest.scala:5)\n" +
+            "\tat fixture.ParallelTest.runTest(ParallelTest.scala:5)"
+        )), contract)
       }
+
+      Vector(
+        s"java.lang.AssertionError: changed\n$exactUser",
+        s"java.lang.AssertionError: boom\n${userFrames.reverse.mkString("\n")}",
+        s"java.lang.AssertionError: boom\n${userFrames.head}\n$exactUser",
+        s"java.lang.AssertionError: boom\n$recognized\n$exactUser\n$recognized\n$recognized",
+        s"java.lang.AssertionError: boom\n\n$exactUser",
+        s"java.lang.AssertionError: boom\n$recognized\n\n$exactUser",
+        s"java.lang.AssertionError: boom\n$exactUser\n\n",
+        s"java.lang.AssertionError: boom\n$exactUser\n\n\n",
+        s"java.lang.AssertionError: boom\n\tat com.foreign.Runner.run(Runner.scala:1)\n$exactUser",
+        s"java.lang.AssertionError: boom\n$exactUser\n\tat com.foreign.Runner.run(Runner.scala:1)",
+        s"java.lang.AssertionError: boom\n$exactUser\n\tat com.foreign.ForeignTest.run(ForeignTest.scala:1)",
+        s"java.lang.AssertionError: boom\n$exactUser\n" +
+          "\tat com.foreign.ForeignTest.org$scalatest$ParallelTestExecution$$super$runTest(ForeignTest.scala:1)\n" +
+          "\tat com.foreign.ForeignTest.runTest(ForeignTest.scala:1)",
+        s"java.lang.AssertionError: boom\n$exactUser\n" +
+          "\tat tests.ForeignTest.org$scalatest$ParallelTestExecution$$super$runTest(ForeignTest.scala:1)\n" +
+          "\tat tests.ForeignTest.runTest(ForeignTest.scala:1)",
+        s"java.lang.AssertionError: boom\nCaused by: java.lang.IllegalStateException: hidden\n$exactUser",
+        s"java.lang.AssertionError: boom\n$exactUser\nCaused by: java.lang.IllegalStateException: hidden"
+      ).foreach(details =>
+        assertCategory(expectFailure(verify(Vector(failure(details)), contract)), SemanticCardinalityFailure))
+    }
+  }
+
+  @Test def userFailureContractRejectsInvalidDeclarations(): Unit = {
+    val invalidPatterns = Vector(
+      userFailure(
+        "java.lang.AssertionError: boom",
+        Seq("\tat fixture.Spec.fails(Spec.scala:7)", "\tat fixture.Spec.fails(Spec.scala:7)"),
+        RecognizedTestFramework.ScalaTest
+      ),
+      userFailure(
+        "java.lang.AssertionError: boom",
+        Seq("\tat fixture.Spec.fails(Spec.scala:7)"),
+        RecognizedTestFramework.ScalaTest,
+        allowedGeneratedOwners = Set("", "fixture..ParallelTest")
+      ),
+      userFailure(
+        "java.lang.AssertionError: boom",
+        Seq("\tat fixture.Spec.fails(Spec.scala:7)"),
+        RecognizedTestFramework.JUnit,
+        allowedGeneratedOwners = Set("fixture.ParallelTest")
+      )
+    )
+
+    invalidPatterns.foreach { pattern =>
+      val contract = SbtSemanticContract(Vector(ExpectedSemanticEvent("failure", TestFailed,
+        "name" -> exact("fixture.fails"),
+        "details" -> pattern,
+        "flowId" -> exact("test"))))
+      assertCategory(expectFailure(verify(Vector.empty, contract)), GoldenSyntaxFailure)
     }
   }
 

@@ -196,7 +196,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
   @Test def testReporting_ScalaTest_ParallelEventsReported(): Unit = run(
     "scalatest-parallel-events", "testSupport/ScalaTest_ParallelEvents",
     behavior = Seq("test"), success = false,
-    options = Seq("--info", "-Dteamcity.sbt.logger.showTestTaskOutput=false"))
+    options = Seq("--info", "-Dteamcity.sbt.logger.showTestTaskOutput=false"),
+    verification = SbtScalaTestParallelEventsSemanticContracts.Failure)
 
   private def run(
     scenarioId: String,

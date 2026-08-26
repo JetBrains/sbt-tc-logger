@@ -84,12 +84,13 @@ private[logger] object SemanticValuePattern {
   /** One dependency-owned SBT/Zinc debug sentence from a finite structural family. */
   final case class StructuredSbtDebug(kind: StructuredSbtDebugKind) extends SemanticValuePattern
 
-  /** Exact user-owned failure content followed by a finite, bounded framework-owned stack tail. */
+  /** Exact user-owned failure content surrounded by a finite, bounded set of recognized framework frames. */
   final case class UserFailure(
     prefix: String,
     userFrames: Vector[String],
     framework: RecognizedTestFramework,
-    maximumFrameworkFrames: Int
+    maximumFrameworkFrames: Int,
+    allowedGeneratedOwners: Set[String]
   ) extends SemanticValuePattern
 
   def exact(value: String): SemanticValuePattern = Exact(value)
@@ -109,8 +110,10 @@ private[logger] object SemanticValuePattern {
     prefix: String,
     userFrames: Seq[String],
     framework: RecognizedTestFramework,
-    maximumFrameworkFrames: Int = 64
-  ): SemanticValuePattern = UserFailure(prefix, userFrames.toVector, framework, maximumFrameworkFrames)
+    maximumFrameworkFrames: Int = 64,
+    allowedGeneratedOwners: Set[String] = Set.empty
+  ): SemanticValuePattern =
+    UserFailure(prefix, userFrames.toVector, framework, maximumFrameworkFrames, allowedGeneratedOwners)
 }
 
 private[logger] enum StructuredSbtDebugKind(val id: String) {
@@ -417,6 +420,7 @@ private[utils] final case class PreparedSemanticContract(
 
 private[utils] object SbtSemanticContractValidator {
   private val StableName = "[a-z][a-z0-9.-]*"
+  private val FullyQualifiedJvmOwner = "(?:[A-Za-z_$][A-Za-z0-9_$]*\\.)+[A-Za-z_$][A-Za-z0-9_$]*"
 
   def prepare(contract: SbtSemanticContract): Either[Vector[SbtSemanticFailure], PreparedSemanticContract] = {
     val problems = mutable.ArrayBuffer.empty[String]
@@ -656,13 +660,23 @@ private[utils] object SbtSemanticContractValidator {
         Option.when(configuration.isEmpty)("declares a dependency resource with an empty configuration.").toVector ++
         Option.when(!isExactHttpUrl(url))(s"declares an invalid exact dependency URL '$url'.").toVector ++
         Option.when(outcomes.isEmpty)("declares a dependency resource without an allowed outcome.").toVector
-    case SemanticValuePattern.UserFailure(prefix, frames, _, maximum) =>
+    case SemanticValuePattern.UserFailure(prefix, frames, framework, maximum, allowedGeneratedOwners) =>
       Option.when(prefix.isEmpty)("declares an empty user-failure prefix.").toVector ++
         Option.when(frames.isEmpty)("declares no exact user stack frames.").toVector ++
         Option.when(frames.exists(frame => frame.isEmpty || frame.contains('\n')))(
           "declares an empty or multiline user stack frame."
         ).toVector ++
-        Option.when(maximum < 0)(s"declares a negative framework-tail bound $maximum.").toVector
+        Option.when(frames.distinct.size != frames.size)(
+          "declares duplicate exact user stack frames."
+        ).toVector ++
+        Option.when(maximum < 0)(s"declares a negative framework-frame bound $maximum.").toVector ++
+        allowedGeneratedOwners.toVector.sorted.collect {
+          case owner if !owner.matches(FullyQualifiedJvmOwner) =>
+            s"declares invalid generated ScalaTest owner '$owner'."
+        } ++
+        Option.when(allowedGeneratedOwners.nonEmpty && framework != RecognizedTestFramework.ScalaTest)(
+          "declares generated ScalaTest owners for a non-ScalaTest user failure."
+        ).toVector
     case _ => Vector.empty
   }
 
