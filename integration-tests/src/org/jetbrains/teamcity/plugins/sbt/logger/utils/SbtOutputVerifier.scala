@@ -572,6 +572,8 @@ private[logger] object SbtOutputVerifier {
   }
 
   private object ExactMatcher {
+    private val MatcherStateBudget = 100000
+
     def verify(document: GoldenDocument, actual: Vector[String], context: TranscriptContext, source: File): Unit = document match {
       case ExpectEmpty =>
         Assert.assertTrue(
@@ -587,30 +589,132 @@ private[logger] object SbtOutputVerifier {
           })))
           case other => other
         }
-        var states = Vector(0 -> Bindings.empty)
-        contextualSegments.foreach { segment =>
-          val next = states.flatMap { case (index, bindings) => matchSegment(segment, actual, index, bindings, context) }
-          if (next.isEmpty) mismatch(source, segment, actual, states.map(_._1).maxOption.getOrElse(0))
-          states = deduplicate(next)
-        }
-        if (!states.exists(_._1 == actual.size)) {
-          val furthest = states.map(_._1).max
-          fail(
-            s"Exact transcript has unexpected trailing output after line $furthest in ${FileUtils.normalisedAbsolutePath(source)}:\n" +
-              numbered(actual.drop(furthest), furthest + 1)
-          )
-        }
-    }
+        val transcriptMemo = mutable.Map.empty[(Int, Int, Bindings), Boolean]
+        val unorderedMemo = mutable.Map.empty[(Int, Int, Vector[Int], Bindings), Boolean]
+        var visitedMatcherStates = 0
+        var furthestMismatch: Option[(Int, Int)] = None
+        var furthestTerminalIndex = -1
 
-    private def matchSegment(
-      segment: Segment,
-      actual: Vector[String],
-      index: Int,
-      bindings: Bindings,
-      context: TranscriptContext
-    ): Vector[(Int, Bindings)] = segment match {
-      case atom: Atom => matchAtom(atom, actual, index, bindings, context)
-      case Unordered(lanes) => matchUnordered(lanes, actual, index, bindings, context)
+        def noteMismatch(segmentIndex: Int, actualIndex: Int): Unit = furthestMismatch match {
+          case Some((bestSegment, bestActual))
+              if bestSegment > segmentIndex || (bestSegment == segmentIndex && bestActual >= actualIndex) =>
+          case _ => furthestMismatch = Some(segmentIndex -> actualIndex)
+        }
+
+        def matcherStateVisited(actualIndex: Int): Unit = {
+          visitedMatcherStates += 1
+          if (visitedMatcherStates > MatcherStateBudget) {
+            fail(
+              s"MatcherComplexityExceeded: exact transcript matching in ${FileUtils.normalisedAbsolutePath(source)} " +
+                s"exceeded the $MatcherStateBudget-state budget near output line ${actualIndex + 1}. " +
+                "Matching remains too complex after memoization; shorten an exceptionally long transcript or, " +
+                "for ambiguous unordered lanes, add distinct literal prefixes, stronger shared bindings, or " +
+                "split the block. No candidate state was discarded."
+            )
+          }
+        }
+
+        def matchTranscript(
+          initialSegmentIndex: Int,
+          initialActualIndex: Int,
+          initialBindings: Bindings
+        ): Boolean = {
+          val traversed = mutable.ArrayBuffer.empty[(Int, Int, Bindings)]
+          var segmentIndex = initialSegmentIndex
+          var actualIndex = initialActualIndex
+          var bindings = initialBindings
+          var result = false
+          var finished = false
+
+          while (!finished) {
+            val key = (segmentIndex, actualIndex, bindings)
+            transcriptMemo.get(key) match {
+              case Some(cached) =>
+                result = cached
+                finished = true
+              case None =>
+                matcherStateVisited(actualIndex)
+                traversed += key
+                if (segmentIndex == contextualSegments.size) {
+                  furthestTerminalIndex = furthestTerminalIndex.max(actualIndex)
+                  result = actualIndex == actual.size
+                  finished = true
+                } else {
+                  noteMismatch(segmentIndex, actualIndex)
+                  contextualSegments(segmentIndex) match {
+                    case atom: Atom =>
+                      matchAtom(atom, actual, actualIndex, bindings, context) match {
+                        case Some((nextIndex, nextBindings)) =>
+                          segmentIndex += 1
+                          actualIndex = nextIndex
+                          bindings = nextBindings
+                        case None => finished = true
+                      }
+                    case Unordered(lanes) =>
+                      result = matchUnordered(
+                        segmentIndex,
+                        lanes,
+                        actualIndex,
+                        Vector.fill(lanes.size)(0),
+                        bindings
+                      )
+                      finished = true
+                  }
+                }
+            }
+          }
+          traversed.foreach(key => transcriptMemo.put(key, result))
+          result
+        }
+
+        def matchUnordered(
+          segmentIndex: Int,
+          lanes: Vector[Lane],
+          actualIndex: Int,
+          positions: Vector[Int],
+          bindings: Bindings
+        ): Boolean = {
+          val key = (segmentIndex, actualIndex, positions, bindings)
+          unorderedMemo.get(key) match {
+            case Some(result) => result
+            case None =>
+              matcherStateVisited(actualIndex)
+              val result =
+                if (positions.indices.forall(lane => positions(lane) == lanes(lane).atoms.size)) {
+                  matchTranscript(segmentIndex + 1, actualIndex, bindings)
+                } else {
+                  lanes.indices.exists { laneIndex =>
+                    val position = positions(laneIndex)
+                    position < lanes(laneIndex).atoms.size &&
+                      matchAtom(lanes(laneIndex).atoms(position), actual, actualIndex, bindings, context).exists {
+                        case (nextIndex, nextBindings) =>
+                          matchUnordered(
+                            segmentIndex,
+                            lanes,
+                            nextIndex,
+                            positions.updated(laneIndex, position + 1),
+                            nextBindings
+                          )
+                      }
+                  }
+                }
+              unorderedMemo.put(key, result)
+              result
+          }
+        }
+
+        if (!matchTranscript(0, 0, Bindings.empty)) {
+          if (furthestTerminalIndex >= 0) {
+            val furthest = furthestTerminalIndex
+            fail(
+              s"Exact transcript has unexpected trailing output after line $furthest in ${FileUtils.normalisedAbsolutePath(source)}:\n" +
+                numbered(actual.drop(furthest), furthest + 1)
+            )
+          } else {
+            val (segmentIndex, actualIndex) = furthestMismatch.getOrElse(0 -> 0)
+            mismatch(source, contextualSegments(segmentIndex), actual, actualIndex)
+          }
+        }
     }
 
     private def matchAtom(
@@ -619,46 +723,13 @@ private[logger] object SbtOutputVerifier {
       index: Int,
       bindings: Bindings,
       context: TranscriptContext
-    ): Vector[(Int, Bindings)] = atom match {
+    ): Option[(Int, Bindings)] = atom match {
       case Noise("sbt-compiler-bridge", _) =>
         val consumed = NoiseRecognizers.compilerBridgeLength(actual, index)
-        if (consumed == 2) Vector(index + consumed -> bindings) else Vector(index -> bindings)
-      case _ if index < actual.size => atom.tryMatch(actual(index), bindings, context).toVector.map(index + 1 -> _)
-      case _ => Vector.empty
+        Some((if (consumed == 2) index + consumed else index) -> bindings)
+      case _ if index < actual.size => atom.tryMatch(actual(index), bindings, context).map(index + 1 -> _)
+      case _ => None
     }
-
-    private def matchUnordered(
-      lanes: Vector[Lane],
-      actual: Vector[String],
-      start: Int,
-      initial: Bindings,
-      context: TranscriptContext
-    ): Vector[(Int, Bindings)] = {
-      val memo = mutable.Map.empty[(Int, Vector[Int], Bindings), Vector[(Int, Bindings)]]
-      def loop(index: Int, positions: Vector[Int], bindings: Bindings): Vector[(Int, Bindings)] = {
-        memo.getOrElseUpdate((index, positions, bindings), {
-          if (positions.indices.forall(lane => positions(lane) == lanes(lane).atoms.size)) Vector(index -> bindings)
-          else {
-            lanes.indices.foldLeft(Vector.empty[(Int, Bindings)]) { (results, laneIndex) =>
-              if (results.size >= 256) results
-              else {
-                val position = positions(laneIndex)
-                val expanded =
-                  if (position >= lanes(laneIndex).atoms.size) Vector.empty
-                  else matchAtom(lanes(laneIndex).atoms(position), actual, index, bindings, context).flatMap {
-                    case (nextIndex, nextBindings) =>
-                      loop(nextIndex, positions.updated(laneIndex, position + 1), nextBindings)
-                  }
-                deduplicate(results ++ expanded)
-              }
-            }
-          }
-        })
-      }
-      loop(start, Vector.fill(lanes.size)(0), initial)
-    }
-
-    private def deduplicate(states: Vector[(Int, Bindings)]): Vector[(Int, Bindings)] = states.distinct.take(256)
 
     private def mismatch(source: File, segment: Segment, actual: Vector[String], index: Int): Nothing = {
       val expectation = segment match {

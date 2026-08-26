@@ -34,6 +34,11 @@ class SbtOutputVerifierTest {
     ).foreach(actual => expectAssertionError(verify(actual, golden)))
   }
 
+  @Test def longOrderedTranscriptDoesNotConsumeTheCallStack(): Unit = {
+    val lines = Vector.tabulate(12000)(index => s"ordered-line-$index")
+    verify(lines, goldenFile(lines*))
+  }
+
   @Test def rawTeamCityAttributeReorderingFails(): Unit = {
     val golden = goldenFile("##teamcity[message text='hello' status='NORMAL']")
     verify(Vector("##teamcity[message text='hello' status='NORMAL']"), golden)
@@ -164,6 +169,120 @@ class SbtOutputVerifierTest {
     }
   }
 
+  @Test def unorderedMatcherAcceptsGeneratedTwoThreeAndFourLaneInterleavings(): Unit = {
+    val expectedCounts = Map(2 -> 6, 3 -> 90, 4 -> 2520)
+    (2 to 4).foreach { laneCount =>
+      val lanes = Vector.tabulate(laneCount) { lane =>
+        Vector(s"lane-$lane-start", s"lane-$lane-finish")
+      }
+      val generated = laneInterleavings(lanes)
+      Assert.assertEquals(s"Unexpected generated count for $laneCount lanes", expectedCounts(laneCount), generated.size)
+      val golden = lanesGolden(lanes)
+      generated.foreach(actual => verify(actual, golden))
+    }
+  }
+
+  @Test def unorderedMatcherFindsTheValidSixLaneBindingInTheFormer257thCandidate(): Unit = {
+    val names = Vector("a", "b", "c", "d", "e", "f")
+    val goldenLines =
+      Vector("[[unordered]]") ++
+        names.flatMap(name => Vector(s"[[lane:$name]]", s"value={{build-id:$name}}", "[[/lane]]")) ++
+        Vector(
+          "[[/unordered]]",
+          "assignment={{build-id:a}},{{build-id:b}},{{build-id:c}},{{build-id:d}},{{build-id:e}},{{build-id:f}}"
+        )
+    val golden = goldenFile(goldenLines*)
+
+    // The lane-consumption permutation c,a,e,f,b,d is candidate 257 in the old depth-first ordering.
+    verify(
+      Vector("value=1", "value=2", "value=3", "value=4", "value=5", "value=6", "assignment=2,5,1,6,3,4"),
+      golden
+    )
+  }
+
+  @Test def unorderedMatcherCarriesSharedBindingsAcrossLanesAndIntoTheContinuation(): Unit = {
+    val golden = goldenFile(
+      "[[unordered]]",
+      "[[lane:producer]]", "shared={{build-id:shared}}", "producer={{build-id:shared}}", "[[/lane]]",
+      "[[lane:observer]]", "observer={{build-id:shared}}", "[[/lane]]",
+      "[[/unordered]]",
+      "after={{build-id:shared}}"
+    )
+
+    verify(Vector("observer=41", "shared=41", "producer=41", "after=41"), golden)
+    expectAssertionError(verify(Vector("observer=42", "shared=41", "producer=41", "after=41"), golden))
+    expectAssertionError(verify(Vector("observer=41", "shared=41", "producer=41", "after=42"), golden))
+  }
+
+  @Test def unorderedMatcherHandlesIdenticalPrefixesAndDuplicateLinesWithoutDroppingMultiplicity(): Unit = {
+    val golden = lanesGolden(Vector(
+      Vector("same", "left"),
+      Vector("same", "right")
+    ), continuation = Vector("after"))
+
+    verify(Vector("same", "left", "same", "right", "after"), golden)
+    verify(Vector("same", "same", "right", "left", "after"), golden)
+    expectAssertionError(verify(Vector("same", "left", "right", "after"), golden))
+    expectAssertionError(verify(Vector("same", "same", "same", "left", "right", "after"), golden))
+  }
+
+  @Test def unorderedMatcherAgreesWithBruteForceForSmallDuplicateHeavyCases(): Unit = {
+    val cases = Vector(
+      Vector(Vector("same", "left"), Vector("same", "right")) -> Vector("same", "left", "right"),
+      Vector(Vector("x"), Vector("x"), Vector("y")) -> Vector("x", "y", "z"),
+      Vector(Vector("a"), Vector("b"), Vector("a"), Vector("b")) -> Vector("a", "b", "c")
+    )
+
+    cases.foreach { case (lanes, alphabet) =>
+      val continuation = Vector("after")
+      val golden = lanesGolden(lanes, continuation)
+      val candidates = sequences(alphabet, lanes.map(_.size).sum)
+      candidates.foreach { unorderedActual =>
+        val actual = unorderedActual ++ continuation
+        val expected = bruteForceMatches(lanes, unorderedActual)
+        val accepted = verifierAccepts(actual, golden)
+        if (accepted != expected) {
+          Assert.fail(s"Matcher/reference disagreement for lanes=$lanes actual=$actual expected=$expected")
+        }
+      }
+    }
+  }
+
+  @Test def pathologicalUnorderedAmbiguityHasAnExplicitComplexityDiagnostic(): Unit = {
+    val lanes = Vector.fill(8)(Vector.fill(4)("same"))
+    val golden = lanesGolden(lanes, continuation = Vector("after"))
+    val error = expectAssertionError(verify(Vector.fill(32)("same") :+ "not-after", golden))
+
+    Assert.assertTrue(error.getMessage.contains("MatcherComplexityExceeded"))
+    Assert.assertTrue(error.getMessage.contains("100000-state budget"))
+    Assert.assertTrue(error.getMessage.contains("No candidate state was discarded"))
+    Assert.assertFalse(error.getMessage.contains("Exact transcript mismatch"))
+  }
+
+  @Test def trailingOutputAfterAnAmbiguousUnorderedBlockKeepsTheTrailingClassification(): Unit = {
+    val golden = lanesGolden(Vector(Vector("same"), Vector("same")))
+    val error = expectAssertionError(verify(Vector("same", "same", "trailing"), golden))
+
+    Assert.assertTrue(error.getMessage.contains("Exact transcript has unexpected trailing output after line 2"))
+    Assert.assertTrue(error.getMessage.contains("    3 | trailing"))
+    Assert.assertFalse(error.getMessage.contains("Exact transcript mismatch"))
+    Assert.assertFalse(error.getMessage.contains("MatcherComplexityExceeded"))
+  }
+
+  @Test def failedContinuationAfterAnAmbiguousUnorderedBlockReportsItsFurthestContext(): Unit = {
+    val golden = lanesGolden(Vector(Vector("same"), Vector("same")), continuation = Vector("after"))
+    val error = expectAssertionError(verify(Vector("same", "same", "wrong", "context-tail"), golden))
+
+    Assert.assertTrue(error.getMessage.contains("Exact transcript mismatch"))
+    Assert.assertTrue(error.getMessage.contains("at output line 3"))
+    Assert.assertTrue(error.getMessage.contains("Expected golden line 9: after"))
+    Assert.assertTrue(error.getMessage.contains("Actual: wrong"))
+    Assert.assertTrue(error.getMessage.contains("    3 | wrong"))
+    Assert.assertTrue(error.getMessage.contains("    4 | context-tail"))
+    Assert.assertFalse(error.getMessage.contains("unexpected trailing output"))
+    Assert.assertFalse(error.getMessage.contains("MatcherComplexityExceeded"))
+  }
+
   @Test def unorderedBlockRejectsMissingDuplicateCrossLaneOrderAndUnexpectedLines(): Unit = {
     val golden = unorderedGolden()
     Seq(
@@ -205,16 +324,17 @@ class SbtOutputVerifierTest {
       "[[unordered]]",
       "[[lane:compile]]", "compile-started", "[[noise:sbt-compiler-bridge]]", "compile-finished", "[[/lane]]",
       "[[lane:other]]", "other", "[[/lane]]",
-      "[[/unordered]]"
+      "[[/unordered]]",
+      "after"
     )
     val coldBridge = Vector(
       "[info] Non-compiled module 'compiler-bridge_2.12' for Scala 2.12.20. Compiling...",
       "[info]   Compilation completed in 4.321s."
     )
 
-    verify(Vector("other", "compile-started", "compile-finished"), golden)
-    verify(Vector("compile-started") ++ coldBridge ++ Vector("other", "compile-finished"), golden)
-    expectAssertionError(verify(Vector("compile-started", coldBridge.head, "other", "compile-finished"), golden))
+    verify(Vector("other", "compile-started", "compile-finished", "after"), golden)
+    verify(Vector("compile-started") ++ coldBridge ++ Vector("other", "compile-finished", "after"), golden)
+    expectAssertionError(verify(Vector("compile-started", coldBridge.head, "other", "compile-finished", "after"), golden))
   }
 
   @Test def explicitEmptyTranscriptIsRequiredAndEnforced(): Unit = {
@@ -418,10 +538,57 @@ class SbtOutputVerifierTest {
     "after"
   )
 
+  private def lanesGolden(lanes: Vector[Vector[String]], continuation: Vector[String] = Vector.empty): File = {
+    val lines =
+      Vector("[[unordered]]") ++
+        lanes.zipWithIndex.flatMap { case (lane, index) =>
+          Vector(s"[[lane:lane-$index]]") ++ lane ++ Vector("[[/lane]]")
+        } ++
+        Vector("[[/unordered]]") ++
+        continuation
+    goldenFile(lines*)
+  }
+
   private def interleavings(left: Vector[String], right: Vector[String]): Vector[Vector[String]] =
     if (left.isEmpty) Vector(right)
     else if (right.isEmpty) Vector(left)
     else interleavings(left.tail, right).map(left.head +: _) ++ interleavings(left, right.tail).map(right.head +: _)
+
+  private def laneInterleavings(lanes: Vector[Vector[String]]): Vector[Vector[String]] = {
+    def loop(positions: Vector[Int]): Vector[Vector[String]] =
+      if (positions.indices.forall(lane => positions(lane) == lanes(lane).size)) Vector(Vector.empty)
+      else lanes.indices.flatMap { lane =>
+        val position = positions(lane)
+        if (position >= lanes(lane).size) Vector.empty
+        else loop(positions.updated(lane, position + 1)).map(lanes(lane)(position) +: _)
+      }.toVector
+
+    loop(Vector.fill(lanes.size)(0))
+  }
+
+  private def bruteForceMatches(lanes: Vector[Vector[String]], actual: Vector[String]): Boolean = {
+    def loop(index: Int, positions: Vector[Int]): Boolean =
+      if (index == actual.size) positions.indices.forall(lane => positions(lane) == lanes(lane).size)
+      else lanes.indices.exists { lane =>
+        val position = positions(lane)
+        position < lanes(lane).size && lanes(lane)(position) == actual(index) &&
+          loop(index + 1, positions.updated(lane, position + 1))
+      }
+
+    loop(0, Vector.fill(lanes.size)(0))
+  }
+
+  private def sequences(alphabet: Vector[String], length: Int): Vector[Vector[String]] =
+    if (length == 0) Vector(Vector.empty)
+    else sequences(alphabet, length - 1).flatMap(prefix => alphabet.map(prefix :+ _))
+
+  private def verifierAccepts(actual: Vector[String], golden: File): Boolean =
+    try {
+      verify(actual, golden)
+      true
+    } catch {
+      case _: AssertionError => false
+    }
 
   private def goldenFile(lines: String*): File = {
     val file = FileUtils.createTempFile("exact-transcript", ".txt")
