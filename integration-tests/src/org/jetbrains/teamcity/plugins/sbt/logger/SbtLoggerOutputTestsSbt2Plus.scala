@@ -70,6 +70,7 @@ trait SbtLoggerOutputTestsSbt2Plus { this: SbtLoggerOutputTestBase =>
       sbtOptions = Seq(
         "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
         "-Dteamcity.sbt.logger.showTestTaskOutput=false"
-      )
+      ),
+      verification = SbtJUnitResultLoggerSemanticContracts.TestFullConfiguredHidden
     ))
 }

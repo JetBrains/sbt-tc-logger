@@ -141,12 +141,14 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
   @Test def testReporting_TeamCityResultLoggerCanHideTestTaskOutput(): Unit = run(
     "junit-teamcity-result-no-task-output", "testSupport/JUnit_PassAndFailure",
     behavior = Seq("test"), success = false,
-    options = Seq("-Dteamcity.sbt.logger.showTestTaskOutput=false"))
+    options = Seq("-Dteamcity.sbt.logger.showTestTaskOutput=false"),
+    verification = SbtJUnitResultLoggerSemanticContracts.TeamCityResultHidden)
 
   @Test def testReporting_ConfiguredResultLoggerCanBeRestored(): Unit = run(
     "junit-configured-result-task-output", "testSupport/JUnit_PassAndFailure",
     behavior = Seq("test"), success = false,
-    options = Seq("-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false"))
+    options = Seq("-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false"),
+    verification = SbtJUnitResultLoggerSemanticContracts.ConfiguredResultWithTaskOutput)
 
   @Test def testReporting_ConfiguredResultLoggerRemainsVisibleWithoutTestTaskOutput(): Unit = run(
     "junit-configured-result-no-task-output", "testSupport/JUnit_PassAndFailure",
@@ -154,7 +156,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     options = Seq(
       "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
       "-Dteamcity.sbt.logger.showTestTaskOutput=false"
-    ))
+    ),
+    verification = SbtJUnitResultLoggerSemanticContracts.ConfiguredResultHidden)
 
   @Test def testReporting_CustomResultLoggerKeepsItsFailureSemantics(): Unit = run(
     "custom-result-logger-no-task-output", "testSupport/JUnit_CustomResultLogger",
@@ -162,7 +165,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
     options = Seq(
       "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
       "-Dteamcity.sbt.logger.showTestTaskOutput=false"
-    ))
+    ),
+    verification = SbtJUnitResultLoggerSemanticContracts.CustomConfiguredResultHidden)
 
   @Test def compilation_WarningsReportedAsInspections(): Unit = run(
     "compilation-warnings", "compilation/warnings",

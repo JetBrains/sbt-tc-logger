@@ -1,16 +1,28 @@
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import org.jetbrains.teamcity.plugins.sbt.logger.utils.{SbtLoggerOutputTestCase, SbtProcessResultExpectation}
+import org.jetbrains.teamcity.plugins.sbt.logger.utils.{
+  SbtLoggerOutputTestCase,
+  SbtOutputVerificationSelection,
+  SbtProcessResultExpectation
+}
 import org.junit.Test
 
 /** The strongest combined non-default result-logger/output case for secondary SBT test entry points. */
 trait SbtLoggerOutputTestsTestControlMatrix { this: SbtLoggerOutputTestBase =>
 
   @Test def testReporting_JUnitTestOnly_ConfiguredResultWithoutTaskOutput(): Unit =
-    runConfiguredResultWithoutTaskOutputCase("junit-test-only-configured-hidden", "testOnly thisis.a.test.ATest")
+    runConfiguredResultWithoutTaskOutputCase(
+      "junit-test-only-configured-hidden",
+      "testOnly thisis.a.test.ATest",
+      SbtJUnitResultLoggerSemanticContracts.TestOnlyConfiguredHidden
+    )
 
   @Test def testReporting_JUnitTestQuick_ConfiguredResultWithoutTaskOutput(): Unit =
-    runConfiguredResultWithoutTaskOutputCase("junit-test-quick-configured-hidden", "testQuick")
+    runConfiguredResultWithoutTaskOutputCase(
+      "junit-test-quick-configured-hidden",
+      "testQuick",
+      SbtJUnitResultLoggerSemanticContracts.TestQuickConfiguredHidden
+    )
 
   @Test def testReporting_TeamCityResultLoggerOverridesCustomNoThrowLogger(): Unit =
     runCase(SbtLoggerOutputTestCase(
@@ -19,7 +31,8 @@ trait SbtLoggerOutputTestsTestControlMatrix { this: SbtLoggerOutputTestBase =>
       setupCommands = Seq.empty,
       behaviorCommands = Seq("test"),
       expectedResult = SbtProcessResultExpectation.Failure,
-      sbtOptions = Seq("-Dteamcity.sbt.logger.showTestTaskOutput=false")
+      sbtOptions = Seq("-Dteamcity.sbt.logger.showTestTaskOutput=false"),
+      verification = SbtJUnitResultLoggerSemanticContracts.CustomTeamCityResultHidden
     ))
 
   @Test def testReporting_CustomConfigurationUsesConfiguredResultWithoutTaskOutput(): Unit =
@@ -32,12 +45,14 @@ trait SbtLoggerOutputTestsTestControlMatrix { this: SbtLoggerOutputTestBase =>
       sbtOptions = Seq(
         "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
         "-Dteamcity.sbt.logger.showTestTaskOutput=false"
-      )
+      ),
+      verification = SbtJUnitResultLoggerSemanticContracts.IntegrationTestQuickConfiguredHidden
     ))
 
   private def runConfiguredResultWithoutTaskOutputCase(
     scenarioId: String,
-    command: String
+    command: String,
+    verification: SbtOutputVerificationSelection
   ): Unit =
     runCase(SbtLoggerOutputTestCase(
       scenarioId = scenarioId,
@@ -48,6 +63,7 @@ trait SbtLoggerOutputTestsTestControlMatrix { this: SbtLoggerOutputTestBase =>
       sbtOptions = Seq(
         "-Dteamcity.sbt.logger.useTeamCityTestResultLogger=false",
         "-Dteamcity.sbt.logger.showTestTaskOutput=false"
-      )
+      ),
+      verification = verification
     ))
 }
