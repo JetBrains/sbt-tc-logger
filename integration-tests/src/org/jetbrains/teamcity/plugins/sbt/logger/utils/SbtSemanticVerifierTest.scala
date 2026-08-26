@@ -1335,6 +1335,201 @@ class SbtSemanticVerifierTest {
     }
   }
 
+  @Test def linePrefixedThrowableChainKeepsInitializerSectionsExactAndTailsFinite(): Unit = {
+    val topFrames = Vector("\tat InitializerErrorSuite.<init>(InitializerErrorSuite.scala:4)")
+    val sbt1CauseFrames = Vector(
+      "\tat InitializerErrorFixture$.<clinit>(InitializerErrorSuite.scala:12)",
+      "\tat InitializerErrorSuite.<init>(InitializerErrorSuite.scala:4)"
+    )
+    val sbt2CauseFrames = Vector(
+      "\tat InitializerErrorFixture$.<init>(InitializerErrorSuite.scala:12)",
+      "\tat InitializerErrorFixture$.<clinit>(InitializerErrorSuite.scala)",
+      "\tat InitializerErrorSuite.<init>(InitializerErrorSuite.scala:4)"
+    )
+    val reflectionFrames = Vector(
+      "\tat java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)",
+      "\tat java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:77)",
+      "\tat java.base/jdk.internal.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)",
+      "\tat java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:500)",
+      "\tat java.base/java.lang.reflect.ReflectAccess.newInstance(ReflectAccess.java:128)",
+      "\tat java.base/jdk.internal.reflect.ReflectionFactory.newInstance(ReflectionFactory.java:347)",
+      "\tat java.base/java.lang.Class.newInstance(Class.java:645)"
+    )
+    val sbt1Task = "\tat org.scalatest.tools.Framework$ScalaTestTask.execute(Framework.scala:454)"
+    val sbt2Task = "\tat org.scalatest.tools.Framework$ScalaTestTask.execute(Framework.scala:448)"
+
+    def contract(
+      causeFrames: Vector[String],
+      topMessage: String = "",
+      causeMessage: String = "Suite construction failure for #12",
+      maximumRecognizedFrames: Int = 16
+    ): SbtSemanticContract = SbtSemanticContract(Vector(ExpectedSemanticEvent("throwable", BuildLogMessage,
+      "status" -> exact("ERROR"),
+      "text" -> linePrefixedThrowableChain(
+        linePrefix = "[error] ",
+        topException = "java.lang.ExceptionInInitializerError",
+        topMessage = topMessage,
+        requiredTopUserFrames = topFrames,
+        causeException = "java.lang.IllegalStateException",
+        causeMessage = causeMessage,
+        requiredCauseUserFrames = causeFrames,
+        framework = RecognizedTestFramework.ScalaTest,
+        maximumRecognizedFrames = maximumRecognizedFrames
+      )
+    )))
+
+    def initializerLines(causeFrames: Vector[String], task: String): Vector[String] = Vector(
+      "java.lang.ExceptionInInitializerError",
+      topFrames.head
+    ) ++ reflectionFrames ++ Vector(task,
+      "Caused by: java.lang.IllegalStateException: Suite construction failure for #12"
+    ) ++ causeFrames ++ reflectionFrames ++ Vector(task)
+
+    def details(lines: Vector[String]): String = lines.map("[error] " + _).mkString("\n")
+    def output(lines: Vector[String]): Vector[String] = Vector(message("ERROR", details(lines)))
+    def replaceFirst(lines: Vector[String], predicate: String => Boolean, replacement: String): Vector[String] = {
+      val index = lines.indexWhere(predicate)
+      require(index >= 0, "Expected initializer transcript line was not found.")
+      lines.updated(index, replacement)
+    }
+    def removeFirst(lines: Vector[String], predicate: String => Boolean): Vector[String] = {
+      val index = lines.indexWhere(predicate)
+      require(index >= 0, "Expected initializer transcript line was not found.")
+      lines.patch(index, Nil, 1)
+    }
+    def addDuplicate(lines: Vector[String], frame: String): Vector[String] = {
+      val index = lines.indexOf(frame)
+      require(index >= 0, "Expected initializer transcript frame was not found.")
+      lines.patch(index, Vector(frame, frame), 1)
+    }
+    def withChangedInternalMetadata(lines: Vector[String]): Vector[String] = lines.map { line =>
+      if (line.contains("java.base/") || line.contains("org.scalatest.tools.Framework$ScalaTestTask.execute"))
+        line.replaceFirst("\\([^()]+\\)$", "(UpdatedInternalSource.scala:999)")
+      else line
+    }
+
+    val sbt1 = initializerLines(sbt1CauseFrames, sbt1Task)
+    val sbt2 = initializerLines(sbt2CauseFrames, sbt2Task)
+    verify(output(sbt1), contract(sbt1CauseFrames))
+    verify(output(sbt2), contract(sbt2CauseFrames))
+    verify(output(withChangedInternalMetadata(sbt1)), contract(sbt1CauseFrames))
+    verify(output(withChangedInternalMetadata(sbt2)), contract(sbt2CauseFrames))
+    verify(output(sbt1.map(_.replace("java.base/", ""))), contract(sbt1CauseFrames))
+
+    val minimalReordered = Vector(
+      "java.lang.ExceptionInInitializerError",
+      topFrames.head,
+      sbt1Task.replace("Framework.scala:454", "FrameworkChanged.scala:1"),
+      reflectionFrames.last.replace("Class.java:645", "ClassChanged.java:2"),
+      "Caused by: java.lang.IllegalStateException: Suite construction failure for #12"
+    ) ++ sbt1CauseFrames ++ Vector(
+      reflectionFrames.head,
+      sbt1Task.replace("Framework.scala:454", "FrameworkChanged.scala:3")
+    )
+    verify(output(minimalReordered), contract(sbt1CauseFrames))
+
+    val sbt1Contract = contract(sbt1CauseFrames)
+    val mutations = Vector(
+      sbt1.updated(0, "java.lang.RuntimeException"),
+      sbt1.updated(0, "java.lang.ExceptionInInitializerError: unexpected"),
+      replaceFirst(sbt1, _.startsWith("Caused by:"), "Caused by: java.lang.RuntimeException: Suite construction failure for #12"),
+      replaceFirst(sbt1, _.startsWith("Caused by:"), "Caused by: java.lang.IllegalStateException: changed"),
+      sbt1.filterNot(line => reflectionFrames.contains(line) || line == sbt1Task),
+      sbt1.filterNot(reflectionFrames.contains),
+      removeFirst(sbt1, _ == sbt1Task),
+      sbt1.patch(sbt1.indexOf(sbt1Task), Vector(
+        sbt1Task,
+        "\tat org.scalatest.foo.Bar.run(Bar.scala:1)"
+      ), 1),
+      sbt1.patch(sbt1.indexOf(sbt1Task), Vector(
+        sbt1Task,
+        "\tat java.base/jdk.internal.reflect.Other.invoke(Other.java:1)"
+      ), 1),
+      replaceFirst(sbt1, _ == reflectionFrames.last,
+        "\tat java.base/java.lang.Class.forName(Class.java:645)"),
+      sbt1.filterNot(_ == topFrames.head),
+      addDuplicate(sbt1, topFrames.head),
+      sbt1.filterNot(_ == sbt1CauseFrames.head),
+      addDuplicate(sbt1, sbt1CauseFrames.head),
+      sbt1.filterNot(_.startsWith("Caused by:")),
+      sbt1.patch(sbt1.indexWhere(_.startsWith("Caused by:")), Vector(
+        sbt1(sbt1.indexWhere(_.startsWith("Caused by:"))),
+        sbt1(sbt1.indexWhere(_.startsWith("Caused by:")))
+      ), 1)
+    ) ++ (reflectionFrames :+ sbt1Task).map(addDuplicate(sbt1, _))
+    mutations.foreach(lines =>
+      assertCategory(expectFailure(verify(output(lines), sbt1Contract)), SemanticCardinalityFailure))
+    assertCategory(expectFailure(verify(output(sbt1), contract(sbt1CauseFrames, maximumRecognizedFrames = 15))),
+      SemanticCardinalityFailure)
+
+    val missingPrefix = details(sbt1).split("\n", -1).toVector
+      .updated(2, reflectionFrames.head).mkString("\n")
+    assertCategory(expectFailure(verify(Vector(message("ERROR", missingPrefix)), sbt1Contract)), SemanticCardinalityFailure)
+
+    val classOnlyContract = contract(sbt1CauseFrames, causeMessage = "")
+    val classOnly = replaceFirst(sbt1, _.startsWith("Caused by:"), "Caused by: java.lang.IllegalStateException")
+    verify(output(classOnly), classOnlyContract)
+    assertCategory(expectFailure(verify(output(
+      classOnly.updated(0, "java.lang.ExceptionInInitializerError: unexpected")
+    ), classOnlyContract)), SemanticCardinalityFailure)
+  }
+
+  @Test def linePrefixedThrowableChainValidatorRejectsUnsafeDeclarationsAndWrongAttributes(): Unit = {
+    val topFrame = "    at fixture.TestSpec.fails(TestSpec.scala:12)"
+    val causeFrame = "    at fixture.TestSupport.raise(TestSupport.scala:4)"
+    def chain(
+      linePrefix: String = "[error] ",
+      topException: String = "java.lang.AssertionError",
+      topMessage: String = "top boom",
+      topFrames: Seq[String] = Seq(topFrame),
+      causeException: String = "java.lang.IllegalStateException",
+      causeMessage: String = "cause boom",
+      causeFrames: Seq[String] = Seq(causeFrame),
+      maximum: Int = 4
+    ): SemanticValuePattern = linePrefixedThrowableChain(
+      linePrefix,
+      topException,
+      topMessage,
+      topFrames,
+      causeException,
+      causeMessage,
+      causeFrames,
+      RecognizedTestFramework.ScalaTest,
+      maximum
+    )
+    val invalidPatterns = Vector(
+      chain(linePrefix = ""),
+      chain(linePrefix = "[error]\n"),
+      chain(topException = ""),
+      chain(topException = "java.lang.AssertionError\nchanged"),
+      chain(topMessage = "top\nboom"),
+      chain(topFrames = Seq.empty),
+      chain(topFrames = Seq(topFrame, topFrame)),
+      chain(topFrames = Seq("    at fixture.TestSpec.fails\n(TestSpec.scala:12)")),
+      chain(causeException = ""),
+      chain(causeException = "not a class"),
+      chain(causeMessage = "cause\nboom"),
+      chain(causeFrames = Seq.empty),
+      chain(causeFrames = Seq(causeFrame, causeFrame)),
+      chain(causeFrames = Seq("not a stack frame")),
+      chain(maximum = 3),
+      chain(maximum = -1)
+    )
+    invalidPatterns.foreach { pattern =>
+      val contract = SbtSemanticContract(Vector(ExpectedSemanticEvent("throwable", BuildLogMessage,
+        "status" -> exact("ERROR"), "text" -> pattern)))
+      assertCategory(expectFailure(verify(Vector.empty, contract)), GoldenSyntaxFailure)
+    }
+
+    Vector(
+      ExpectedSemanticEvent("wrong-attribute", BuildLogMessage,
+        "status" -> exact("ERROR"), "details" -> chain()),
+      ExpectedSemanticEvent("wrong-kind", TestFailed, "text" -> chain())
+    ).foreach { event =>
+      assertCategory(expectFailure(verify(Vector.empty, SbtSemanticContract(Vector(event)))), GoldenSyntaxFailure)
+    }
+  }
+
   @Test def taskSummaryPatternsAcceptBothFiniteBranchesAndRejectNearMisses(): Unit = {
     val contract = SbtSemanticContract(
       events = Vector.empty,
@@ -1350,6 +1545,238 @@ class SbtSemanticVerifierTest {
       "[error] elapsed time: 1 s, cache -1%, 3 tasks",
       "[error] elapsed time: 1 s, cache 50%"
     ).foreach(line => assertCategory(expectFailure(verify(Vector(line), contract)), PlainOutputFailure))
+  }
+
+  @Test def scalaTestLogbackLinesBindOneStrictDynamicThreadAndKeepProfileSuffixesExact(): Unit = {
+    val thread = SemanticBindingKey.logbackThread("test-log-thread")
+    def contract(warnSuffix: String, errorSuffix: String): SbtSemanticContract = SbtSemanticContract(
+      events = Vector.empty,
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.ScalaTestLogbackLine(thread, LogbackLevel.Warn, warnSuffix),
+        PlainOutputPattern.ScalaTestLogbackLine(thread, LogbackLevel.Error, errorSuffix)
+      ))
+    )
+    val sbt1Contract = contract(
+      " TestSpec -- WARNING: Invalid blah-blah-blah",
+      " TestSpec -- [error] some error in test output"
+    )
+    val sbt1 = Vector(
+      "01:02:03.004 [pool-2-thread-11-ScalaTest-running-TestSpec] WARN TestSpec -- WARNING: Invalid blah-blah-blah",
+      "23:59:59.999 [pool-2-thread-11-ScalaTest-running-TestSpec] ERROR TestSpec -- [error] some error in test output"
+    )
+    verify(sbt1, sbt1Contract)
+
+    val sbt2Contract = contract(
+      "  TestSpec - WARNING: Invalid blah-blah-blah",
+      " TestSpec - [error] some error in test output"
+    )
+    verify(Vector(
+      "10:20:30.400 [pool-7-thread-3-ScalaTest-running-TestSpec] WARN  TestSpec - WARNING: Invalid blah-blah-blah",
+      "10:20:30.401 [pool-7-thread-3-ScalaTest-running-TestSpec] ERROR TestSpec - [error] some error in test output"
+    ), sbt2Contract)
+
+    Vector(
+      sbt1.updated(0, sbt1.head.replace("01:02:03.004", "24:02:03.004")),
+      sbt1.updated(0, sbt1.head.replace("pool-2-thread-11", "worker-2-thread-11")),
+      sbt1.updated(0, sbt1.head.replace(" WARN ", " INFO ")),
+      sbt1.updated(0, sbt1.head.replace("WARNING: Invalid", "WARNING: Changed")),
+      sbt1.updated(0, sbt1.head + "\ncontinued"),
+      sbt1.updated(1, sbt1(1).replace("pool-2-thread-11", "pool-2-thread-12"))
+    ).foreach(lines => assertCategory(expectFailure(verify(lines, sbt1Contract)), PlainOutputFailure))
+  }
+
+  @Test def suiteRelativePlainPlacementSelectsSequentialSameFlowInvocationsAndFailsClosed(): Unit = {
+    val suiteName = "TestSpec"
+    val flow = "test-flow"
+    val events = Vector(
+      ExpectedSemanticEvent.occurrence("suite-start-1", TestSuiteStarted, 1,
+        "name" -> exact(suiteName), "flowId" -> exact(flow)),
+      ExpectedSemanticEvent.occurrence("suite-start-2", TestSuiteStarted, 2,
+        "name" -> exact(suiteName), "flowId" -> exact(flow)),
+      ExpectedSemanticEvent.occurrence("test-start-1", TestStarted, 1,
+        "name" -> exact("first"), "flowId" -> exact(flow)),
+      ExpectedSemanticEvent.occurrence("test-start-2", TestStarted, 2,
+        "name" -> exact("second"), "flowId" -> exact(flow)),
+      ExpectedSemanticEvent.occurrence("suite-finish-1", TestSuiteFinished, 1,
+        "name" -> exact(suiteName), "flowId" -> exact(flow)),
+      ExpectedSemanticEvent.occurrence("suite-finish-2", TestSuiteFinished, 2,
+        "name" -> exact(suiteName), "flowId" -> exact(flow))
+    )
+    val contract = SbtSemanticContract(
+      events = events,
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.BeforeFirstTestInSuite(suiteName, 1, PlainOutputPattern.Exact("first-log")),
+        PlainOutputPattern.BeforeFirstTestInSuite(suiteName, 2, PlainOutputPattern.Exact("second-log"))
+      ))
+    )
+    val start = s"##teamcity[testSuiteStarted name='$suiteName' flowId='$flow']"
+    val finish = s"##teamcity[testSuiteFinished name='$suiteName' flowId='$flow']"
+    val firstTest = s"##teamcity[testStarted name='first' flowId='$flow']"
+    val secondTest = s"##teamcity[testStarted name='second' flowId='$flow']"
+    val valid = Vector(
+      start, "first-log", firstTest, finish,
+      start, "second-log", secondTest, finish
+    )
+
+    verify(valid, contract)
+    assertCategory(expectFailure(verify(valid, contract.copy(
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.BeforeFirstTestInSuite(suiteName, 2, PlainOutputPattern.Exact("first-log")),
+        PlainOutputPattern.BeforeFirstTestInSuite(suiteName, 1, PlainOutputPattern.Exact("second-log"))
+      ))
+    ))), PlainOutputFailure)
+
+    val wrongSide = Vector(
+      valid.patch(0, Vector("first-log", start), 2),
+      Vector(start, firstTest, "first-log", finish, start, "second-log", secondTest, finish)
+    )
+    wrongSide.foreach { lines =>
+      val plain = collect(lines, contract).filter(_.category == PlainOutputFailure)
+      Assert.assertTrue(plain.exists(_.disposition == Violation))
+      Assert.assertFalse(plain.exists(_.disposition == Blocked))
+    }
+
+    val unavailableAnchors = Vector(
+      valid.patch(0, Nil, 1),
+      valid.patch(3, Nil, 1),
+      valid.patch(2, Nil, 1),
+      Vector(start, start, "first-log", firstTest, finish, "second-log", secondTest, finish)
+    )
+    unavailableAnchors.foreach { lines =>
+      val plain = collect(lines, contract).filter(_.category == PlainOutputFailure)
+      Assert.assertTrue(plain.exists(_.disposition == Blocked))
+      Assert.assertFalse(plain.exists(_.disposition == Violation))
+    }
+  }
+
+  @Test def unavailablePlacementAnchorsRemainBlockedWhileIndependentPlainFailuresAccumulate(): Unit = {
+    val anchor = event("anchor", BuildLogMessage, "anchor")
+    val servicePlacementContract = SbtSemanticContract(
+      events = Vector(anchor),
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.BeforeServiceMessages(PlainOutputPattern.Exact("before")),
+        PlainOutputPattern.AfterServiceMessages(PlainOutputPattern.Exact("after"))
+      ))
+    )
+    val correctContent = collect(Vector("before", "after"), servicePlacementContract)
+    Assert.assertTrue(correctContent.exists(_.category == SemanticCardinalityFailure))
+    val correctPlain = correctContent.filter(_.category == PlainOutputFailure)
+    Assert.assertEquals(2, correctPlain.size)
+    Assert.assertTrue(correctPlain.forall(_.disposition == Blocked))
+    Assert.assertEquals(
+      Set("plain-placement:before-service-messages", "plain-placement:after-service-messages"),
+      correctPlain.map(_.semanticIdentity).toSet
+    )
+
+    val malformedAndWrong = Vector(
+      "##teamcity[testStarted flowId='missing-name']",
+      "wrong-before",
+      "wrong-after"
+    )
+    val error = expectFailure(verify(malformedAndWrong, servicePlacementContract))
+    val findings = error.failures
+    Assert.assertTrue(findings.exists(_.category == WireProtocolFailure))
+    Assert.assertTrue(findings.exists(finding =>
+      finding.category == PlainOutputFailure && finding.disposition == Blocked))
+    Assert.assertTrue(findings.exists(finding =>
+      finding.category == PlainOutputFailure && finding.disposition == Violation &&
+        finding.semanticIdentity == "plain-output"))
+    Assert.assertTrue(error.getMessage.contains("wrong-before"))
+    Assert.assertTrue(error.getMessage.contains("wrong-after"))
+    Assert.assertTrue(error.getMessage.contains("plain-placement:before-service-messages"))
+    Assert.assertTrue(error.getMessage.contains("plain-placement:after-service-messages"))
+    Assert.assertTrue(error.getMessage.contains("[Blocked]"))
+    Assert.assertTrue(error.getMessage.contains("[Violation]"))
+
+    val suitePlacementContract = SbtSemanticContract(
+      events = Vector.empty,
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.BeforeFirstTestInSuite("TestSpec", 2, PlainOutputPattern.Exact("suite-line"))
+      ))
+    )
+    val missingSuiteAnchor = collect(Vector("suite-line"), suitePlacementContract)
+      .filter(_.category == PlainOutputFailure)
+    Assert.assertEquals(1, missingSuiteAnchor.size)
+    Assert.assertEquals(Blocked, missingSuiteAnchor.head.disposition)
+    Assert.assertEquals("plain-placement:TestSpec:2", missingSuiteAnchor.head.semanticIdentity)
+
+    val optionalPlacementContract = SbtSemanticContract(
+      events = Vector.empty,
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.OptionalGroup("optional-placed-line", Vector(
+          PlainOutputPattern.BeforeServiceMessages(PlainOutputPattern.Exact("optional"))
+        ))
+      ))
+    )
+    Assert.assertTrue(collect(Vector.empty, optionalPlacementContract).isEmpty)
+    val activeOptionalPlacement = collect(Vector("optional"), optionalPlacementContract)
+      .filter(_.category == PlainOutputFailure)
+    Assert.assertEquals(1, activeOptionalPlacement.size)
+    Assert.assertEquals(Blocked, activeOptionalPlacement.head.disposition)
+  }
+
+  @Test def suiteRelativeLogbackPatternsComposePlacementAndSharedThreadBinding(): Unit = {
+    val suiteName = "TestSpec"
+    val flow = "test-flow"
+    val thread = SemanticBindingKey.logbackThread("suite-log-thread")
+    val contract = SbtSemanticContract(
+      events = Vector(
+        ExpectedSemanticEvent("suite-start", TestSuiteStarted,
+          "name" -> exact(suiteName), "flowId" -> exact(flow)),
+        ExpectedSemanticEvent("test-start", TestStarted,
+          "name" -> exact("fails"), "flowId" -> exact(flow)),
+        ExpectedSemanticEvent("suite-finish", TestSuiteFinished,
+          "name" -> exact(suiteName), "flowId" -> exact(flow))
+      ),
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.BeforeFirstTestInSuite(suiteName, 1,
+          PlainOutputPattern.ScalaTestLogbackLine(
+            thread, LogbackLevel.Warn, " TestSpec -- WARNING: Invalid blah-blah-blah")),
+        PlainOutputPattern.BeforeFirstTestInSuite(suiteName, 1,
+          PlainOutputPattern.ScalaTestLogbackLine(
+            thread, LogbackLevel.Error, " TestSpec -- [error] some error in test output"))
+      ))
+    )
+    val valid = Vector(
+      s"##teamcity[testSuiteStarted name='$suiteName' flowId='$flow']",
+      "11:22:33.444 [pool-4-thread-8-ScalaTest-running-TestSpec] WARN TestSpec -- WARNING: Invalid blah-blah-blah",
+      "11:22:33.445 [pool-4-thread-8-ScalaTest-running-TestSpec] ERROR TestSpec -- [error] some error in test output",
+      s"##teamcity[testStarted name='fails' flowId='$flow']",
+      s"##teamcity[testSuiteFinished name='$suiteName' flowId='$flow']"
+    )
+
+    verify(valid, contract)
+    assertCategory(expectFailure(verify(
+      valid.updated(2, valid(2).replace("pool-4-thread-8", "pool-4-thread-9")),
+      contract
+    )), PlainOutputFailure)
+  }
+
+  @Test def newPlainPatternValidatorsRejectUnsafeKeysSuffixesAndPlacementWrappers(): Unit = {
+    val validThread = SemanticBindingKey.logbackThread("test-log-thread")
+    val invalidPatterns = Vector(
+      PlainOutputPattern.ScalaTestLogbackLine(
+        SemanticBindingKey.value("test-log-thread"), LogbackLevel.Warn, " suffix"),
+      PlainOutputPattern.ScalaTestLogbackLine(
+        SemanticBindingKey.logbackThread("Invalid"), LogbackLevel.Warn, " suffix"),
+      PlainOutputPattern.ScalaTestLogbackLine(validThread, LogbackLevel.Warn, ""),
+      PlainOutputPattern.ScalaTestLogbackLine(validThread, LogbackLevel.Warn, " suffix\ncontinued"),
+      PlainOutputPattern.BeforeFirstTestInSuite("", 1, PlainOutputPattern.Exact("line")),
+      PlainOutputPattern.BeforeFirstTestInSuite("TestSpec\nOther", 1, PlainOutputPattern.Exact("line")),
+      PlainOutputPattern.BeforeFirstTestInSuite("TestSpec", 0, PlainOutputPattern.Exact("line")),
+      PlainOutputPattern.BeforeFirstTestInSuite("TestSpec", -1, PlainOutputPattern.Exact("line")),
+      PlainOutputPattern.BeforeFirstTestInSuite("TestSpec", 1,
+        PlainOutputPattern.BeforeServiceMessages(PlainOutputPattern.Exact("line"))),
+      PlainOutputPattern.BeforeFirstTestInSuite("TestSpec", 1,
+        PlainOutputPattern.OptionalGroup("inner", Vector(PlainOutputPattern.Exact("line"))))
+    )
+    invalidPatterns.foreach { pattern =>
+      val contract = SbtSemanticContract(
+        events = Vector.empty,
+        plainOutput = PlainOutputContract.Patterns(Vector(pattern))
+      )
+      assertCategory(expectFailure(verify(Vector.empty, contract)), GoldenSyntaxFailure)
+    }
   }
 
   @Test def compilerPlainPatternsKeepTargetsAndParsedInspectionDiagnosticsStrict(): Unit = {

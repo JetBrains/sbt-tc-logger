@@ -315,6 +315,7 @@ class SbtMultiProjectSemanticContractTest {
     }
     case SemanticBindingKind.Flow => s"flow-${key.name}"
     case SemanticBindingKind.DurationMillis => "1250"
+    case SemanticBindingKind.LogbackThread => "pool-1-thread-1"
     case SemanticBindingKind.Value => s"value-${key.name}"
   }
 

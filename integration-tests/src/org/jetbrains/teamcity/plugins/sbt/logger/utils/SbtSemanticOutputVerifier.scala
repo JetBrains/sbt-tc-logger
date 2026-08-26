@@ -54,12 +54,14 @@ private[logger] object SbtSemanticOutputVerifier {
       case Left(syntaxFailures) =>
         failures ++= syntaxFailures
         failures ++= run.wireFailures
-        failures ++= verifyPlainOutput(run.plainOutput, run.serviceMessages, contract.plainOutput, delegated)
+        failures ++= verifyPlainOutput(
+          run.plainOutput, run.serviceMessages, run.wireFailures, contract.plainOutput, delegated)
         failures ++= verifyProcessResult(run.exitCode, contract.processResult, delegated)
       case Right(prepared) =>
         failures ++= run.wireFailures
         failures ++= verifyServiceMessages(run.serviceMessages, prepared, run.wireFailures)
-        failures ++= verifyPlainOutput(run.plainOutput, run.serviceMessages, prepared.plainOutput, delegated)
+        failures ++= verifyPlainOutput(
+          run.plainOutput, run.serviceMessages, run.wireFailures, prepared.plainOutput, delegated)
         failures ++= verifyProcessResult(run.exitCode, prepared.processResult, delegated)
     }
 
@@ -971,6 +973,8 @@ private[logger] object SbtSemanticOutputVerifier {
     case SemanticValuePattern.StructuredSbtDebug(kind) =>
       Option.when(matchesStructuredSbtDebug(kind, value))(bindings)
     case failure: SemanticValuePattern.UserFailure => Option.when(matchesUserFailure(failure, value))(bindings)
+    case chain: SemanticValuePattern.LinePrefixedThrowableChain =>
+      Option.when(matchesLinePrefixedThrowableChain(chain, value))(bindings)
   }
 
   private val UnsignedDurationPattern = "[0-9]+(?:\\.[0-9]+)?".r
@@ -1095,6 +1099,115 @@ private[logger] object SbtSemanticOutputVerifier {
     val frameworkFrames = frames.take(userStart) ++ frames.drop(userStart + pattern.userFrames.size)
     frameworkFrames.size <= pattern.maximumFrameworkFrames &&
       frameworkFramesAreRecognized(pattern, frameworkFrames)
+  }
+
+  private def matchesLinePrefixedThrowableChain(
+    pattern: SemanticValuePattern.LinePrefixedThrowableChain,
+    value: String
+  ): Boolean = {
+    val prefixedLines = value.split("\n", -1).toVector
+    if (prefixedLines.isEmpty || prefixedLines.exists { line =>
+      !line.startsWith(pattern.linePrefix) || line.length == pattern.linePrefix.length
+    }) return false
+
+    val lines = prefixedLines.map(_.substring(pattern.linePrefix.length))
+    if (lines.head != throwableHeader(pattern.topException, pattern.topMessage)) return false
+    val causeHeader = s"Caused by: ${throwableHeader(pattern.causeException, pattern.causeMessage)}"
+    val causeIndexes = lines.indices.filter(index => lines(index) == causeHeader)
+    if (causeIndexes.size != 1) return false
+    val causeIndex = causeIndexes.head
+    if (causeIndex <= 1 || causeIndex >= lines.size - 1) return false
+
+    val topRecognized = recognizedThrowableSectionFrames(
+      lines.slice(1, causeIndex),
+      pattern.requiredTopUserFrames,
+      pattern.framework
+    )
+    val causeRecognized = recognizedThrowableSectionFrames(
+      lines.drop(causeIndex + 1),
+      pattern.requiredCauseUserFrames,
+      pattern.framework
+    )
+    (for {
+      top <- topRecognized
+      cause <- causeRecognized
+    } yield top + cause).exists(_ <= pattern.maximumRecognizedFrames)
+  }
+
+  private def throwableHeader(exceptionClass: String, message: String): String =
+    if (message.isEmpty) exceptionClass else s"$exceptionClass: $message"
+
+  private def recognizedThrowableSectionFrames(
+    frames: Vector[String],
+    required: Vector[String],
+    framework: RecognizedTestFramework
+  ): Option[Int] = {
+    val requiredIndexes = required.map { frame =>
+      val indexes = frames.indices.filter(index => frames(index) == frame)
+      if (indexes.size == 1) Some(indexes.head) else None
+    }
+    if (requiredIndexes.exists(_.isEmpty)) return None
+    val indexes = requiredIndexes.flatten
+    if (indexes != indexes.sorted) return None
+
+    val requiredIndexSet = indexes.toSet
+    val roles = frames.indices.filterNot(requiredIndexSet).map(frames).map(
+      recognizedThrowableFrameRole(framework, _)
+    )
+    if (roles.exists(_.isEmpty)) return None
+
+    val recognized = roles.flatten
+    Option.when(
+      recognized.distinct.size == recognized.size &&
+        recognized.exists(_.isReflection) &&
+        (framework != RecognizedTestFramework.ScalaTest ||
+          recognized.count(_ == ThrowableInternalFrameRole.ScalaTestTaskExecute) == 1)
+    )(recognized.size)
+  }
+
+  private val StrictStackFramePattern =
+    """^[ \t]+at ((?:[A-Za-z0-9_.@-]+/)?[A-Za-z_$][A-Za-z0-9_$.<>]*\.[A-Za-z_$<>][A-Za-z0-9_$<>]*)\((?:[A-Za-z0-9_$.-]+(?::[0-9]+)?|Unknown Source|Native Method)\)$""".r
+
+  private enum ThrowableInternalFrameRole(val isReflection: Boolean) {
+    case NativeConstructorAccessorNewInstance0 extends ThrowableInternalFrameRole(true)
+    case NativeConstructorAccessorNewInstance extends ThrowableInternalFrameRole(true)
+    case DelegatingConstructorAccessorNewInstance extends ThrowableInternalFrameRole(true)
+    case ConstructorNewInstanceWithCaller extends ThrowableInternalFrameRole(true)
+    case ReflectAccessNewInstance extends ThrowableInternalFrameRole(true)
+    case ReflectionFactoryNewInstance extends ThrowableInternalFrameRole(true)
+    case ClassNewInstance extends ThrowableInternalFrameRole(true)
+    case ScalaTestTaskExecute extends ThrowableInternalFrameRole(false)
+  }
+
+  private val ThrowableReflectionFrameRoles = Map(
+    "jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance0" ->
+      ThrowableInternalFrameRole.NativeConstructorAccessorNewInstance0,
+    "jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance" ->
+      ThrowableInternalFrameRole.NativeConstructorAccessorNewInstance,
+    "jdk.internal.reflect.DelegatingConstructorAccessorImpl.newInstance" ->
+      ThrowableInternalFrameRole.DelegatingConstructorAccessorNewInstance,
+    "java.lang.reflect.Constructor.newInstanceWithCaller" ->
+      ThrowableInternalFrameRole.ConstructorNewInstanceWithCaller,
+    "java.lang.reflect.ReflectAccess.newInstance" ->
+      ThrowableInternalFrameRole.ReflectAccessNewInstance,
+    "jdk.internal.reflect.ReflectionFactory.newInstance" ->
+      ThrowableInternalFrameRole.ReflectionFactoryNewInstance,
+    "java.lang.Class.newInstance" -> ThrowableInternalFrameRole.ClassNewInstance
+  )
+
+  private def recognizedThrowableFrameRole(
+    framework: RecognizedTestFramework,
+    frame: String
+  ): Option[ThrowableInternalFrameRole] = frame match {
+    case StrictStackFramePattern(location) =>
+      val ownerAndMethod = location.stripPrefix("java.base/")
+      ThrowableReflectionFrameRoles.get(ownerAndMethod).orElse(
+        Option.when(
+          framework == RecognizedTestFramework.ScalaTest &&
+            ownerAndMethod == "org.scalatest.tools.Framework$ScalaTestTask.execute"
+        )(ThrowableInternalFrameRole.ScalaTestTaskExecute)
+      )
+    case _ => None
   }
 
   private def frameworkFramesAreRecognized(
@@ -1265,6 +1378,7 @@ private[logger] object SbtSemanticOutputVerifier {
   private def verifyPlainOutput(
     observed: Vector[ObservedPlainLine],
     serviceMessages: Vector[ObservedServiceMessage],
+    wireFailures: Vector[SbtSemanticFailure],
     contract: PlainOutputContract,
     delegated: SbtDelegatedVerification
   ): Vector[SbtSemanticFailure] = contract match {
@@ -1295,14 +1409,7 @@ private[logger] object SbtSemanticOutputVerifier {
         semanticIdentity = "plain-output"
       ))
     case PlainOutputContract.Patterns(patterns) =>
-      if (matchesPlainPatterns(patterns, observed, serviceMessages)) Vector.empty
-      else Vector(SbtSemanticFailure(
-        SbtVerificationFailureCategory.PlainOutputFailure,
-        s"Plain output does not satisfy the declared finite ordered patterns or transcript placement " +
-          s"(${patterns.size} top-level patterns, ${observed.size} observed lines).",
-        Vector(s"Expected patterns: ${patterns.mkString(" | ")}") ++ observed.map(describePlain),
-        semanticIdentity = "plain-output"
-      ))
+      verifyPlainPatterns(patterns, observed, serviceMessages, wireFailures)
     case PlainOutputContract.DelegatedToHybrid if delegated.plainOutputVerified => Vector.empty
     case PlainOutputContract.DelegatedToHybrid => Vector(SbtSemanticFailure(
       SbtVerificationFailureCategory.PlainOutputFailure,
@@ -1312,45 +1419,196 @@ private[logger] object SbtSemanticOutputVerifier {
     ))
   }
 
-  private def matchesPlainPatterns(
+  private final case class PlainPatternMatch(usedPlacements: Set[String])
+  private final case class RequiredPlainPatternMatch(
+    nextLineIndex: Int,
+    bindings: Map[SemanticBindingKey, String],
+    usedPlacements: Set[String]
+  )
+  private final case class UnavailablePlainPlacement(
+    identity: String,
+    reasons: Vector[String],
+    optional: Boolean
+  )
+
+  private def verifyPlainPatterns(
     patterns: Vector[PlainOutputPattern],
     lines: Vector[ObservedPlainLine],
-    serviceMessages: Vector[ObservedServiceMessage]
-  ): Boolean = {
-    val memo = mutable.HashMap.empty[(Int, Int, Map[SemanticBindingKey, String]), Boolean]
+    serviceMessages: Vector[ObservedServiceMessage],
+    wireFailures: Vector[SbtSemanticFailure]
+  ): Vector[SbtSemanticFailure] = {
+    val unavailable = unavailablePlainPlacements(patterns, serviceMessages, wireFailures)
+    val unavailableIds = unavailable.map(_.identity).toSet
+    val independentlyChecked = matchPlainPatterns(patterns, lines, serviceMessages, unavailableIds)
+    val activeUnavailableIds = unavailable.filterNot(_.optional).map(_.identity).toSet ++
+      independentlyChecked.toVector.flatMap(_.usedPlacements.intersect(unavailableIds))
+    val activeUnavailable = unavailable.filter(placement => activeUnavailableIds.contains(placement.identity))
+
+    if (activeUnavailable.nonEmpty) {
+      val blocked = activeUnavailable.map { placement =>
+        SbtSemanticFailure(
+          SbtVerificationFailureCategory.PlainOutputFailure,
+          s"Plain-output placement '${placement.identity}' cannot be proven because its anchor evidence is unavailable.",
+          placement.reasons ++ Vector(s"Expected patterns: ${patterns.mkString(" | ")}") ++ lines.map(describePlain),
+          disposition = SbtFindingDisposition.Blocked,
+          semanticIdentity = placement.identity
+        )
+      }
+      val independentViolation = Option.when(independentlyChecked.isEmpty)(SbtSemanticFailure(
+        SbtVerificationFailureCategory.PlainOutputFailure,
+        s"Plain output does not satisfy the independently checkable finite ordered content, cardinality, or " +
+          s"available-placement constraints (${patterns.size} top-level patterns, ${lines.size} observed lines).",
+        Vector(
+          s"Expected patterns: ${patterns.mkString(" | ")}",
+          s"Ignored only unavailable placement wrappers: ${unavailableIds.toVector.sorted.mkString(", ")}"
+        ) ++ lines.map(describePlain),
+        semanticIdentity = "plain-output"
+      )).toVector
+      blocked ++ independentViolation
+    } else if (matchPlainPatterns(patterns, lines, serviceMessages).nonEmpty) Vector.empty
+    else Vector(plainPatternViolation(patterns, lines))
+  }
+
+  private def plainPatternViolation(
+    patterns: Vector[PlainOutputPattern],
+    lines: Vector[ObservedPlainLine]
+  ): SbtSemanticFailure = SbtSemanticFailure(
+    SbtVerificationFailureCategory.PlainOutputFailure,
+    s"Plain output does not satisfy the declared finite ordered patterns or transcript placement " +
+      s"(${patterns.size} top-level patterns, ${lines.size} observed lines).",
+    Vector(s"Expected patterns: ${patterns.mkString(" | ")}") ++ lines.map(describePlain),
+    semanticIdentity = "plain-output"
+  )
+
+  private def unavailablePlainPlacements(
+    patterns: Vector[PlainOutputPattern],
+    serviceMessages: Vector[ObservedServiceMessage],
+    wireFailures: Vector[SbtSemanticFailure]
+  ): Vector[UnavailablePlainPlacement] = {
+    val discovered = Vector.newBuilder[UnavailablePlainPlacement]
+    def visit(pattern: PlainOutputPattern, optional: Boolean): Unit = pattern match {
+      case wrapper @ PlainOutputPattern.BeforeServiceMessages(child) =>
+        unavailablePlainPlacement(wrapper, serviceMessages, wireFailures).foreach { case (identity, reason) =>
+          discovered += UnavailablePlainPlacement(identity, Vector(reason), optional)
+        }
+        visit(child, optional)
+      case wrapper @ PlainOutputPattern.AfterServiceMessages(child) =>
+        unavailablePlainPlacement(wrapper, serviceMessages, wireFailures).foreach { case (identity, reason) =>
+          discovered += UnavailablePlainPlacement(identity, Vector(reason), optional)
+        }
+        visit(child, optional)
+      case wrapper @ PlainOutputPattern.BeforeFirstTestInSuite(_, _, child) =>
+        unavailablePlainPlacement(wrapper, serviceMessages, wireFailures).foreach { case (identity, reason) =>
+          discovered += UnavailablePlainPlacement(identity, Vector(reason), optional)
+        }
+        visit(child, optional)
+      case PlainOutputPattern.OptionalGroup(_, children) => children.foreach(visit(_, optional = true))
+      case _ => ()
+    }
+    patterns.foreach(visit(_, optional = false))
+    discovered.result().groupBy(_.identity).toVector.sortBy(_._1).map { case (identity, placements) =>
+      UnavailablePlainPlacement(
+        identity,
+        placements.flatMap(_.reasons).distinct,
+        optional = placements.forall(_.optional)
+      )
+    }
+  }
+
+  private def unavailablePlainPlacement(
+    pattern: PlainOutputPattern,
+    serviceMessages: Vector[ObservedServiceMessage],
+    wireFailures: Vector[SbtSemanticFailure]
+  ): Option[(String, String)] = plainPlacementIdentity(pattern).flatMap { identity =>
+    if (wireFailures.nonEmpty) {
+      Some(identity ->
+        s"Malformed TeamCity-looking wire evidence prevents locating anchors (${wireFailures.map(_.semanticIdentity).distinct.mkString(", ")}).")
+    } else pattern match {
+        case _: PlainOutputPattern.BeforeServiceMessages | _: PlainOutputPattern.AfterServiceMessages =>
+          Option.when(serviceMessages.isEmpty)(identity ->
+            "No parsed TeamCity service message is available as the required transcript anchor.")
+        case PlainOutputPattern.BeforeFirstTestInSuite(suiteName, invocationOrdinal, _) =>
+          resolveSuitePlacementAnchor(suiteName, invocationOrdinal, serviceMessages).left.toOption.map(identity -> _)
+        case _ => None
+    }
+  }
+
+  private def plainPlacementIdentity(pattern: PlainOutputPattern): Option[String] = pattern match {
+    case _: PlainOutputPattern.BeforeServiceMessages => Some("plain-placement:before-service-messages")
+    case _: PlainOutputPattern.AfterServiceMessages => Some("plain-placement:after-service-messages")
+    case PlainOutputPattern.BeforeFirstTestInSuite(suiteName, invocationOrdinal, _) =>
+      Some(s"plain-placement:$suiteName:$invocationOrdinal")
+    case _ => None
+  }
+
+  private def plainPlacementIdentities(pattern: PlainOutputPattern): Set[String] = pattern match {
+    case PlainOutputPattern.BeforeServiceMessages(child) =>
+      Set("plain-placement:before-service-messages") ++ plainPlacementIdentities(child)
+    case PlainOutputPattern.AfterServiceMessages(child) =>
+      Set("plain-placement:after-service-messages") ++ plainPlacementIdentities(child)
+    case PlainOutputPattern.BeforeFirstTestInSuite(suiteName, invocationOrdinal, child) =>
+      Set(s"plain-placement:$suiteName:$invocationOrdinal") ++ plainPlacementIdentities(child)
+    case PlainOutputPattern.OptionalGroup(_, children) => children.flatMap(plainPlacementIdentities).toSet
+    case _ => Set.empty
+  }
+
+  private def matchPlainPatterns(
+    patterns: Vector[PlainOutputPattern],
+    lines: Vector[ObservedPlainLine],
+    serviceMessages: Vector[ObservedServiceMessage],
+    ignoredPlacements: Set[String] = Set.empty
+  ): Option[PlainPatternMatch] = {
+    val memo = mutable.HashMap.empty[(Int, Int, Map[SemanticBindingKey, String]), Option[Set[String]]]
     def loop(
       patternIndex: Int,
       lineIndex: Int,
       bindings: Map[SemanticBindingKey, String]
-    ): Boolean = memo.getOrElseUpdate((patternIndex, lineIndex, bindings), {
-      if (patternIndex == patterns.size) lineIndex == lines.size
+    ): Option[Set[String]] = memo.getOrElseUpdate((patternIndex, lineIndex, bindings), {
+      if (patternIndex == patterns.size) Option.when(lineIndex == lines.size)(Set.empty)
       else patterns(patternIndex) match {
         case PlainOutputPattern.OptionalGroup(_, children) =>
-          loop(patternIndex + 1, lineIndex, bindings) ||
-            matchesRequiredPlainPatterns(children, lines, lineIndex, serviceMessages, bindings).exists {
-              case (nextLineIndex, nextBindings) => loop(patternIndex + 1, nextLineIndex, nextBindings)
+          loop(patternIndex + 1, lineIndex, bindings).orElse {
+            matchRequiredPlainPatterns(
+              children, lines, lineIndex, serviceMessages, bindings, ignoredPlacements).flatMap { matched =>
+              loop(patternIndex + 1, matched.nextLineIndex, matched.bindings)
+                .map(matched.usedPlacements ++ _)
             }
-        case pattern if lineIndex < lines.size =>
-          matchPlainLine(pattern, lines(lineIndex), serviceMessages, bindings).exists { nextBindings =>
-            loop(patternIndex + 1, lineIndex + 1, nextBindings)
           }
-        case _ => false
+        case pattern if lineIndex < lines.size =>
+          matchPlainLine(pattern, lines(lineIndex), serviceMessages, bindings, ignoredPlacements).flatMap {
+            nextBindings => loop(patternIndex + 1, lineIndex + 1, nextBindings)
+              .map(plainPlacementIdentities(pattern) ++ _)
+          }
+        case _ => None
       }
     })
-    loop(0, 0, Map.empty)
+    loop(0, 0, Map.empty).map(PlainPatternMatch.apply)
   }
 
-  private def matchesRequiredPlainPatterns(
+  private def matchRequiredPlainPatterns(
     patterns: Vector[PlainOutputPattern],
     lines: Vector[ObservedPlainLine],
     start: Int,
     serviceMessages: Vector[ObservedServiceMessage],
-    initialBindings: Map[SemanticBindingKey, String]
-  ): Option[(Int, Map[SemanticBindingKey, String])] =
-    patterns.foldLeft(Option(start -> initialBindings)) {
-    case (Some((index, bindings)), pattern)
-      if index < lines.size && !pattern.isInstanceOf[PlainOutputPattern.OptionalGroup] =>
-      matchPlainLine(pattern, lines(index), serviceMessages, bindings).map(index + 1 -> _)
+    initialBindings: Map[SemanticBindingKey, String],
+    ignoredPlacements: Set[String]
+  ): Option[RequiredPlainPatternMatch] =
+    patterns.foldLeft(Option(RequiredPlainPatternMatch(start, initialBindings, Set.empty))) {
+    case (Some(matched), pattern)
+      if matched.nextLineIndex < lines.size && !pattern.isInstanceOf[PlainOutputPattern.OptionalGroup] =>
+      matchPlainLine(
+        pattern,
+        lines(matched.nextLineIndex),
+        serviceMessages,
+        matched.bindings,
+        ignoredPlacements
+      ).map { bindings =>
+        RequiredPlainPatternMatch(
+          matched.nextLineIndex + 1,
+          bindings,
+          matched.usedPlacements ++ plainPlacementIdentities(pattern)
+        )
+      }
     case _ => None
   }
 
@@ -1358,7 +1616,8 @@ private[logger] object SbtSemanticOutputVerifier {
     pattern: PlainOutputPattern,
     line: ObservedPlainLine,
     serviceMessages: Vector[ObservedServiceMessage],
-    bindings: Map[SemanticBindingKey, String]
+    bindings: Map[SemanticBindingKey, String],
+    ignoredPlacements: Set[String] = Set.empty
   ): Option[Map[SemanticBindingKey, String]] = pattern match {
     case PlainOutputPattern.Exact(expected) => Option.when(line.rawLine == expected)(bindings)
     case PlainOutputPattern.SbtTaskSummary => Option.when(SbtTaskSummaryPattern.matches(line.rawLine))(bindings)
@@ -1371,19 +1630,118 @@ private[logger] object SbtSemanticOutputVerifier {
     case PlainOutputPattern.CompilerInspectionDiagnostic(workspace, sourceSuffix, level, column) =>
       matchCompilerInspectionDiagnostic(
         line.rawLine, workspace, sourceSuffix, level, column, serviceMessages, bindings)
+    case PlainOutputPattern.ScalaTestLogbackLine(thread, level, exactSuffix) =>
+      matchScalaTestLogbackLine(line.rawLine, thread, level, exactSuffix, bindings)
     case PlainOutputPattern.BeforeServiceMessages(child) =>
-      if (serviceMessages.headOption.forall(line.sourceIndex < _.sourceIndex))
-        matchPlainLine(child, line, serviceMessages, bindings)
+      if (ignoredPlacements.contains("plain-placement:before-service-messages") ||
+        serviceMessages.headOption.exists(line.sourceIndex < _.sourceIndex))
+        matchPlainLine(child, line, serviceMessages, bindings, ignoredPlacements)
       else None
     case PlainOutputPattern.AfterServiceMessages(child) =>
-      if (serviceMessages.lastOption.forall(line.sourceIndex > _.sourceIndex))
-        matchPlainLine(child, line, serviceMessages, bindings)
+      if (ignoredPlacements.contains("plain-placement:after-service-messages") ||
+        serviceMessages.lastOption.exists(line.sourceIndex > _.sourceIndex))
+        matchPlainLine(child, line, serviceMessages, bindings, ignoredPlacements)
+      else None
+    case PlainOutputPattern.BeforeFirstTestInSuite(suiteName, invocationOrdinal, child) =>
+      val identity = s"plain-placement:$suiteName:$invocationOrdinal"
+      if (ignoredPlacements.contains(identity) ||
+        isBeforeFirstTestInSuite(line, suiteName, invocationOrdinal, serviceMessages))
+        matchPlainLine(child, line, serviceMessages, bindings, ignoredPlacements)
       else None
     case PlainOutputPattern.CompilerBridgeAnnouncement =>
       Option.when(isCompilerBridgeAnnouncement(line.rawLine))(bindings)
     case PlainOutputPattern.CompilerBridgeCompletion =>
       Option.when(isCompilerBridgeCompletion(line.rawLine))(bindings)
     case _: PlainOutputPattern.OptionalGroup => None
+  }
+
+  private val ScalaTestLogbackLinePattern =
+    """^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3} \[(pool-[0-9]+-thread-[0-9]+)-ScalaTest-running-TestSpec\] (WARN|ERROR)([^\r\n]*)$""".r
+
+  private def matchScalaTestLogbackLine(
+    line: String,
+    thread: SemanticBindingKey,
+    level: LogbackLevel,
+    exactSuffix: String,
+    bindings: Map[SemanticBindingKey, String]
+  ): Option[Map[SemanticBindingKey, String]] = line match {
+    case ScalaTestLogbackLinePattern(observedThread, observedLevel, observedSuffix)
+      if observedLevel == level.rawName && observedSuffix == exactSuffix =>
+      bind(thread, observedThread, bindings, Set.empty, OwnershipMode.Enforce)
+    case _ => None
+  }
+
+  private final case class CompletedSuiteInvocation(start: Int, finish: Int, flow: String)
+  private final case class SuitePlacementAnchor(start: Int, firstTest: Int, finish: Int)
+
+  private def isBeforeFirstTestInSuite(
+    line: ObservedPlainLine,
+    suiteName: String,
+    invocationOrdinal: Int,
+    serviceMessages: Vector[ObservedServiceMessage]
+  ): Boolean = resolveSuitePlacementAnchor(suiteName, invocationOrdinal, serviceMessages)
+    .exists(anchor => anchor.start < line.sourceIndex && line.sourceIndex < anchor.firstTest)
+
+  private def resolveSuitePlacementAnchor(
+    suiteName: String,
+    invocationOrdinal: Int,
+    serviceMessages: Vector[ObservedServiceMessage]
+  ): Either[String, SuitePlacementAnchor] = {
+    val boundaries = serviceMessages.filter { message =>
+      (message.kind == ObservedServiceMessageKind.TestSuiteStarted ||
+        message.kind == ObservedServiceMessageKind.TestSuiteFinished) &&
+        message.attribute("name").contains(suiteName)
+    }.sortBy(_.sourceIndex)
+    if (boundaries.isEmpty) {
+      return Left(s"No parsed lifecycle boundaries exist for exact suite '$suiteName'.")
+    }
+    val active = mutable.HashMap.empty[String, Int]
+    val completed = Vector.newBuilder[CompletedSuiteInvocation]
+    val anchorProblems = Vector.newBuilder[String]
+
+    boundaries.foreach { boundary =>
+      boundary.flowId.filter(_.nonEmpty) match {
+        case None =>
+          anchorProblems += s"${boundary.kind.wireName} at source line ${boundary.sourceLineNumber} has no nonempty flowId."
+        case Some(flow) if boundary.kind == ObservedServiceMessageKind.TestSuiteStarted =>
+          if (active.contains(flow)) {
+            anchorProblems += s"Suite '$suiteName' has overlapping starts for flow '$flow'."
+          }
+          else active.update(flow, boundary.sourceIndex)
+        case Some(flow) =>
+          active.remove(flow) match {
+            case Some(start) if start < boundary.sourceIndex =>
+              completed += CompletedSuiteInvocation(start, boundary.sourceIndex, flow)
+            case _ =>
+              anchorProblems += s"Suite '$suiteName' has an orphan or reordered finish for flow '$flow'."
+          }
+      }
+    }
+    active.toVector.sortBy(_._1).foreach { case (flow, _) =>
+      anchorProblems += s"Suite '$suiteName' has no finish for active flow '$flow'."
+    }
+    val problems = anchorProblems.result()
+    if (problems.nonEmpty) return Left(problems.mkString(" "))
+
+    completed.result().sortBy(_.start).lift(invocationOrdinal - 1).toRight(
+      s"Suite '$suiteName' has no completed invocation $invocationOrdinal."
+    ).flatMap { invocation =>
+      val testStarts = serviceMessages
+        .filter(message => message.kind == ObservedServiceMessageKind.TestStarted)
+        .filter(message => message.flowId.contains(invocation.flow))
+        .filter(message => invocation.start < message.sourceIndex && message.sourceIndex < invocation.finish)
+        .sortBy(_.sourceIndex)
+      testStarts.headOption.toRight(
+        s"Suite '$suiteName' invocation $invocationOrdinal has no same-flow testStarted anchor."
+      ).flatMap { first =>
+        val samePosition = testStarts.takeWhile(_.sourceIndex == first.sourceIndex)
+        Either.cond(
+          samePosition.size == 1,
+          SuitePlacementAnchor(invocation.start, first.sourceIndex, invocation.finish),
+          s"Suite '$suiteName' invocation $invocationOrdinal has ${samePosition.size} first-test anchors at source line ${first.sourceLineNumber}."
+        )
+      }
+    }
   }
 
   private def matchCompilerInspectionDiagnostic(

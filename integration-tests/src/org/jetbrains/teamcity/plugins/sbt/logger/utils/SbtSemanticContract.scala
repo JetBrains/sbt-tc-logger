@@ -36,6 +36,10 @@ private[logger] object SemanticBindingKind {
     val displayName = "duration in milliseconds"
     def accepts(value: String): Boolean = value.matches("[0-9]+")
   }
+  case object LogbackThread extends SemanticBindingKind {
+    val displayName = "Logback thread"
+    def accepts(value: String): Boolean = value.matches("pool-[0-9]+-thread-[0-9]+")
+  }
   case object Value extends SemanticBindingKind {
     val displayName = "value"
     def accepts(value: String): Boolean = value.nonEmpty
@@ -51,6 +55,7 @@ private[logger] object SemanticBindingKey {
   def buildId(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.BuildId)
   def path(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.Path)
   def duration(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.DurationMillis)
+  def logbackThread(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.LogbackThread)
   def value(name: String): SemanticBindingKey = SemanticBindingKey(name, SemanticBindingKind.Value)
 }
 
@@ -93,6 +98,23 @@ private[logger] object SemanticValuePattern {
     allowedGeneratedOwners: Set[String]
   ) extends SemanticValuePattern
 
+  /**
+   * One exact top-level throwable and one exact cause, rendered as build-log text whose every physical line has
+   * the same literal prefix. Required user frames are line remainders after removing that prefix. Every section
+   * also needs bounded, finite internal-tail evidence; line/source metadata on those internal frames is structural.
+   */
+  final case class LinePrefixedThrowableChain(
+    linePrefix: String,
+    topException: String,
+    topMessage: String,
+    requiredTopUserFrames: Vector[String],
+    causeException: String,
+    causeMessage: String,
+    requiredCauseUserFrames: Vector[String],
+    framework: RecognizedTestFramework,
+    maximumRecognizedFrames: Int
+  ) extends SemanticValuePattern
+
   def exact(value: String): SemanticValuePattern = Exact(value)
   def bound(key: SemanticBindingKey): SemanticValuePattern = Bound(key)
   def embedded(prefix: String, key: SemanticBindingKey, suffix: String): SemanticValuePattern = Embedded(prefix, key, suffix)
@@ -114,6 +136,27 @@ private[logger] object SemanticValuePattern {
     allowedGeneratedOwners: Set[String] = Set.empty
   ): SemanticValuePattern =
     UserFailure(prefix, userFrames.toVector, framework, maximumFrameworkFrames, allowedGeneratedOwners)
+  def linePrefixedThrowableChain(
+    linePrefix: String,
+    topException: String,
+    topMessage: String,
+    requiredTopUserFrames: Seq[String],
+    causeException: String,
+    causeMessage: String,
+    requiredCauseUserFrames: Seq[String],
+    framework: RecognizedTestFramework,
+    maximumRecognizedFrames: Int = 64
+  ): SemanticValuePattern = LinePrefixedThrowableChain(
+    linePrefix,
+    topException,
+    topMessage,
+    requiredTopUserFrames.toVector,
+    causeException,
+    causeMessage,
+    requiredCauseUserFrames.toVector,
+    framework,
+    maximumRecognizedFrames
+  )
 }
 
 private[logger] enum StructuredSbtDebugKind(val id: String) {
@@ -357,14 +400,31 @@ private[logger] object PlainOutputPattern {
     level: CompilerDiagnosticLevel,
     column: Int
   ) extends PlainOutputPattern
+  /** One exact ScalaTest Logback line with a reusable dynamic pool thread. */
+  final case class ScalaTestLogbackLine(
+    thread: SemanticBindingKey,
+    level: LogbackLevel,
+    exactSuffix: String
+  ) extends PlainOutputPattern
   /** The line must precede every parsed TeamCity service message in the bounded transcript. */
   final case class BeforeServiceMessages(pattern: PlainOutputPattern) extends PlainOutputPattern
   /** The line must follow every parsed TeamCity service message in the bounded transcript. */
   final case class AfterServiceMessages(pattern: PlainOutputPattern) extends PlainOutputPattern
+  /** The line is inside the selected exact-named suite invocation and precedes that invocation's first test. */
+  final case class BeforeFirstTestInSuite(
+    suiteName: String,
+    invocationOrdinal: Int,
+    pattern: PlainOutputPattern
+  ) extends PlainOutputPattern
   case object CompilerBridgeAnnouncement extends PlainOutputPattern
   case object CompilerBridgeCompletion extends PlainOutputPattern
   /** Every child line is consumed, or none is. Nested optional groups are rejected. */
   final case class OptionalGroup(name: String, patterns: Vector[PlainOutputPattern]) extends PlainOutputPattern
+}
+
+private[logger] enum LogbackLevel(val rawName: String) {
+  case Warn extends LogbackLevel("WARN")
+  case Error extends LogbackLevel("ERROR")
 }
 
 private[logger] enum CompilerDiagnosticLevel(val rawName: String, val inspectionSeverity: String) {
@@ -435,6 +495,8 @@ private[utils] final case class PreparedSemanticContract(
 private[utils] object SbtSemanticContractValidator {
   private val StableName = "[a-z][a-z0-9.-]*"
   private val FullyQualifiedJvmOwner = "(?:[A-Za-z_$][A-Za-z0-9_$]*\\.)+[A-Za-z_$][A-Za-z0-9_$]*"
+  private val ThrowableClass = "(?:[A-Za-z_$][A-Za-z0-9_$]*\\.)*[A-Za-z_$][A-Za-z0-9_$]*"
+  private val ExactStackFrame = "[ \\t]+at [^\\r\\n()]+\\([^\\r\\n()]+\\)"
 
   def prepare(contract: SbtSemanticContract): Either[Vector[SbtSemanticFailure], PreparedSemanticContract] = {
     val problems = mutable.ArrayBuffer.empty[String]
@@ -691,8 +753,60 @@ private[utils] object SbtSemanticContractValidator {
         Option.when(allowedGeneratedOwners.nonEmpty && framework != RecognizedTestFramework.ScalaTest)(
           "declares generated ScalaTest owners for a non-ScalaTest user failure."
         ).toVector
+    case SemanticValuePattern.LinePrefixedThrowableChain(
+      linePrefix,
+      topException,
+      topMessage,
+      topFrames,
+      causeException,
+      causeMessage,
+      causeFrames,
+      framework,
+      maximum
+    ) =>
+      Option.when(!isNonEmptySingleLine(linePrefix))(
+        "declares an empty or multiline throwable-chain line prefix."
+      ).toVector ++
+        Option.when(!topException.matches(ThrowableClass))(
+          s"declares an invalid top throwable class '$topException'."
+        ).toVector ++
+        Option.when(!isSingleLine(topMessage))(
+          "declares a multiline top throwable message."
+        ).toVector ++
+        validateRequiredThrowableFrames("top", topFrames) ++
+        Option.when(!causeException.matches(ThrowableClass))(
+          s"declares an invalid cause throwable class '$causeException'."
+        ).toVector ++
+        Option.when(!isSingleLine(causeMessage))(
+          "declares a multiline cause throwable message."
+        ).toVector ++
+        validateRequiredThrowableFrames("cause", causeFrames) ++
+        Option.when(maximum < minimumThrowableInternalFrames(framework))(
+          s"declares recognized-frame bound $maximum below the ${minimumThrowableInternalFrames(framework)} " +
+            s"internal frames required for ${framework.toString} throwable sections."
+        ).toVector
     case _ => Vector.empty
   }
+
+  private def validateRequiredThrowableFrames(section: String, frames: Vector[String]): Vector[String] =
+    Option.when(frames.isEmpty)(s"declares no exact $section user stack frames.").toVector ++
+      Option.when(frames.exists(frame => !frame.matches(ExactStackFrame)))(
+        s"declares an empty, multiline, or malformed $section user stack frame."
+      ).toVector ++
+      Option.when(frames.distinct.size != frames.size)(
+        s"declares duplicate exact $section user stack frames."
+      ).toVector
+
+  private def minimumThrowableInternalFrames(framework: RecognizedTestFramework): Int = framework match {
+    case RecognizedTestFramework.ScalaTest => 4 // one finite reflection role and one task anchor per section
+    case _ => 2 // one finite reflection role per section
+  }
+
+  private def isNonEmptySingleLine(value: String): Boolean =
+    value.nonEmpty && isSingleLine(value)
+
+  private def isSingleLine(value: String): Boolean =
+    !value.exists("\r\n".contains(_))
 
   private def validateEventPatterns(event: ExpectedSemanticEvent): Vector[String] =
     event.attributes.flatMap { case (attribute, pattern) => pattern match {
@@ -722,6 +836,13 @@ private[utils] object SbtSemanticContractValidator {
             case Some((_, SemanticValuePattern.Exact("NORMAL"))) => Vector.empty
             case _ => Vector("must declare exact status 'NORMAL' for structured SBT/Zinc debug output.")
           })
+      case _: SemanticValuePattern.LinePrefixedThrowableChain =>
+        Option.when(attribute != "text")(
+          "must use LinePrefixedThrowableChain only for attribute 'text'."
+        ).toVector ++
+          Option.when(event.kind != ObservedServiceMessageKind.BuildLogMessage)(
+            "must use LinePrefixedThrowableChain only on a message event."
+          ).toVector
       case _ => Vector.empty
     }}
 
@@ -850,6 +971,10 @@ private[utils] object SbtSemanticContractValidator {
             !sourceSuffix.startsWith("/") || sourceSuffix.contains("\n") || sourceSuffix.contains("\r") ||
             column <= 0 =>
           problems += s"Compiler inspection diagnostic requires a valid path binding, source suffix, and positive column."
+        case PlainOutputPattern.ScalaTestLogbackLine(thread, _, exactSuffix)
+          if thread.kind != SemanticBindingKind.LogbackThread || !thread.name.matches(StableName) ||
+            !isNonEmptySingleLine(exactSuffix) =>
+          problems += "ScalaTest Logback line requires a valid Logback-thread binding and a non-empty single-line exact suffix."
         case _ => ()
       }
     case _ => ()
@@ -859,24 +984,44 @@ private[utils] object SbtSemanticContractValidator {
     pattern: PlainOutputPattern,
     problems: mutable.ArrayBuffer[String]
   ): Unit = pattern match {
-    case PlainOutputPattern.BeforeServiceMessages(_: PlainOutputPattern.BeforeServiceMessages) |
-         PlainOutputPattern.BeforeServiceMessages(_: PlainOutputPattern.AfterServiceMessages) |
-         PlainOutputPattern.AfterServiceMessages(_: PlainOutputPattern.BeforeServiceMessages) |
-         PlainOutputPattern.AfterServiceMessages(_: PlainOutputPattern.AfterServiceMessages) =>
-      problems += "Plain-output service-message placement wrappers cannot be nested."
-    case PlainOutputPattern.BeforeServiceMessages(_: PlainOutputPattern.OptionalGroup) |
-         PlainOutputPattern.AfterServiceMessages(_: PlainOutputPattern.OptionalGroup) =>
-      problems += "A plain-output optional group must own any service-message placement wrappers on its child lines."
-    case PlainOutputPattern.BeforeServiceMessages(child) => validatePlainPatternPlacement(child, problems)
-    case PlainOutputPattern.AfterServiceMessages(child) => validatePlainPatternPlacement(child, problems)
+    case PlainOutputPattern.BeforeFirstTestInSuite(suiteName, invocationOrdinal, child) =>
+      if (!isNonEmptySingleLine(suiteName)) {
+        problems += "A suite-relative plain-output placement requires a non-empty single-line exact suite name."
+      }
+      if (invocationOrdinal <= 0) {
+        problems += s"A suite-relative plain-output placement requires a positive invocation ordinal, got $invocationOrdinal."
+      }
+      validatePlainPlacementChild(child, problems)
+    case PlainOutputPattern.BeforeServiceMessages(child) => validatePlainPlacementChild(child, problems)
+    case PlainOutputPattern.AfterServiceMessages(child) => validatePlainPlacementChild(child, problems)
     case PlainOutputPattern.OptionalGroup(_, children) =>
       children.foreach(child => validatePlainPatternPlacement(child, problems))
     case _ => ()
   }
 
+  private def validatePlainPlacementChild(
+    child: PlainOutputPattern,
+    problems: mutable.ArrayBuffer[String]
+  ): Unit = {
+    if (isPlainPlacementWrapper(child)) {
+      problems += "Plain-output placement wrappers cannot be nested."
+    } else if (child.isInstanceOf[PlainOutputPattern.OptionalGroup]) {
+      problems += "A plain-output optional group must own any placement wrappers on its child lines."
+    } else {
+      validatePlainPatternPlacement(child, problems)
+    }
+  }
+
+  private def isPlainPlacementWrapper(pattern: PlainOutputPattern): Boolean = pattern match {
+    case _: PlainOutputPattern.BeforeServiceMessages | _: PlainOutputPattern.AfterServiceMessages |
+         _: PlainOutputPattern.BeforeFirstTestInSuite => true
+    case _ => false
+  }
+
   private def plainPatternLeaves(pattern: PlainOutputPattern): Vector[PlainOutputPattern] = pattern match {
     case PlainOutputPattern.BeforeServiceMessages(child) => plainPatternLeaves(child)
     case PlainOutputPattern.AfterServiceMessages(child) => plainPatternLeaves(child)
+    case PlainOutputPattern.BeforeFirstTestInSuite(_, _, child) => plainPatternLeaves(child)
     case PlainOutputPattern.OptionalGroup(_, children) => children.flatMap(plainPatternLeaves)
     case leaf => Vector(leaf)
   }
@@ -884,12 +1029,15 @@ private[utils] object SbtSemanticContractValidator {
   private def stripPlainPatternPlacement(pattern: PlainOutputPattern): PlainOutputPattern = pattern match {
     case PlainOutputPattern.BeforeServiceMessages(child) => stripPlainPatternPlacement(child)
     case PlainOutputPattern.AfterServiceMessages(child) => stripPlainPatternPlacement(child)
+    case PlainOutputPattern.BeforeFirstTestInSuite(_, _, child) => stripPlainPatternPlacement(child)
     case other => other
   }
 
   private def plainPatternPlacement(pattern: PlainOutputPattern): String = pattern match {
     case PlainOutputPattern.BeforeServiceMessages(_) => "before"
     case PlainOutputPattern.AfterServiceMessages(_) => "after"
+    case PlainOutputPattern.BeforeFirstTestInSuite(suiteName, invocationOrdinal, _) =>
+      s"suite:$suiteName:$invocationOrdinal"
     case _ => "unplaced"
   }
 
