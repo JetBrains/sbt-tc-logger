@@ -856,6 +856,187 @@ class SbtSemanticVerifierTest {
     assertCategory(expectFailure(verify(valid.updated(10, "foreign output"), declared)), PlainOutputFailure)
   }
 
+  @Test def lifecycleOwnershipAcceptsOnlyTheDeclaredNonEmptyExactFlow(): Unit = {
+    def contract(ownership: SemanticValuePattern): SbtSemanticContract = SbtSemanticContract(
+      events = Vector(
+        ExpectedSemanticEvent("block-open", BlockOpened, "name" -> exact("dependency")),
+        ExpectedSemanticEvent("resource", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("resource")),
+        ExpectedSemanticEvent("block-close", BlockClosed, "name" -> exact("dependency"))
+      ),
+      lifecycles = Vector(SemanticLifecycleRule.block(
+        "dependency", "block-open", Seq("resource"), "block-close", ownership
+      ))
+    )
+    val valid = Vector(
+      "##teamcity[blockOpened name='dependency' flowId='stable-dependency-flow']",
+      "##teamcity[message status='NORMAL' text='resource' flowId='stable-dependency-flow']",
+      "##teamcity[blockClosed name='dependency' flowId='stable-dependency-flow']"
+    )
+    val exactContract = contract(exact("stable-dependency-flow"))
+
+    verify(valid, exactContract)
+    val wrongFlow = expectFailure(verify(
+      valid.map(_.replace("stable-dependency-flow", "other-flow")),
+      exactContract
+    ))
+    assertCategory(wrongFlow, FlowOwnershipFailure)
+    Assert.assertTrue(wrongFlow.getMessage.contains("Expected: 'stable-dependency-flow'"))
+    Assert.assertTrue(wrongFlow.getMessage.contains("Observed: 'other-flow'"))
+    Assert.assertFalse(wrongFlow.failures.exists(finding =>
+      finding.category == SemanticCardinalityFailure && finding.disposition == SbtFindingDisposition.Violation))
+    assertCategory(expectFailure(verify(Vector.empty, contract(exact("")))), GoldenSyntaxFailure)
+  }
+
+  @Test def orderBlindDiagnosticsSeparateReversalFromCardinalityAndAmbiguity(): Unit = {
+    val unique = SbtSemanticContract(
+      events = Vector(
+        event("first", BuildLogMessage, "first"),
+        event("second", BuildLogMessage, "second")
+      ),
+      happensBefore = Set(HappensBefore("first", "second"))
+    )
+    verify(Vector(message("NORMAL", "first"), message("NORMAL", "second")), unique)
+    val uniqueReversal = collect(Vector(message("NORMAL", "second"), message("NORMAL", "first")), unique)
+    Assert.assertTrue(uniqueReversal.exists(finding =>
+      finding.category == OrderingFailure && finding.disposition == Violation &&
+        finding.semanticIdentity == "edge:first->second"))
+    Assert.assertFalse(uniqueReversal.exists(_.category == SemanticCardinalityFailure))
+    Assert.assertFalse(uniqueReversal.exists(_.category == MatcherComplexityFailure))
+
+    val orderShared = SemanticBindingKey.value("order-shared")
+    val structurallyAmbiguous = SbtSemanticContract(
+      events = Vector(
+        ExpectedSemanticEvent("shared-a", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("shared"), "value" -> bound(orderShared)),
+        ExpectedSemanticEvent("shared-b", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("shared"), "value" -> bound(orderShared)),
+        event("boundary", BuildLogMessage, "boundary")
+      ),
+      happensBefore = Set(
+        HappensBefore("shared-a", "boundary"),
+        HappensBefore("shared-b", "boundary")
+      )
+    )
+    val ambiguousReversal = collect(Vector(
+      message("NORMAL", "boundary"),
+      "##teamcity[message status='NORMAL' text='shared' value='same']",
+      "##teamcity[message status='NORMAL' text='shared' value='same']"
+    ), structurallyAmbiguous)
+    Assert.assertTrue(ambiguousReversal.exists(finding =>
+      finding.category == OrderingFailure && finding.disposition == Violation &&
+        finding.semanticIdentity == "event-assignment-ordering"))
+    Assert.assertEquals(2, ambiguousReversal.count(finding =>
+      finding.category == OrderingFailure && finding.disposition == Blocked &&
+        finding.semanticIdentity.startsWith("edge:shared-")))
+    Assert.assertTrue(ambiguousReversal.exists(finding =>
+      finding.category == SemanticCardinalityFailure && finding.disposition == Blocked &&
+        finding.semanticIdentity == "binding:value:order-shared"))
+    Assert.assertFalse(ambiguousReversal.exists(finding =>
+      finding.category == SemanticCardinalityFailure && finding.disposition == Violation))
+    Assert.assertFalse(ambiguousReversal.exists(_.category == MatcherComplexityFailure))
+
+    val budgetIds = Vector.tabulate(4)(index => s"budget-shared-${index + 1}")
+    val budgetContract = SbtSemanticContract(
+      events = budgetIds.map(id => event(id, BuildLogMessage, "budget-shared")) :+
+        event("budget-boundary", BuildLogMessage, "budget-boundary"),
+      happensBefore = budgetIds.map(id => HappensBefore(id, "budget-boundary")).toSet,
+      matcherStateBudget = 4
+    )
+    val budgetFindings = collect(
+      Vector(message("NORMAL", "budget-boundary")) ++
+        Vector.fill(4)(message("NORMAL", "budget-shared")),
+      budgetContract
+    )
+    Assert.assertTrue(budgetFindings.exists(finding =>
+      finding.category == MatcherComplexityFailure && finding.disposition == Violation &&
+        finding.semanticIdentity == "event-assignment-ordering-diagnostic"))
+    Assert.assertFalse(budgetFindings.exists(finding =>
+      finding.category == SemanticCardinalityFailure && finding.disposition == Violation))
+
+    val uniquenessIds = Vector("uniqueness-shared-1", "uniqueness-shared-2")
+    val uniquenessContract = SbtSemanticContract(
+      events = uniquenessIds.map(id => event(id, BuildLogMessage, "uniqueness-shared")) :+
+        event("uniqueness-boundary", BuildLogMessage, "uniqueness-boundary"),
+      happensBefore = uniquenessIds.map(id => HappensBefore(id, "uniqueness-boundary")).toSet,
+      matcherStateBudget = 5
+    )
+    val uniquenessFindings = collect(
+      Vector(message("NORMAL", "uniqueness-boundary")) ++
+        Vector.fill(2)(message("NORMAL", "uniqueness-shared")),
+      uniquenessContract
+    )
+    Assert.assertTrue(uniquenessFindings.exists(finding =>
+      finding.category == OrderingFailure && finding.disposition == Violation &&
+        finding.semanticIdentity == "event-assignment-ordering"))
+    Assert.assertTrue(uniquenessFindings.exists(finding =>
+      finding.category == MatcherComplexityFailure && finding.disposition == Violation &&
+        finding.semanticIdentity == "event-assignment-ordering-uniqueness"))
+    Assert.assertEquals(2, uniquenessFindings.count(finding =>
+      finding.category == OrderingFailure && finding.disposition == Blocked &&
+        finding.semanticIdentity.startsWith("edge:uniqueness-shared-")))
+    Assert.assertFalse(uniquenessFindings.exists(finding =>
+      finding.category == SemanticCardinalityFailure && finding.disposition == Violation))
+  }
+
+  @Test def declaredLifecycleEdgesScopeIdenticalMembersWithoutHidingUnconstrainedAmbiguity(): Unit = {
+    val ownership = exact("stable-block-flow")
+    val contract = SbtSemanticContract(
+      events = Vector(
+        ExpectedSemanticEvent("first-open", BlockOpened, "name" -> exact("dependency")),
+        ExpectedSemanticEvent("first-shared", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("shared")),
+        ExpectedSemanticEvent("first-only", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("first-only")),
+        ExpectedSemanticEvent("first-close", BlockClosed, "name" -> exact("dependency")),
+        ExpectedSemanticEvent("second-open", BlockOpened, "name" -> exact("dependency")),
+        ExpectedSemanticEvent("second-shared", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("shared")),
+        ExpectedSemanticEvent("second-only", BuildLogMessage,
+          "status" -> exact("NORMAL"), "text" -> exact("second-only")),
+        ExpectedSemanticEvent("second-close", BlockClosed, "name" -> exact("dependency"))
+      ),
+      happensBefore = Set(HappensBefore("first-close", "second-open")),
+      lifecycles = Vector(
+        SemanticLifecycleRule.block(
+          "first", "first-open", Seq("first-shared", "first-only"), "first-close", ownership),
+        SemanticLifecycleRule.block(
+          "second", "second-open", Seq("second-shared", "second-only"), "second-close", ownership)
+      )
+    )
+    def boundary(kind: String): String =
+      s"##teamcity[$kind name='dependency' flowId='stable-block-flow']"
+    def message(text: String): String =
+      s"##teamcity[message status='NORMAL' text='$text' flowId='stable-block-flow']"
+    val valid = Vector(
+      boundary("blockOpened"),
+      message("shared"),
+      message("first-only"),
+      boundary("blockClosed"),
+      boundary("blockOpened"),
+      message("shared"),
+      message("second-only"),
+      boundary("blockClosed")
+    )
+
+    verify(valid, contract)
+    verify(valid.updated(1, valid(2)).updated(2, valid(1))
+      .updated(5, valid(6)).updated(6, valid(5)), contract)
+    assertCategory(expectFailure(verify(
+      valid.updated(2, valid(3)).updated(3, valid(2)), contract)), OrderingFailure)
+    assertCategory(expectFailure(verify(
+      valid.updated(3, valid(4)).updated(4, valid(3)), contract)), OrderingFailure)
+
+    val ambiguous = SbtSemanticContract(Vector(
+      event("first", BuildLogMessage, "shared"),
+      event("second", BuildLogMessage, "shared")
+    ))
+    assertCategory(expectFailure(verify(Vector(
+      "##teamcity[message status='NORMAL' text='shared']",
+      "##teamcity[message status='NORMAL' text='shared']"
+    ), ambiguous)), MatcherComplexityFailure)
+  }
+
   @Test def globallySelectedOptionalGroupsDoNotRejectRequiredOrOtherGroupOverlap(): Unit = {
     val requiredOverlap = SbtSemanticContract(
       events = Vector(event("required", BuildLogMessage, "shared")),

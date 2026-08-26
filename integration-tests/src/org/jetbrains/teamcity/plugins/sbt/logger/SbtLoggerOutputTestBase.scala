@@ -20,7 +20,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       setupCommands = Seq("clean"),
       behaviorCommands = Seq("update", "update"),
       expectedResult = SbtProcessResultExpectation.Success,
-      sbtOptions = Seq("-Dteamcity.sbt.logger.detailedDependencyResolution=true")
+      sbtOptions = Seq("-Dteamcity.sbt.logger.detailedDependencyResolution=true"),
+      verification = SbtDependencyDetailedOutcomesSemanticContracts.Success
     ))
 
   protected final def detailedDependencyResolution_CoursierFailureIsWarningAndCloses(): Unit =

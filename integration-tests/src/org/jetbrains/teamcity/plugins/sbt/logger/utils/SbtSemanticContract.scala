@@ -767,14 +767,18 @@ private[utils] object SbtSemanticContractValidator {
       ).toVector
   }
 
-  private def validateOwnership(pattern: SemanticValuePattern): Vector[String] = ownershipKey(pattern) match {
-    case None => Vector("requires ownership to be Bound or Embedded.")
-    case Some(key) =>
-      Option.when(!key.name.matches(StableName))(
-        s"has invalid ${key.kind.displayName} ownership binding name '${key.name}'."
-      ).toVector ++ Option.when(!key.kind.isOwnership)(
-        s"requires Flow or BuildId ownership, got ${key.kind.displayName} '${key.name}'."
-      ).toVector
+  private def validateOwnership(pattern: SemanticValuePattern): Vector[String] = pattern match {
+    case SemanticValuePattern.Exact(value) =>
+      Option.when(value.isEmpty)("requires a non-empty exact ownership value.").toVector
+    case _ => ownershipKey(pattern) match {
+      case None => Vector("requires ownership to be Exact, Bound, or Embedded.")
+      case Some(key) =>
+        Option.when(!key.name.matches(StableName))(
+          s"has invalid ${key.kind.displayName} ownership binding name '${key.name}'."
+        ).toVector ++ Option.when(!key.kind.isOwnership)(
+          s"requires Flow or BuildId ownership, got ${key.kind.displayName} '${key.name}'."
+        ).toVector
+    }
   }
 
   private def validateEdges(

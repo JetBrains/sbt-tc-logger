@@ -109,6 +109,34 @@ private[logger] object SbtSemanticOutputVerifier {
     var assignmentBlockedReason = Option.empty[String]
     var diagnosticSolutions = Vector.empty[MatchSolution]
     var diagnosticOwnershipMode = OwnershipMode.Enforce
+    var diagnosticOrderEnforced = true
+    def adoptOrderBlind(result: SearchResult, ownershipMode: OwnershipMode): Boolean = {
+      if (result.solutions.isEmpty) false
+      else {
+        diagnosticSolutions = result.solutions
+        diagnosticOwnershipMode = ownershipMode
+        diagnosticOrderEnforced = false
+        if (result.solutions.size == 1 && !result.budgetExceeded) {
+          fullMapping = result.solutions.headOption
+        } else {
+          assignmentBlockedReason = Some(if (result.solutions.size == 1)
+            "order-blind diagnosis found one complete assignment but exceeded its state budget before " +
+              "uniqueness could be determined"
+          else "multiple complete semantic assignments exist only when declared ordering is ignored")
+          failures += orderingAmbiguityFailure(result.solutions.size, result.budgetExceeded)
+          if (result.solutions.size == 1 && result.budgetExceeded) {
+            failures += SbtSemanticFailure(
+              SbtVerificationFailureCategory.MatcherComplexityFailure,
+              s"Order-blind diagnosis exceeded its explicit ${contract.matcherStateBudget}-state budget after " +
+                "finding one complete assignment but before proving its uniqueness.",
+              Vector("Identity-dependent diagnostics remain blocked instead of selecting that assignment."),
+              semanticIdentity = "event-assignment-ordering-uniqueness"
+            )
+          }
+        }
+        true
+      }
+    }
     {
       val exact = search(observed, contract, OwnershipMode.Enforce)
       diagnosticSolutions = Option.unless(exact.budgetExceeded)(exact.solutions).getOrElse(Vector.empty)
@@ -144,7 +172,31 @@ private[logger] object SbtSemanticOutputVerifier {
           assignmentBlockedReason = Some("ownership-relaxed semantic event assignment is ambiguous")
           failures += ambiguityFailure(ownershipRelaxed.solutions, observed)
         } else {
-          unresolvedAssignment = !hasStructuralFailures(observed, contract)
+          val orderBlind = search(observed, contract, OwnershipMode.Enforce, enforceDeclaredOrder = false)
+          if (!adoptOrderBlind(orderBlind, OwnershipMode.Enforce)) {
+            val ownershipRelaxedOrderBlind = search(
+              observed,
+              contract,
+              OwnershipMode.Ignore,
+              enforceDeclaredOrder = false
+            )
+            if (!adoptOrderBlind(ownershipRelaxedOrderBlind, OwnershipMode.Ignore)) {
+              if (ownershipRelaxedOrderBlind.budgetExceeded) {
+                assignmentBlockedReason = Some(
+                  "order-blind ownership-relaxed diagnosis exceeded its state budget"
+                )
+                failures += SbtSemanticFailure(
+                  SbtVerificationFailureCategory.MatcherComplexityFailure,
+                  s"Order-blind diagnosis exceeded its explicit ${contract.matcherStateBudget}-state budget " +
+                    "before structural assignability could be determined.",
+                  Vector("Refine stable attributes before relying on ordering-only diagnostics."),
+                  semanticIdentity = "event-assignment-ordering-diagnostic"
+                )
+              } else {
+                unresolvedAssignment = !hasStructuralFailures(observed, contract)
+              }
+            }
+          }
         }
       }
     }
@@ -156,7 +208,8 @@ private[logger] object SbtSemanticOutputVerifier {
         diagnosticSolutions,
         assignmentBlockedReason,
         wireFailures,
-        diagnosticOwnershipMode
+        diagnosticOwnershipMode,
+        diagnosticOrderEnforced
       )
     )(_ => PartialOptionalAssessment(Set.empty, Set.empty, Vector.empty))
     val diagnosticGroups = contract.optionalGroups.filter(group => optionalAssessment.possibleGroups.contains(group.name))
@@ -196,6 +249,10 @@ private[logger] object SbtSemanticOutputVerifier {
       effectiveMapping.eventToObservation,
       observed,
       contract,
+      bindingEvents
+    ) ++ exactOwnershipFailures(
+      effectiveMapping.eventToObservation,
+      observed,
       bindingEvents
     )
     failures ++= lifecycleBalanceFailures(
@@ -346,7 +403,8 @@ private[logger] object SbtSemanticOutputVerifier {
     candidateSolutions: Vector[MatchSolution],
     assignmentBlockedReason: Option[String],
     wireFailures: Vector[SbtSemanticFailure],
-    ownershipMode: OwnershipMode = OwnershipMode.Enforce
+    ownershipMode: OwnershipMode = OwnershipMode.Enforce,
+    enforceDeclaredOrder: Boolean = true
   ): PartialOptionalAssessment = {
     val structuralMatches = contract.optionalGroups.map { group =>
       group.name -> maximumCompatibleAssignments(group.events, observed, contract)
@@ -355,7 +413,7 @@ private[logger] object SbtSemanticOutputVerifier {
       reason.contains("ambiguous") || reason.contains("budget")
     }
     val constrainedActivation = Option.when(needsSoundActivationSearch)(
-      analyzeOptionalActivation(observed, contract, ownershipMode)
+      analyzeOptionalActivation(observed, contract, ownershipMode, enforceDeclaredOrder)
     )
     val possible = constrainedActivation.map(_._1).getOrElse(
       structuralMatches.collect { case (name, count) if count > 0 => name }.toSet
@@ -462,7 +520,8 @@ private[logger] object SbtSemanticOutputVerifier {
   private def analyzeOptionalActivation(
     observed: Vector[ObservedServiceMessage],
     contract: PreparedSemanticContract,
-    ownershipMode: OwnershipMode
+    ownershipMode: OwnershipMode,
+    enforceDeclaredOrder: Boolean
   ): (Set[String], Set[String]) = {
     val analyses = contract.optionalGroups.map { group =>
       val active = search(
@@ -470,14 +529,16 @@ private[logger] object SbtSemanticOutputVerifier {
         contract,
         ownershipMode,
         optionalActivation = Map(group.name -> true),
-        solutionLimit = 1
+        solutionLimit = 1,
+        enforceDeclaredOrder = enforceDeclaredOrder
       )
       val inactive = search(
         observed,
         contract,
         ownershipMode,
         optionalActivation = Map(group.name -> false),
-        solutionLimit = 1
+        solutionLimit = 1,
+        enforceDeclaredOrder = enforceDeclaredOrder
       )
       val activePossible = active.solutions.nonEmpty || active.budgetExceeded
       val inactiveImpossible = inactive.solutions.isEmpty && !inactive.budgetExceeded
@@ -494,7 +555,8 @@ private[logger] object SbtSemanticOutputVerifier {
     contract: PreparedSemanticContract,
     ownershipMode: OwnershipMode,
     optionalActivation: Map[String, Boolean] = Map.empty,
-    solutionLimit: Int = 2
+    solutionLimit: Int = 2,
+    enforceDeclaredOrder: Boolean = true
   ): SearchResult = {
     val occurrenceByIndex = occurrences(observed)
     val solutions = mutable.ArrayBuffer.empty[MatchSolution]
@@ -533,7 +595,16 @@ private[logger] object SbtSemanticOutputVerifier {
           val canonicalOrderMatches = contract.canonicalPrevious.get(event.id)
             .flatMap(mapping.get)
             .forall(previous => observed(previous).sourceIndex < observed(index).sourceIndex)
-          Option.when(occurrenceMatches && canonicalOrderMatches)(
+          val declaredOrderMatches = !enforceDeclaredOrder || happensBefore.forall { edge =>
+            if (edge.before == event.id) {
+              mapping.get(edge.after).forall(after =>
+                observed(index).sourceIndex < observed(after).sourceIndex)
+            } else if (edge.after == event.id) {
+              mapping.get(edge.before).forall(before =>
+                observed(before).sourceIndex < observed(index).sourceIndex)
+            } else true
+          }
+          Option.when(occurrenceMatches && canonicalOrderMatches && declaredOrderMatches)(
             matchEvent(event, observed(index), bindings, contract.distinctBindings, ownershipMode).map(index -> _)
           ).flatten
         }
@@ -666,6 +737,14 @@ private[logger] object SbtSemanticOutputVerifier {
   ): Map[SemanticEventId, Int] = {
     val occurrenceByIndex = occurrences(observed)
     val activeIds = events.map(_.id).toSet
+    def candidates(event: ExpectedSemanticEvent, requireOccurrence: Boolean = true): Vector[Int] = {
+      def matching(mode: OwnershipMode): Vector[Int] = observed.indices.filter { index =>
+        (!requireOccurrence || event.occurrence.forall(_ == occurrenceByIndex(index))) &&
+          matchEvent(event, observed(index), Map.empty, contract.distinctBindings, mode).isDefined
+      }.toVector
+      val ownershipEnforced = matching(OwnershipMode.Enforce)
+      if (ownershipEnforced.nonEmpty) ownershipEnforced else matching(OwnershipMode.Ignore)
+    }
     def canonicalRoot(id: SemanticEventId): SemanticEventId =
       contract.canonicalPrevious.get(id).filter(activeIds.contains).fold(id)(canonicalRoot)
     def canonicalDepth(id: SemanticEventId): Int =
@@ -677,23 +756,19 @@ private[logger] object SbtSemanticOutputVerifier {
     val canonicalMappings = canonicalIds.groupBy(canonicalRoot).toVector.flatMap { case (_, ids) =>
       val orderedIds = ids.toVector.sortBy(canonicalDepth)
       val prototype = events.find(_.id == orderedIds.head).get
-      val candidates = observed.indices.filter { index =>
-        matchEvent(prototype, observed(index), Map.empty, contract.distinctBindings, OwnershipMode.Ignore).isDefined
-      }.toVector.sortBy(index => observed(index).sourceIndex)
-      val overlapsNonClone = candidates.exists { index =>
+      val candidateIndexes = candidates(prototype, requireOccurrence = false)
+        .sortBy(index => observed(index).sourceIndex)
+      val overlapsNonClone = candidateIndexes.exists { index =>
         nonCanonicalEvents.exists { event =>
-          event.occurrence.forall(_ == occurrenceByIndex(index)) &&
-            matchEvent(event, observed(index), Map.empty, contract.distinctBindings, OwnershipMode.Ignore).isDefined
+          candidates(event).contains(index)
         }
       }
-      if (candidates.size <= orderedIds.size && !overlapsNonClone) orderedIds.zip(candidates) else Vector.empty
+      if (candidateIndexes.size <= orderedIds.size && !overlapsNonClone) orderedIds.zip(candidateIndexes)
+      else Vector.empty
     }
     val uniqueCandidates = events.filterNot(event => canonicalIds.contains(event.id)).flatMap { event =>
-      val candidates = observed.indices.filter { index =>
-        event.occurrence.forall(_ == occurrenceByIndex(index)) &&
-          matchEvent(event, observed(index), Map.empty, contract.distinctBindings, OwnershipMode.Ignore).isDefined
-      }
-      Option.when(candidates.size == 1)(event.id -> candidates.head)
+      val candidateIndexes = candidates(event)
+      Option.when(candidateIndexes.size == 1)(event.id -> candidateIndexes.head)
     } ++ canonicalMappings
     val collisions = uniqueCandidates.groupMap(_._2)(_._1).collect { case (index, ids) if ids.size > 1 => index }.toSet
     uniqueCandidates.filterNot { case (_, index) => collisions.contains(index) }.toMap
@@ -777,6 +852,31 @@ private[logger] object SbtSemanticOutputVerifier {
     inconsistent ++ nonDistinct
   }
 
+  private def exactOwnershipFailures(
+    mapping: Map[SemanticEventId, Int],
+    observed: Vector[ObservedServiceMessage],
+    events: Vector[ExpectedSemanticEvent]
+  ): Vector[SbtSemanticFailure] = events.flatMap { event =>
+    mapping.get(event.id).toVector.flatMap { index =>
+      val message = observed(index)
+      event.attributes.flatMap {
+        case (attribute, SemanticValuePattern.Exact(expected))
+          if isOwnershipAttribute(attribute) && message.attributes(attribute) != expected =>
+          Vector(SbtSemanticFailure(
+            SbtVerificationFailureCategory.FlowOwnershipFailure,
+            s"Semantic event '${event.id}' has wrong exact $attribute ownership.",
+            Vector(
+              s"Expected: '$expected'.",
+              s"Observed: '${message.attributes(attribute)}' at source line ${message.sourceLineNumber}.",
+              s"Raw: ${message.rawLine}"
+            ),
+            semanticIdentity = s"ownership:$attribute:${event.id}"
+          ))
+        case _ => Vector.empty
+      }
+    }
+  }
+
   private def blockedBindingFindings(
     mapping: Map[SemanticEventId, Int],
     contract: PreparedSemanticContract,
@@ -837,10 +937,16 @@ private[logger] object SbtSemanticOutputVerifier {
 
     expected.attributes.sortBy(_._1).foldLeft(Option(initialBindings)) {
       case (Some(bindings), (name, pattern)) =>
-        observed.attributes.get(name).flatMap(value => matchValue(pattern, value, bindings, distinctBindings, ownershipMode))
+        observed.attributes.get(name).flatMap { value =>
+          if (ownershipMode == OwnershipMode.Ignore &&
+            isOwnershipAttribute(name) && pattern.isInstanceOf[SemanticValuePattern.Exact]) Some(bindings)
+          else matchValue(pattern, value, bindings, distinctBindings, ownershipMode)
+        }
       case (None, _) => None
     }
   }
+
+  private def isOwnershipAttribute(name: String): Boolean = name == "flowId" || name == "buildId"
 
   private def matchValue(
     pattern: SemanticValuePattern,
@@ -1140,6 +1246,21 @@ private[logger] object SbtSemanticOutputVerifier {
       semanticIdentity = "event-assignment"
     )
   }
+
+  private def orderingAmbiguityFailure(
+    discoveredSolutions: Int,
+    budgetExceeded: Boolean
+  ): SbtSemanticFailure = SbtSemanticFailure(
+    SbtVerificationFailureCategory.OrderingFailure,
+    "Declared happens-before constraints reject every complete structural assignment, while event identity " +
+      (if (budgetExceeded) "cannot be proven unique" else "remains ambiguous") +
+      " when ordering is ignored.",
+    Vector(
+      s"Discovered ${if (budgetExceeded) "at least " else ""}$discoveredSolutions complete order-blind assignments.",
+      "Identity-dependent happens-before edges remain blocked instead of choosing an assignment arbitrarily."
+    ),
+    semanticIdentity = "event-assignment-ordering"
+  )
 
   private def verifyPlainOutput(
     observed: Vector[ObservedPlainLine],
