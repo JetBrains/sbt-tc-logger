@@ -348,6 +348,15 @@ private[logger] object PlainOutputPattern {
   final case class Exact(line: String) extends PlainOutputPattern
   case object SbtTaskSummary extends PlainOutputPattern
   final case class SbtDebug(kind: RawSbtDebugKind) extends PlainOutputPattern
+  /** One compiler-owned info line with an exact target suffix and a variable non-empty workspace prefix. */
+  final case class CompilerCompileInfo(workspace: SemanticBindingKey, targetSuffix: String) extends PlainOutputPattern
+  /** One raw compiler diagnostic whose file, line, severity, and text must agree with one parsed inspection. */
+  final case class CompilerInspectionDiagnostic(
+    workspace: SemanticBindingKey,
+    sourceSuffix: String,
+    level: CompilerDiagnosticLevel,
+    column: Int
+  ) extends PlainOutputPattern
   /** The line must precede every parsed TeamCity service message in the bounded transcript. */
   final case class BeforeServiceMessages(pattern: PlainOutputPattern) extends PlainOutputPattern
   /** The line must follow every parsed TeamCity service message in the bounded transcript. */
@@ -356,6 +365,11 @@ private[logger] object PlainOutputPattern {
   case object CompilerBridgeCompletion extends PlainOutputPattern
   /** Every child line is consumed, or none is. Nested optional groups are rejected. */
   final case class OptionalGroup(name: String, patterns: Vector[PlainOutputPattern]) extends PlainOutputPattern
+}
+
+private[logger] enum CompilerDiagnosticLevel(val rawName: String, val inspectionSeverity: String) {
+  case Error extends CompilerDiagnosticLevel("error", "ERROR")
+  case Warning extends CompilerDiagnosticLevel("warn", "WARNING")
 }
 
 private[logger] enum RawSbtDebugKind {
@@ -815,12 +829,28 @@ private[utils] object SbtSemanticContractValidator {
           case PlainOutputPattern.CompilerBridgeAnnouncement | PlainOutputPattern.CompilerBridgeCompletion => true
           case _ => false
         }
-        if (bridgePatterns.nonEmpty && group.patterns != Vector(
+        val strippedPatterns = group.patterns.map(stripPlainPatternPlacement)
+        val bridgePlacementKinds = group.patterns.map(plainPatternPlacement).distinct
+        if (bridgePatterns.nonEmpty && (strippedPatterns != Vector(
           PlainOutputPattern.CompilerBridgeAnnouncement,
           PlainOutputPattern.CompilerBridgeCompletion
-        )) {
+        ) || bridgePlacementKinds.size != 1)) {
           problems += s"Optional plain-output group '${group.name}' must contain exactly the compiler-bridge announcement followed by completion."
         }
+      }
+      patterns.flatMap(plainPatternLeaves).foreach {
+        case PlainOutputPattern.CompilerCompileInfo(workspace, targetSuffix)
+          if !targetSuffix.startsWith("/target/") || targetSuffix.contains("\n") || targetSuffix.contains("\r") =>
+          problems += s"Compiler compile-info target suffix must be one non-empty /target/ path, got '$targetSuffix'."
+        case PlainOutputPattern.CompilerCompileInfo(workspace, _)
+          if workspace.kind != SemanticBindingKind.Path || !workspace.name.matches(StableName) =>
+          problems += s"Compiler compile-info requires a valid path binding, got '$workspace'."
+        case PlainOutputPattern.CompilerInspectionDiagnostic(workspace, sourceSuffix, _, column)
+          if workspace.kind != SemanticBindingKind.Path || !workspace.name.matches(StableName) ||
+            !sourceSuffix.startsWith("/") || sourceSuffix.contains("\n") || sourceSuffix.contains("\r") ||
+            column <= 0 =>
+          problems += s"Compiler inspection diagnostic requires a valid path binding, source suffix, and positive column."
+        case _ => ()
       }
     case _ => ()
   }
@@ -855,6 +885,12 @@ private[utils] object SbtSemanticContractValidator {
     case PlainOutputPattern.BeforeServiceMessages(child) => stripPlainPatternPlacement(child)
     case PlainOutputPattern.AfterServiceMessages(child) => stripPlainPatternPlacement(child)
     case other => other
+  }
+
+  private def plainPatternPlacement(pattern: PlainOutputPattern): String = pattern match {
+    case PlainOutputPattern.BeforeServiceMessages(_) => "before"
+    case PlainOutputPattern.AfterServiceMessages(_) => "after"
+    case _ => "unplaced"
   }
 
   private def expandEvent(event: ExpectedSemanticEvent): Vector[ExpectedSemanticEvent] = {

@@ -86,7 +86,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
   @Test def compilation_MinimalModePreservesDefaultOutputAndReportsInspections(): Unit = run(
     "compilation-preserve-console", "logging/preserveConsole",
     behavior = Seq("compile"), success = false,
-    options = Seq("-Dteamcity.sbt.logger.preserveConsole=true"))
+    options = Seq("-Dteamcity.sbt.logger.preserveConsole=true"),
+    verification = SbtCompilationOutputSemanticContracts.PreserveConsole)
 
   @Test def testReporting_MinimalModePreservesDefaultResultLoggerAndReportsEvents(): Unit = run(
     "tests-preserve-console", "testSupport/JUnit_PassAndFailure",
@@ -114,7 +115,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testCompilation_MainCompletesBeforeFailureIsReported(): Unit = run(
     "test-compilation-failure", "compilation/testFailure",
-    behavior = Seq("Test / compile"), success = false, options = Seq("--info"))
+    behavior = Seq("Test / compile"), success = false, options = Seq("--info"),
+    verification = SbtCompilationOutputSemanticContracts.TestCompilationFailure)
 
   @Test def projectConfiguration_NoBuildFileCompiles(): Unit = run(
     "project-no-build-file", "projectConfiguration/noBuildFile",
@@ -166,11 +168,13 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def compilerLogLevel_DebugOutputSuppressedAtError(): Unit = run(
     "compiler-log-level-error", "compilerLogLevel/error",
-    behavior = Seq("compile"), success = true)
+    behavior = Seq("compile"), success = true,
+    verification = SbtCompilationOutputSemanticContracts.CompilerLogLevelError)
 
   @Test def compilerLogLevel_DebugOutputShownAtDebug(): Unit = run(
     "compiler-log-level-debug", "compilerLogLevel/debug",
-    behavior = Seq("compile"), success = true)
+    behavior = Seq("compile"), success = true,
+    verification = SbtCompilationOutputSemanticContracts.CompilerLogLevelDebug)
 
   @Test def compilation_SubprojectLifecycleReported(): Unit = run(
     "compilation-subproject", "compilation/subproject",

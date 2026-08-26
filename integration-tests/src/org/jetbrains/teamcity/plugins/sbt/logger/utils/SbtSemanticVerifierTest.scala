@@ -1352,6 +1352,110 @@ class SbtSemanticVerifierTest {
     ).foreach(line => assertCategory(expectFailure(verify(Vector(line), contract)), PlainOutputFailure))
   }
 
+  @Test def compilerPlainPatternsKeepTargetsAndParsedInspectionDiagnosticsStrict(): Unit = {
+    import CompilerDiagnosticLevel.*
+
+    val workspace = SemanticBindingKey.path("plain-workspace")
+    val contract = SbtSemanticContract(
+      events = Vector(ExpectedSemanticEvent("problem", Inspection,
+        "SEVERITY" -> exact("ERROR"),
+        "line" -> exact("2"),
+        "typeId" -> exact("SbtCompileProblem"),
+        "message" -> exact("invalid literal number"),
+        "file" -> exact("/work/src/main/scala/Broken.scala"))),
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.BeforeServiceMessages(
+          PlainOutputPattern.CompilerCompileInfo(workspace, "/target/scala-2.13/classes")),
+        PlainOutputPattern.AfterServiceMessages(
+          PlainOutputPattern.CompilerInspectionDiagnostic(
+            workspace, "/src/main/scala/Broken.scala", Error, 35))
+      ))
+    )
+    val inspection =
+      "##teamcity[inspection SEVERITY='ERROR' line='2' typeId='SbtCompileProblem' " +
+        "message='invalid literal number' file='/work/src/main/scala/Broken.scala']"
+    val valid = Vector(
+      "[info] compiling 1 Scala source to /work/target/scala-2.13/classes ...",
+      inspection,
+      "[error] /work/src/main/scala/Broken.scala:2:35: invalid literal number"
+    )
+
+    verify(valid, contract)
+    val normalizedContract = contract.copy(events = contract.events.map { event =>
+      if (event.id.value == "problem") event.copy(attributes = event.attributes.map {
+        case ("file", _) => "file" -> exact("${BASE}/src/main/scala/Broken.scala")
+        case attribute => attribute
+      }) else event
+    })
+    val normalized = valid.updated(
+      1,
+      inspection.replace("/work/src/main/scala/Broken.scala", "${BASE}/src/main/scala/Broken.scala")
+    )
+    verify(normalized, normalizedContract)
+    Vector(
+      valid.updated(0, "[info] compiling 2 Scala sources to /work/target/scala-2.13/classes ..."),
+      valid.updated(0, "[info] compiling 1 Scala source to /work/target/scala-3/classes ..."),
+      valid.updated(2, "[error] /other/src/main/scala/Broken.scala:2:35: invalid literal number"),
+      valid.updated(2, "[error] /work/src/main/scala/Broken.scala:2:36: invalid literal number"),
+      valid.updated(2, "[error] /work/src/main/scala/Broken.scala:2:35: different")
+    ).foreach(lines => assertCategory(expectFailure(verify(lines, contract)), PlainOutputFailure))
+    val splitWorkspace = normalized.updated(
+      2,
+      "[error] /other/src/main/scala/Broken.scala:2:35: invalid literal number"
+    )
+    assertCategory(expectFailure(verify(splitWorkspace, normalizedContract)), PlainOutputFailure)
+
+    val secondProblem = ExpectedSemanticEvent("other-problem", Inspection,
+      "SEVERITY" -> exact("ERROR"),
+      "line" -> exact("9"),
+      "typeId" -> exact("SbtCompileProblem"),
+      "message" -> exact("other problem"),
+      "file" -> exact("${BASE}/src/main/scala/Other.scala"))
+    val withSecondProblem = normalizedContract.copy(events = normalizedContract.events :+ secondProblem)
+    val otherInspection =
+      "##teamcity[inspection SEVERITY='ERROR' line='9' typeId='SbtCompileProblem' " +
+        "message='other problem' file='${BASE}/src/main/scala/Other.scala']"
+    verify(normalized.patch(2, Vector(otherInspection), 0), withSecondProblem)
+
+    val warningContract = SbtSemanticContract(
+      events = Vector(ExpectedSemanticEvent("warning", Inspection,
+        "SEVERITY" -> exact("WARNING"),
+        "line" -> exact("7"),
+        "typeId" -> exact("SbtCompileProblem"),
+        "message" -> exact("unused value"),
+        "file" -> exact("${BASE}/src/main/scala/Warning.scala"))),
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.CompilerInspectionDiagnostic(
+          workspace, "/src/main/scala/Warning.scala", Warning, 12)
+      ))
+    )
+    verify(Vector(
+      "##teamcity[inspection SEVERITY='WARNING' line='7' typeId='SbtCompileProblem' " +
+        "message='unused value' file='${BASE}/src/main/scala/Warning.scala']",
+      "[warn] /work/src/main/scala/Warning.scala:7:12: unused value"
+    ), warningContract)
+  }
+
+  @Test def rawCompilerBridgeCanDeclareServiceMessagePlacementAsOneOptionalGroup(): Unit = {
+    val contract = SbtSemanticContract(
+      events = Vector(ExpectedSemanticEvent("problem-type", InspectionType,
+        "id" -> exact("SbtCompileProblem"))),
+      plainOutput = PlainOutputContract.Patterns(Vector(
+        PlainOutputPattern.OptionalGroup("raw-bridge-before-inspection", Vector(
+          PlainOutputPattern.BeforeServiceMessages(PlainOutputPattern.CompilerBridgeAnnouncement),
+          PlainOutputPattern.BeforeServiceMessages(PlainOutputPattern.CompilerBridgeCompletion)
+        ))
+      ))
+    )
+    val announcement = "[info] Non-compiled module 'compiler-bridge_2.13' for Scala 2.13.18. Compiling..."
+    val completion = "[info]   Compilation completed in 1.25s."
+    val inspectionType = "##teamcity[inspectionType id='SbtCompileProblem']"
+
+    verify(Vector(inspectionType), contract)
+    verify(Vector(announcement, completion, inspectionType), contract)
+    assertCategory(expectFailure(verify(Vector(announcement, inspectionType, completion), contract)), PlainOutputFailure)
+  }
+
   @Test def structuredSbtDebugClassifiersAcceptEveryFiniteCategory(): Unit = {
     val representatives = Vector(
       StructuredSbtDebugKind.DependencyCheck -> "[debug] not up to date. inChanged = true, force = false",

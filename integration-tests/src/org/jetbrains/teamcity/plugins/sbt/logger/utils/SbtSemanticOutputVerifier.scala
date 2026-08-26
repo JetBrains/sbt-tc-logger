@@ -1317,52 +1317,113 @@ private[logger] object SbtSemanticOutputVerifier {
     lines: Vector[ObservedPlainLine],
     serviceMessages: Vector[ObservedServiceMessage]
   ): Boolean = {
-    val memo = mutable.HashMap.empty[(Int, Int), Boolean]
-    def loop(patternIndex: Int, lineIndex: Int): Boolean = memo.getOrElseUpdate((patternIndex, lineIndex), {
+    val memo = mutable.HashMap.empty[(Int, Int, Map[SemanticBindingKey, String]), Boolean]
+    def loop(
+      patternIndex: Int,
+      lineIndex: Int,
+      bindings: Map[SemanticBindingKey, String]
+    ): Boolean = memo.getOrElseUpdate((patternIndex, lineIndex, bindings), {
       if (patternIndex == patterns.size) lineIndex == lines.size
       else patterns(patternIndex) match {
         case PlainOutputPattern.OptionalGroup(_, children) =>
-          loop(patternIndex + 1, lineIndex) ||
-            matchesRequiredPlainPatterns(children, lines, lineIndex, serviceMessages).exists { nextLineIndex =>
-              loop(patternIndex + 1, nextLineIndex)
+          loop(patternIndex + 1, lineIndex, bindings) ||
+            matchesRequiredPlainPatterns(children, lines, lineIndex, serviceMessages, bindings).exists {
+              case (nextLineIndex, nextBindings) => loop(patternIndex + 1, nextLineIndex, nextBindings)
             }
-        case pattern if lineIndex < lines.size && matchesPlainLine(pattern, lines(lineIndex), serviceMessages) =>
-          loop(patternIndex + 1, lineIndex + 1)
+        case pattern if lineIndex < lines.size =>
+          matchPlainLine(pattern, lines(lineIndex), serviceMessages, bindings).exists { nextBindings =>
+            loop(patternIndex + 1, lineIndex + 1, nextBindings)
+          }
         case _ => false
       }
     })
-    loop(0, 0)
+    loop(0, 0, Map.empty)
   }
 
   private def matchesRequiredPlainPatterns(
     patterns: Vector[PlainOutputPattern],
     lines: Vector[ObservedPlainLine],
     start: Int,
-    serviceMessages: Vector[ObservedServiceMessage]
-  ): Option[Int] = patterns.foldLeft(Option(start)) {
-    case (Some(index), pattern) if index < lines.size && !pattern.isInstanceOf[PlainOutputPattern.OptionalGroup] &&
-      matchesPlainLine(pattern, lines(index), serviceMessages) => Some(index + 1)
+    serviceMessages: Vector[ObservedServiceMessage],
+    initialBindings: Map[SemanticBindingKey, String]
+  ): Option[(Int, Map[SemanticBindingKey, String])] =
+    patterns.foldLeft(Option(start -> initialBindings)) {
+    case (Some((index, bindings)), pattern)
+      if index < lines.size && !pattern.isInstanceOf[PlainOutputPattern.OptionalGroup] =>
+      matchPlainLine(pattern, lines(index), serviceMessages, bindings).map(index + 1 -> _)
     case _ => None
   }
 
-  private def matchesPlainLine(
+  private def matchPlainLine(
     pattern: PlainOutputPattern,
     line: ObservedPlainLine,
-    serviceMessages: Vector[ObservedServiceMessage]
-  ): Boolean = pattern match {
-    case PlainOutputPattern.Exact(expected) => line.rawLine == expected
-    case PlainOutputPattern.SbtTaskSummary => SbtTaskSummaryPattern.matches(line.rawLine)
-    case PlainOutputPattern.SbtDebug(kind) => matchesRawSbtDebug(kind, line.rawLine)
+    serviceMessages: Vector[ObservedServiceMessage],
+    bindings: Map[SemanticBindingKey, String]
+  ): Option[Map[SemanticBindingKey, String]] = pattern match {
+    case PlainOutputPattern.Exact(expected) => Option.when(line.rawLine == expected)(bindings)
+    case PlainOutputPattern.SbtTaskSummary => Option.when(SbtTaskSummaryPattern.matches(line.rawLine))(bindings)
+    case PlainOutputPattern.SbtDebug(kind) => Option.when(matchesRawSbtDebug(kind, line.rawLine))(bindings)
+    case PlainOutputPattern.CompilerCompileInfo(workspace, targetSuffix) =>
+      val prefix = "[info] compiling 1 Scala source to "
+      val suffix = s"$targetSuffix ..."
+      embeddedValue(line.rawLine, prefix, suffix).flatMap(value =>
+        bind(workspace, value, bindings, Set.empty, OwnershipMode.Enforce))
+    case PlainOutputPattern.CompilerInspectionDiagnostic(workspace, sourceSuffix, level, column) =>
+      matchCompilerInspectionDiagnostic(
+        line.rawLine, workspace, sourceSuffix, level, column, serviceMessages, bindings)
     case PlainOutputPattern.BeforeServiceMessages(child) =>
-      serviceMessages.headOption.forall(line.sourceIndex < _.sourceIndex) &&
-        matchesPlainLine(child, line, serviceMessages)
+      if (serviceMessages.headOption.forall(line.sourceIndex < _.sourceIndex))
+        matchPlainLine(child, line, serviceMessages, bindings)
+      else None
     case PlainOutputPattern.AfterServiceMessages(child) =>
-      serviceMessages.lastOption.forall(line.sourceIndex > _.sourceIndex) &&
-        matchesPlainLine(child, line, serviceMessages)
-    case PlainOutputPattern.CompilerBridgeAnnouncement => isCompilerBridgeAnnouncement(line.rawLine)
-    case PlainOutputPattern.CompilerBridgeCompletion => isCompilerBridgeCompletion(line.rawLine)
-    case _: PlainOutputPattern.OptionalGroup => false
+      if (serviceMessages.lastOption.forall(line.sourceIndex > _.sourceIndex))
+        matchPlainLine(child, line, serviceMessages, bindings)
+      else None
+    case PlainOutputPattern.CompilerBridgeAnnouncement =>
+      Option.when(isCompilerBridgeAnnouncement(line.rawLine))(bindings)
+    case PlainOutputPattern.CompilerBridgeCompletion =>
+      Option.when(isCompilerBridgeCompletion(line.rawLine))(bindings)
+    case _: PlainOutputPattern.OptionalGroup => None
   }
+
+  private def matchCompilerInspectionDiagnostic(
+    line: String,
+    workspace: SemanticBindingKey,
+    sourceSuffix: String,
+    level: CompilerDiagnosticLevel,
+    column: Int,
+    serviceMessages: Vector[ObservedServiceMessage],
+    bindings: Map[SemanticBindingKey, String]
+  ): Option[Map[SemanticBindingKey, String]] = {
+    val matchingInspections = serviceMessages.filter(_.kind == ObservedServiceMessageKind.Inspection).flatMap { message =>
+      for {
+        severity <- message.attributes.get("SEVERITY")
+        if severity == level.inspectionSeverity
+        file <- message.attributes.get("file")
+        serviceWorkspace <-
+          if (file == "${BASE}" + sourceSuffix) Some(Option.empty[String])
+          else embeddedValue(file, "", sourceSuffix).map(Some(_))
+        sourceLine <- message.attributes.get("line")
+        text <- message.attributes.get("message")
+        lineWorkspace <- embeddedValue(
+          line,
+          s"[${level.rawName}] ",
+          s"$sourceSuffix:$sourceLine:$column: $text"
+        )
+        if serviceWorkspace.forall(_ == lineWorkspace)
+        updated <- bind(workspace, lineWorkspace, bindings, Set.empty, OwnershipMode.Enforce)
+      } yield updated
+    }
+    matchingInspections match {
+      case Vector(single) => Some(single)
+      case _ => None
+    }
+  }
+
+  private def embeddedValue(value: String, prefix: String, suffix: String): Option[String] =
+    Option.when(value.startsWith(prefix) && value.endsWith(suffix) && value.length > prefix.length + suffix.length) {
+      value.substring(prefix.length, value.length - suffix.length)
+    }.filter(captured => captured.startsWith("/") && !captured.exists("\r\n".contains(_)))
 
   private def matchesRawSbtDebug(kind: RawSbtDebugKind, line: String): Boolean = kind match {
     case RawSbtDebugKind.CommandExecution => line.matches("""^\[debug\] > Exec\([^\r\n]+\)$""")
