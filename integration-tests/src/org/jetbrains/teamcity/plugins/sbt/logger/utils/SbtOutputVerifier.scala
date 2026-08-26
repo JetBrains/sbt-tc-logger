@@ -118,14 +118,23 @@ private[logger] object SbtOutputVerifier {
   def candidateFile(repoRoot: File, outputProfile: String, scenarioId: String): File =
     new File(repoRoot, s"target/integration-tests/output-candidates/$outputProfile/$scenarioId.txt")
 
+  def validateGolden(golden: File): Unit = {
+    parseGolden(golden)
+    ()
+  }
+
   def verify(lines: Vector[String], golden: File, context: TranscriptContext): Unit = {
     validateTeamCityLines(lines)
+    val document = parseGolden(golden)
+    ExactMatcher.verify(document, lines, context, golden)
+  }
+
+  private def parseGolden(golden: File): GoldenDocument = {
     if (!golden.isFile) {
       throw new AssertionError(s"Missing exact transcript golden: ${FileUtils.normalisedAbsolutePath(golden)}")
     }
     val goldenLines = FileUtils.readLines(golden).toVector
-    val document = GoldenParser.parse(goldenLines, golden)
-    ExactMatcher.verify(document, lines, context, golden)
+    GoldenParser.parse(goldenLines, golden)
   }
 
   def writeCandidate(lines: Vector[String], destination: File, context: TranscriptContext): Unit = {

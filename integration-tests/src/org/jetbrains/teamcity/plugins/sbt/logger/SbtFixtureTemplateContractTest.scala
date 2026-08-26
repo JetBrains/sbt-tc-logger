@@ -1,11 +1,12 @@
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import org.jetbrains.teamcity.plugins.sbt.logger.utils.IntegrationTestLayout
+import org.jetbrains.teamcity.plugins.sbt.logger.utils.{IntegrationTestLayout, SbtOutputVerifier}
 import org.jetbrains.sbt.integrationTests.SbtFixtureWorkspace
 import org.junit.{Assert, Test}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
+import scala.util.control.NonFatal
 
 /** Guards source-fixture contracts which are independent of a nested runtime execution. */
 class SbtFixtureTemplateContractTest {
@@ -113,7 +114,7 @@ class SbtFixtureTemplateContractTest {
 
   @Test def everyScenarioProfileHasExactlyOneNonEmptyGoldenAndNoOrphans(): Unit = {
     val root = IntegrationTestLayout.repoRoot().toPath.resolve("integration-tests/testData")
-    val expectedFiles = regularFiles(root).filter(path => path.iterator.asScala.exists(_.toString == "expected"))
+    val expectedFiles = goldenFiles(root)
     val parsed = expectedFiles.map(path => path -> goldenCoordinates(root.relativize(path)))
     val malformed = parsed.collect { case (path, Left(problem)) => s"${root.relativize(path)}: $problem" }
     Assert.assertTrue(s"Malformed exact transcript paths:\n${malformed.mkString("\n")}", malformed.isEmpty)
@@ -139,6 +140,22 @@ class SbtFixtureTemplateContractTest {
     Assert.assertTrue(s"Empty goldens must use [[expect-empty]]:\n${empty.mkString("\n")}", empty.isEmpty)
   }
 
+  @Test def everyExactTranscriptGoldenParses(): Unit = {
+    val root = IntegrationTestLayout.repoRoot().toPath.resolve("integration-tests/testData")
+    val goldens = goldenFiles(root).sortBy(_.toString)
+    Assert.assertFalse(s"No exact transcript goldens were found under $root", goldens.isEmpty)
+
+    val invalid = goldens.flatMap { golden =>
+      try {
+        SbtOutputVerifier.validateGolden(golden.toFile)
+        None
+      } catch {
+        case NonFatal(error) => Some(s"${root.relativize(golden)}: ${error.getMessage}")
+      }
+    }
+    Assert.assertTrue(s"Invalid exact transcript goldens:\n${invalid.mkString("\n")}", invalid.isEmpty)
+  }
+
   @Test def noLegacyRegexExpectationsRemain(): Unit = {
     val root = IntegrationTestLayout.repoRoot().toPath.resolve("integration-tests/testData")
     val legacy = regularFiles(root).filter { path =>
@@ -151,6 +168,9 @@ class SbtFixtureTemplateContractTest {
   private def buildPropertiesFiles(root: Path): Seq[Path] = {
     regularFiles(root).filter(_.getFileName.toString == "build.properties")
   }
+
+  private def goldenFiles(root: Path): Seq[Path] =
+    regularFiles(root).filter(path => path.iterator.asScala.exists(_.toString == "expected"))
 
   private def regularFiles(root: Path): Seq[Path] = {
     val files = Files.walk(root)
