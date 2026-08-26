@@ -99,6 +99,20 @@ def loggerProjectSettings(targetDirectory: String): Seq[Def.Setting[_]] = Seq(
   resolvers += "jetbrains-teamcity-repository" at "https://download.jetbrains.com/teamcity-repository",
 ) ++ pluginPublishingSettings ++ integrationTestArtifactPreparationSettings
 
+/**
+ * Makes an explicitly focused test invocation fail when neither its suite filter nor framework options select a
+ * test. SBT otherwise reports a successful `testOnly` task with zero executed tests, which can make a mistyped
+ * class or method filter look like a valid verification run.
+ */
+def failWhenNoTestsAreSelected(delegate: TestResultLogger): TestResultLogger =
+  TestResultLogger { (log, results, taskName) =>
+    delegate.run(log, results, taskName)
+    val executedTestCount = results.events.iterator.map { case (_, suite) =>
+      suite.passedCount + suite.failureCount + suite.errorCount + suite.skippedCount
+    }.sum
+    if (executedTestCount == 0) sys.error(s"No tests were selected by $taskName.")
+  }
+
 /** Fixed SBT 1.4+/Scala 2.12 logger target. */
 lazy val loggerSbt1Settings: Seq[Def.Setting[_]] = Seq(
   scalaVersion := ScalaVersion_212,
@@ -202,6 +216,7 @@ lazy val integrationTests: Project = project.in(file("integration-tests"))
         loggerSbt2 / prepareIntegrationTestArtifacts
       )
       .evaluated,
+    Test / testOnly / testResultLogger ~= failWhenNoTestsAreSelected,
 
     libraryDependencies ++= junitTestFrameworkDependencies ++ Seq(
       // Exact transcripts are validated as raw wire text, but every TeamCity-looking line must still be syntactically valid.
