@@ -72,7 +72,7 @@ Typed placeholders cover values which cannot be frozen safely:
 - `{{flow:<name>}}` binds one test flow; repeated names must match and different names must remain distinct.
 - `{{build-id:<name>}}` binds one numeric build ID while preserving its literal flow suffix; different names must remain distinct.
 - `{{path:repo-root}}`, `{{path:work-dir}}`, `{{path:sbt-global-base}}`, `{{path:sbt-boot-directory}}`, `{{path:sbt-coursier-home}}`, `{{path:sbt-ivy-home}}`, `{{path:java-home}}`, and `{{path:user-home}}` replace only known machine-specific roots.
-- `{{duration:<name>}}`, `{{timestamp:<name>}}`, `{{thread:<name>}}`, `{{hash:<name>}}`, and `{{logger-version}}` validate their typed values.
+- `{{duration:<name>}}`, `{{timestamp:<name>}}`, `{{thread:<name>}}`, `{{hash:<name>}}`, `{{java-version:8}}`, `{{java-version:17}}`, and `{{logger-version}}` validate their typed values.
 - Dependency outcome/metadata and framework stack-tail placeholders are accepted only by their dedicated validators; fixture causes and frames before a recognized framework tail remain literal.
 - `{{input-file-mappings:java-sources}}` validates the exact Java-sources package-mapping set, its expected classes-directory layout, and every source-to-output relation while allowing only independent generated-file entries to arrive in a different file-system order.
 
@@ -90,7 +90,7 @@ exact test line
 [[/unordered]]
 ```
 
-The only non-literal directives are named strict noise recognizers: `sbt-task-summary`, `sbt-debug-line`, `zinc-debug-message`, `framework-stack-tail`, `dependency-resource-outcome`, `sbt-compiler-bridge`, and `parallel-scalatest-native-summary`. Each recognizer accepts a bounded SBT/Zinc/framework shape and rejects unrelated fixture or plugin output. Prefer literal lines; introduce or widen a recognizer only with focused mutation tests and a nearby rationale.
+The only non-literal directives are named strict noise recognizers: `sbt-task-summary`, `sbt-debug-line`, `zinc-debug-message`, `framework-stack-tail`, `dependency-resource-outcome`, and `sbt-compiler-bridge`. Each recognizer accepts a bounded SBT/Zinc/framework shape and rejects unrelated fixture or plugin output. Prefer literal lines; introduce or widen a recognizer only with focused mutation tests and a nearby rationale.
 
 Candidate commands write only below `target/integration-tests/output-candidates/<profile>/` and finish with `session clear`:
 

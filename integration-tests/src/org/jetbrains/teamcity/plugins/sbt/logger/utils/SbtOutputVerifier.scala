@@ -318,6 +318,7 @@ private[logger] object SbtOutputVerifier {
   private object LineTemplate {
     private val PlaceholderPattern = "\\{\\{([^{}]+)\\}\\}".r
     private val Named = "([a-z][a-z0-9-]*):([a-z][a-z0-9-]*)".r
+    private val JavaVersionPlaceholder = "java-version:([0-9]+)".r
 
     def compile(source: String, file: File, lineNumber: Int): LineTemplate = {
       val regex = new StringBuilder("^")
@@ -365,7 +366,7 @@ private[logger] object SbtOutputVerifier {
       case Named("timestamp", _) => ValidatedPlaceholder("(?:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+|[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3})")
       case Named("thread", _) => ValidatedPlaceholder("pool-[0-9]+-thread-[0-9]+")
       case Named("hash", _) => ValidatedPlaceholder("[0-9a-fA-F]{6,16}")
-      case Named("java-version", major) =>
+      case JavaVersionPlaceholder(major) =>
         JavaVersion.regex(major).fold {
           invalid(file, lineNumber, s"Unsupported Java major version '$major'.")
         }(ValidatedPlaceholder(_))
