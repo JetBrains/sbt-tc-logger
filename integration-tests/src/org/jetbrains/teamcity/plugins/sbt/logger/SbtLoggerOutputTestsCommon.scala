@@ -104,7 +104,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testCompilation_ConcurrentProjectsKeepMainBeforeOwnTest(): Unit = run(
     "compilation-concurrent-main-test", "compilation/concurrentMainTest",
-    behavior = Seq("Test / compile"), success = true, options = Seq("--info"))
+    behavior = Seq("Test / compile"), success = true, options = Seq("--info"),
+    verification = SbtConcurrentMainTestSemanticContracts.Success)
 
   @Test def testCompilation_MainCompletesBeforeFailureIsReported(): Unit = run(
     "test-compilation-failure", "compilation/testFailure",
