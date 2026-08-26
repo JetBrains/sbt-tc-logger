@@ -18,6 +18,7 @@ class SbtInitializerErrorCoverageTest {
       fixture = "testSupport/ScalaTest_InitializerError",
       setupCommands = Seq.empty,
       behaviorCommands = Seq("clean", "test"),
-      expectedResult = SbtProcessResultExpectation.Failure
+      expectedResult = SbtProcessResultExpectation.Failure,
+      verification = SbtClassicScalaTestSemanticContracts.InitializerError
     ))
 }

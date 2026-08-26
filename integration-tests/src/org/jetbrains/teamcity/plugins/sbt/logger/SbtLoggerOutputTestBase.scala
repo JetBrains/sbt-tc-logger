@@ -63,7 +63,8 @@ abstract class SbtLoggerOutputTestBase(runtime: SbtTestsRuntime) {
       fixture = "testSupport/ScalaTest_ErrorLikeOutputNotCompilationFailure",
       setupCommands = Seq.empty,
       behaviorCommands = Seq("test"),
-      expectedResult = SbtProcessResultExpectation.Success
+      expectedResult = SbtProcessResultExpectation.Success,
+      verification = SbtClassicScalaTestSemanticContracts.ErrorLikeOutput
     ))
 
   /**

@@ -183,7 +183,8 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testReporting_ScalaTest_PassAndFailureReported(): Unit = run(
     "scalatest-pass-and-failure", "testSupport/ScalaTest_PassAndFailure",
-    behavior = Seq("test"), success = false)
+    behavior = Seq("test"), success = false,
+    verification = SbtClassicScalaTestSemanticContracts.PassAndFailure)
 
   @Test def projectExecution_JavaSourcesCompileAndRun(): Unit = run(
     "java-sources-compile-run", "projectExecution/javaSources",
@@ -195,11 +196,13 @@ abstract class SbtLoggerOutputTestsCommon(runtime: SbtTestsRuntime) extends SbtL
 
   @Test def testReporting_ScalaTest_NestedSuitesReported(): Unit = run(
     "scalatest-nested-suites", "testSupport/ScalaTest_NestedSuites",
-    behavior = Seq("test"), success = true, options = Seq("--info"))
+    behavior = Seq("test"), success = true, options = Seq("--info"),
+    verification = SbtClassicScalaTestSemanticContracts.NestedSuites)
 
   @Test def testReporting_ScalaTest_LongNamesNotDuplicated(): Unit = run(
     "scalatest-long-names", "testSupport/ScalaTest_LongNamesNotDuplicated",
-    behavior = Seq("testOnly"), success = true)
+    behavior = Seq("testOnly"), success = true,
+    verification = SbtClassicScalaTestSemanticContracts.LongNames)
 
   @Test def testReporting_Specs2_TestOnlyExamplesReported(): Unit = run(
     "specs2-test-only", "testSupport/Specs2_TestOnlyExamples",
