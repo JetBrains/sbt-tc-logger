@@ -1,30 +1,35 @@
 package org.jetbrains.teamcity.plugins.sbt.logger
 
-import org.jetbrains.teamcity.plugins.sbt.logger.utils.{SbtLoggerOutputTestCase, SbtProcessResultExpectation}
+import org.jetbrains.teamcity.plugins.sbt.logger.utils.{SbtLoggerOutputTestCase, SbtOutputVerificationSelection, SbtProcessResultExpectation}
 import org.junit.Test
 
 /** Scala 3.8.4 reporting scenarios for the current versions of each supported test-framework family. */
 trait SbtLoggerOutputTestsModernFrameworks { this: SbtLoggerOutputTestBase =>
 
   @Test def testReporting_ModernScalaTestReported(): Unit = runModernFramework(
-    "modern-scalatest", "testSupport/Modern_ScalaTest")
+    "modern-scalatest", "testSupport/Modern_ScalaTest", SbtModernFrameworkSemanticContracts.ScalaTest)
 
   @Test def testReporting_ModernJUnit4Reported(): Unit = runModernFramework(
-    "modern-junit4", "testSupport/Modern_JUnit4")
+    "modern-junit4", "testSupport/Modern_JUnit4", SbtModernFrameworkSemanticContracts.JUnit4)
 
   @Test def testReporting_ModernJupiterReported(): Unit = runModernFramework(
-    "modern-jupiter", "testSupport/Modern_Jupiter")
+    "modern-jupiter", "testSupport/Modern_Jupiter", SbtModernFrameworkSemanticContracts.Jupiter)
 
   @Test def testReporting_ModernMUnitReported(): Unit = runModernFramework(
-    "modern-munit", "testSupport/Modern_MUnit")
+    "modern-munit", "testSupport/Modern_MUnit", SbtModernFrameworkSemanticContracts.MUnit)
 
-  private def runModernFramework(scenarioId: String, fixture: String): Unit =
+  private def runModernFramework(
+    scenarioId: String,
+    fixture: String,
+    verification: SbtOutputVerificationSelection
+  ): Unit =
     runCase(SbtLoggerOutputTestCase(
       scenarioId = scenarioId,
       fixture = fixture,
       setupCommands = Seq.empty,
       behaviorCommands = Seq("test"),
       expectedResult = SbtProcessResultExpectation.Failure,
-      sbtOptions = Seq("-Dteamcity.sbt.logger.showTestTaskOutput=false")
+      sbtOptions = Seq("-Dteamcity.sbt.logger.showTestTaskOutput=false"),
+      verification = verification
     ))
 }
